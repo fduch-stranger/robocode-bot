@@ -146,7 +146,7 @@ if [[ ${#bot_inputs[@]} -gt 0 ]]; then
 else
   bot_args=()
   for bot in "$ROOT_DIR"/bots/*; do
-    if [[ -d "$bot" ]]; then
+    if [[ -d "$bot" ]] && compgen -G "$bot/*.json" > /dev/null; then
       bot_args+=("$bot")
     fi
   done

@@ -18,7 +18,8 @@ scripts/setup.sh
 scripts/package.sh
 ```
 
-Archives are written to `dist/`.
+Archives are written to `dist/`. Each archive includes the bot directory plus
+the shared `bot_utils` helper package used by the Python bots.
 
 ## Run a Battle
 
@@ -30,7 +31,8 @@ The battle runner starts an embedded Robocode Tank Royale server, boots the bot
 directories, runs three rounds, and prints the results. Two bots run as `1v1`;
 three or more bots run as `melee`.
 
-With no arguments, the script runs every bot directory found under `bots/`.
+With no arguments, the script runs every bot directory found under `bots/` that
+contains a bot JSON manifest. Helper packages such as `bot_utils` are ignored.
 Each run writes artifacts under `battle-results/runs/<timestamp>/`:
 
 - `results.json`: structured final scores

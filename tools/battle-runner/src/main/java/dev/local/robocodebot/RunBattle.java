@@ -16,6 +16,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public final class RunBattle {
@@ -136,6 +137,29 @@ public final class RunBattle {
         log(log, "tick", "round", event.getRoundNumber(), "turn", event.getTurnNumber(),
                 "bots", event.getBotStates().size(), "bullets", event.getBulletStates().size(),
                 "events", event.getEvents().size());
+        event.getBotStates().stream()
+                .sorted((left, right) -> Integer.compare(left.getId(), right.getId()))
+                .forEach(bot -> log(log, "bot.state",
+                        "round", event.getRoundNumber(),
+                        "turn", event.getTurnNumber(),
+                        "id", bot.getId(),
+                        "name", token(bot.getName()),
+                        "energy", decimal(bot.getEnergy()),
+                        "x", decimal(bot.getX()),
+                        "y", decimal(bot.getY()),
+                        "direction", decimal(bot.getDirection()),
+                        "gunDirection", decimal(bot.getGunDirection()),
+                        "radarDirection", decimal(bot.getRadarDirection()),
+                        "speed", decimal(bot.getSpeed()),
+                        "turnRate", decimal(bot.getTurnRate()),
+                        "gunTurnRate", decimal(bot.getGunTurnRate()),
+                        "radarTurnRate", decimal(bot.getRadarTurnRate()),
+                        "gunHeat", decimal(bot.getGunHeat()),
+                        "enemyCount", bot.getEnemyCount()));
+        event.getEvents().forEach(tickEvent -> log(log, "tick.event",
+                "round", event.getRoundNumber(),
+                "turn", event.getTurnNumber(),
+                "type", tickEvent.getClass().getSimpleName()));
     }
 
     private static void printResults(List<BotResult> results) {
@@ -265,6 +289,17 @@ public final class RunBattle {
 
     private static String nullable(Object value) {
         return value == null ? "null" : value.toString();
+    }
+
+    private static String decimal(double value) {
+        return String.format(Locale.ROOT, "%.2f", value);
+    }
+
+    private static String token(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().replaceAll("\\s+", "_");
     }
 
     private static String trim(String value) {
