@@ -1,0 +1,13 @@
+{
+  "name": "test-bot-2",
+  "version": "1.0",
+  "authors": ["robocode-bot"],
+  "description": "Basic evasive circle-strafer bot.",
+  "homepage": "",
+  "countryCodes": ["DK"],
+  "gameTypes": ["classic", "1v1", "melee"],
+  "platform": "Python 3.13",
+  "programmingLang": "Python 3",
+  "base": "test-bot-2",
+  "run": "python3 test-bot-2.py"
+}

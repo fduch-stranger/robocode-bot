@@ -1,0 +1,8 @@
+.venv/
+.m2/
+.cache/
+dist/
+target/
+*.pyc
+__pycache__/
+*.battle.gz
