@@ -31,7 +31,14 @@ directories, runs three rounds, and prints the results. Two bots run as `1v1`;
 three or more bots run as `melee`.
 
 With no arguments, the script runs every bot directory found under `bots/`.
-Results are also written to `battle-results/latest.json`.
+Each run writes artifacts under `battle-results/runs/<timestamp>/`:
+
+- `results.json`: structured final scores
+- `runner.log`: runner lifecycle, round, boot, and optional tick-sample events
+- `process.log`: raw Robocode runner, server, and booter output
+- `debug/`: bot decision logs when `--debug` is enabled
+- `recordings/game-*.battle.gz`: battle recording when `--record` is enabled
+- `intents.jsonl`: captured bot intents when `--intent-diagnostics` is enabled
 
 You can pass explicit bot directories to test a different pairing:
 
@@ -57,11 +64,23 @@ Write structured results to a specific file:
 scripts/run-battle.sh --rounds 30 --results battle-results/chase-vs-circle.json bots/chase-lock bots/circle-strafer
 ```
 
+Use a stable run directory for all artifacts:
+
+```sh
+scripts/run-battle.sh --run-dir battle-results/runs/manual-1
+```
+
 Enable bot decision logs:
 
 ```sh
 scripts/run-battle.sh --debug bots/chase-lock bots/circle-strafer
 ```
 
-Debug logs are written under `battle-results/debug/`.
+Debug logs are written under the run directory by default.
 All current bots write debug logs when `--debug` is enabled.
+
+Enable runner-side battle recording, intent diagnostics, and sampled tick logs:
+
+```sh
+scripts/run-battle.sh --record --intent-diagnostics --tick-sample 25
+```
