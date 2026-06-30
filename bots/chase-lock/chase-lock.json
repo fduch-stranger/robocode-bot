@@ -1,0 +1,12 @@
+{
+  "name": "Chase Lock",
+  "version": "1.0",
+  "authors": ["robocode-bot"],
+  "description": "Locks radar and gun to the latest scan, then chases the target.",
+  "homepage": "",
+  "countryCodes": ["DK"],
+  "gameTypes": ["classic", "1v1", "melee"],
+  "platform": "Python 3.13",
+  "programmingLang": "Python 3",
+  "base": "chase-lock"
+}

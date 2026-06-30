@@ -25,8 +25,17 @@ public final class RunBattle {
             builder.embeddedServer();
             builder.botConnectTimeout(Duration.ofSeconds(20));
         })) {
+            var botCount = bots.size();
+            var setup = bots.size() == 2
+                    ? BattleSetup.oneVsOne(builder -> builder.setNumberOfRounds(3))
+                    : BattleSetup.melee(builder -> {
+                        builder.setMinNumberOfParticipants(botCount);
+                        builder.setMaxNumberOfParticipants(botCount);
+                        builder.setNumberOfRounds(3);
+                    });
+
             var results = runner.runBattle(
-                    BattleSetup.oneVsOne(setup -> setup.setNumberOfRounds(3)),
+                    setup,
                     bots
             );
 

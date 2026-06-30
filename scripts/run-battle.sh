@@ -10,10 +10,23 @@ if [[ ! -x .venv/bin/python ]]; then
   scripts/setup.sh
 fi
 
+if [[ $# -gt 0 ]]; then
+  bot_args=()
+  for bot in "$@"; do
+    if [[ "$bot" = /* ]]; then
+      bot_args+=("$bot")
+    else
+      bot_args+=("$ROOT_DIR/$bot")
+    fi
+  done
+else
+  bot_args=("$ROOT_DIR/bots/sweep-pressure" "$ROOT_DIR/bots/circle-strafer")
+fi
+
 mvn \
   -s "$ROOT_DIR/tools/maven-central-settings.xml" \
   -Dmaven.repo.local="$MVN_REPO" \
   -q \
   -f "$ROOT_DIR/tools/battle-runner/pom.xml" \
   compile exec:java \
-  -Dexec.args="$ROOT_DIR/bots/sweep-pressure $ROOT_DIR/bots/circle-strafer"
+  -Dexec.args="${bot_args[*]}"
