@@ -9,11 +9,11 @@ def gun_bearing_to(bot: Bot, x: float, y: float) -> float:
     return ((absolute_angle - bot.gun_direction + 180) % 360) - 180
 
 
-class TestBot2(Bot):
+class CircleStrafer(Bot):
     def __init__(self) -> None:
         super().__init__(
             BotInfo(
-                name="test-bot-2",
+                name="Circle Strafer",
                 version="1.0",
                 authors=["robocode-bot"],
                 description="Basic evasive circle-strafer bot.",
@@ -65,4 +65,4 @@ class TestBot2(Bot):
 
 
 if __name__ == "__main__":
-    TestBot2().start()
+    CircleStrafer().start()

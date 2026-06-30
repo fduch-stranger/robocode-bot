@@ -2,8 +2,8 @@
 
 This workspace contains two basic Robocode Tank Royale Python bots:
 
-- `bots/test-bot-1`: sweeping pressure bot
-- `bots/test-bot-2`: evasive circle-strafer bot
+- `bots/sweep-pressure`: aggressive sweeping pressure bot
+- `bots/circle-strafer`: evasive circle-strafer bot
 
 ## Setup
 

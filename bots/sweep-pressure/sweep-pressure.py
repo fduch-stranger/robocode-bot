@@ -9,11 +9,11 @@ def gun_bearing_to(bot: Bot, x: float, y: float) -> float:
     return ((absolute_angle - bot.gun_direction + 180) % 360) - 180
 
 
-class TestBot1(Bot):
+class SweepPressure(Bot):
     def __init__(self) -> None:
         super().__init__(
             BotInfo(
-                name="test-bot-1",
+                name="Sweep Pressure",
                 version="1.0",
                 authors=["robocode-bot"],
                 description="Basic sweeping ram-pressure bot.",
@@ -61,4 +61,4 @@ class TestBot1(Bot):
 
 
 if __name__ == "__main__":
-    TestBot1().start()
+    SweepPressure().start()

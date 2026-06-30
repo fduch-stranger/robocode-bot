@@ -10,12 +10,10 @@ if [[ ! -x .venv/bin/python ]]; then
   scripts/setup.sh
 fi
 
-export PATH="$ROOT_DIR/.venv/bin:$PATH"
-
 mvn \
   -s "$ROOT_DIR/tools/maven-central-settings.xml" \
   -Dmaven.repo.local="$MVN_REPO" \
   -q \
   -f "$ROOT_DIR/tools/battle-runner/pom.xml" \
   compile exec:java \
-  -Dexec.args="$ROOT_DIR/bots/test-bot-1 $ROOT_DIR/bots/test-bot-2"
+  -Dexec.args="$ROOT_DIR/bots/sweep-pressure $ROOT_DIR/bots/circle-strafer"

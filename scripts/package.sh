@@ -7,7 +7,7 @@ DIST_DIR="$ROOT_DIR/dist"
 cd "$ROOT_DIR"
 mkdir -p "$DIST_DIR"
 
-for bot_dir in bots/test-bot-1 bots/test-bot-2; do
+for bot_dir in bots/sweep-pressure bots/circle-strafer; do
   bot_name="$(basename "$bot_dir")"
   archive="$DIST_DIR/${bot_name}.zip"
   rm -f "$archive"
