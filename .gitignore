@@ -2,6 +2,7 @@
 .m2/
 .cache/
 dist/
+battle-results/
 target/
 *.pyc
 __pycache__/

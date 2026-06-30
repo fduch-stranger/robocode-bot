@@ -1,7 +1,16 @@
 import math
+import os
+from pathlib import Path
+from typing import TextIO
 
 from robocode_tank_royale.bot_api import Bot, BotInfo, Color
-from robocode_tank_royale.bot_api.events import HitBotEvent, HitByBulletEvent, HitWallEvent, ScannedBotEvent
+from robocode_tank_royale.bot_api.events import (
+    BulletFiredEvent,
+    HitBotEvent,
+    HitByBulletEvent,
+    HitWallEvent,
+    ScannedBotEvent,
+)
 
 
 FIRE_ALIGNMENT_DEGREES = 8
@@ -26,9 +35,12 @@ class CircleStrafer(Bot):
             )
         )
         self._move_direction = 1
+        self._target_id: int | None = None
         self._target_x: float | None = None
         self._target_y: float | None = None
         self._target_turn = -1
+        self._debug_log = self._open_debug_log()
+        self._last_status_turn = -1
 
     def run(self) -> None:
         self.body_color = Color.from_rgb(214, 75, 54)
@@ -48,16 +60,29 @@ class CircleStrafer(Bot):
             self.go()
 
     def on_scanned_bot(self, event: ScannedBotEvent) -> None:
+        previous_id = self._target_id
+        self._target_id = event.scanned_bot_id
         self._target_x = event.x
         self._target_y = event.y
         self._target_turn = self.turn_number
+        if previous_id != event.scanned_bot_id:
+            self._log(
+                "target.select",
+                previous=previous_id,
+                selected=event.scanned_bot_id,
+                energy=round(event.energy, 1),
+                x=round(event.x, 1),
+                y=round(event.y, 1),
+            )
 
     def _track_scanned_target(self) -> None:
         if self._target_x is None or self._target_y is None:
             self.gun_turn_rate = 0
+            self._sample_status("search", known_target=False)
             return
         if self.turn_number - self._target_turn > TARGET_MEMORY_TURNS:
             self.gun_turn_rate = 0
+            self._sample_status("target.stale", target=self._target_id)
             return
 
         dx = self._target_x - self.x
@@ -69,17 +94,63 @@ class CircleStrafer(Bot):
         self.set_turn_gun_left(gun_bearing)
         if abs(gun_bearing) <= FIRE_ALIGNMENT_DEGREES and self.energy > firepower + 1:
             self.set_fire(firepower)
+        else:
+            self._sample_status(
+                "track",
+                target=self._target_id,
+                distance=round(distance, 1),
+                gun_bearing=round(gun_bearing, 2),
+            )
 
     def on_hit_by_bullet(self, event: HitByBulletEvent) -> None:
         self._move_direction *= -1
         self.set_turn_left(45)
+        self._log("hit.bullet", move_direction=self._move_direction)
 
     def on_hit_wall(self, event: HitWallEvent) -> None:
         self._move_direction *= -1
         self.set_turn_left(60)
+        self._log("hit.wall", move_direction=self._move_direction)
 
     def on_hit_bot(self, event: HitBotEvent) -> None:
         self._move_direction *= -1
+        self._log(
+            "hit.bot",
+            target=event.victim_id,
+            energy=round(event.energy, 1),
+            rammed=event.rammed,
+            move_direction=self._move_direction,
+        )
+
+    def on_bullet_fired(self, event: BulletFiredEvent) -> None:
+        self._log(
+            "bullet.fired",
+            bullet_id=event.bullet.bullet_id,
+            target=self._target_id,
+            power=event.bullet.power,
+            direction=round(event.bullet.direction, 1),
+            energy=round(self.energy, 1),
+        )
+
+    def _sample_status(self, event: str, **fields: object) -> None:
+        if self.turn_number - self._last_status_turn < 25:
+            return
+        self._log(event, **fields)
+        self._last_status_turn = self.turn_number
+
+    def _open_debug_log(self) -> TextIO | None:
+        if os.environ.get("ROBOCODE_DEBUG") != "1":
+            return None
+        log_dir = Path(os.environ.get("ROBOCODE_LOG_DIR", "."))
+        log_dir.mkdir(parents=True, exist_ok=True)
+        return (log_dir / f"circle-strafer-{os.getpid()}.log").open("w", encoding="utf-8")
+
+    def _log(self, event: str, **fields: object) -> None:
+        if self._debug_log is None:
+            return
+        payload = " ".join(f"{key}={value}" for key, value in fields.items())
+        self._debug_log.write(f"turn={self.turn_number} event={event} {payload}\n")
+        self._debug_log.flush()
 
 
 if __name__ == "__main__":
