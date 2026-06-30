@@ -4,6 +4,10 @@ from robocode_tank_royale.bot_api import Bot, BotInfo, Color
 from robocode_tank_royale.bot_api.events import HitBotEvent, HitByBulletEvent, HitWallEvent, ScannedBotEvent
 
 
+FIRE_ALIGNMENT_DEGREES = 8
+TARGET_MEMORY_TURNS = 12
+
+
 def gun_bearing_to(bot: Bot, x: float, y: float) -> float:
     absolute_angle = math.degrees(math.atan2(y - bot.y, x - bot.x))
     return ((absolute_angle - bot.gun_direction + 180) % 360) - 180
@@ -22,6 +26,9 @@ class CircleStrafer(Bot):
             )
         )
         self._move_direction = 1
+        self._target_x: float | None = None
+        self._target_y: float | None = None
+        self._target_turn = -1
 
     def run(self) -> None:
         self.body_color = Color.from_rgb(214, 75, 54)
@@ -36,18 +43,31 @@ class CircleStrafer(Bot):
         while self.running:
             self.target_speed = 8 * self._move_direction
             self.turn_rate = 6 * self._move_direction
-            self.gun_turn_rate = -16
-            self.radar_turn_rate = -45
+            self._track_scanned_target()
+            self.radar_turn_rate = -16
             self.go()
 
     def on_scanned_bot(self, event: ScannedBotEvent) -> None:
-        dx = event.x - self.x
-        dy = event.y - self.y
-        self.set_turn_gun_left(gun_bearing_to(self, event.x, event.y))
+        self._target_x = event.x
+        self._target_y = event.y
+        self._target_turn = self.turn_number
 
+    def _track_scanned_target(self) -> None:
+        if self._target_x is None or self._target_y is None:
+            self.gun_turn_rate = 0
+            return
+        if self.turn_number - self._target_turn > TARGET_MEMORY_TURNS:
+            self.gun_turn_rate = 0
+            return
+
+        dx = self._target_x - self.x
+        dy = self._target_y - self.y
+        gun_bearing = gun_bearing_to(self, self._target_x, self._target_y)
         distance = math.hypot(dx, dy)
         firepower = 3.0 if distance < 180 else 1.0
-        if self.energy > firepower + 1:
+
+        self.set_turn_gun_left(gun_bearing)
+        if abs(gun_bearing) <= FIRE_ALIGNMENT_DEGREES and self.energy > firepower + 1:
             self.set_fire(firepower)
 
     def on_hit_by_bullet(self, event: HitByBulletEvent) -> None:
@@ -60,8 +80,6 @@ class CircleStrafer(Bot):
 
     def on_hit_bot(self, event: HitBotEvent) -> None:
         self._move_direction *= -1
-        if self.energy > 2:
-            self.set_fire(2)
 
 
 if __name__ == "__main__":
