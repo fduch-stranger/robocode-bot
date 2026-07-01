@@ -1,7 +1,4 @@
 import math
-import os
-from pathlib import Path
-from typing import TextIO
 
 from robocode_tank_royale.bot_api import Bot, BotInfo, Color
 from robocode_tank_royale.bot_api.events import (
@@ -12,6 +9,8 @@ from robocode_tank_royale.bot_api.events import (
     ScannedBotEvent,
 )
 
+from bot_utils.debug import DebugLogger
+from bot_utils.radar import RadarLockConfig, lock_priority_radar
 from bot_utils.tank_math import (
     TargetSnapshot,
     body_bearing_to,
@@ -19,6 +18,8 @@ from bot_utils.tank_math import (
     distance_to,
     gun_bearing_to,
     predicted_position,
+    target_from_hit_bot,
+    target_from_scan,
 )
 
 
@@ -39,6 +40,27 @@ SEPARATION_DISTANCE = 170
 PANIC_DISTANCE = 115
 COLLISION_ESCAPE_TURNS = 20
 WALL_ESCAPE_TURNS = 18
+COLLISION_ESCAPE_SPEED = 4
+COLLISION_ESCAPE_OFFSET = 85
+COLLISION_ESCAPE_TURN_LIMIT = 20
+RADAR_SEARCH_RATE = -16
+RADAR_LOCK_RATE = 24
+RADAR_REACQUIRE_RATE = 24
+RADAR_RESCAN_INTERVAL = 36
+RADAR_RESCAN_TURNS = 5
+RADAR_REACQUIRE_MIN_ERROR = 8
+RADAR_LOCK_OVERSCAN = 12
+RADAR_REACQUIRE_OVERSCAN = 22
+RADAR_CONFIG = RadarLockConfig(
+    search_rate=RADAR_SEARCH_RATE,
+    lock_rate=RADAR_LOCK_RATE,
+    reacquire_rate=RADAR_REACQUIRE_RATE,
+    rescan_interval=RADAR_RESCAN_INTERVAL,
+    rescan_turns=RADAR_RESCAN_TURNS,
+    reacquire_min_error=RADAR_REACQUIRE_MIN_ERROR,
+    lock_overscan=RADAR_LOCK_OVERSCAN,
+    reacquire_overscan=RADAR_REACQUIRE_OVERSCAN,
+)
 
 
 class CircleStrafer(Bot):
@@ -60,8 +82,8 @@ class CircleStrafer(Bot):
         self._last_collision_turn = -1000
         self._wall_escape_until_turn = -1
         self._last_wall_hit_turn = -1000
-        self._debug_log = self._open_debug_log()
-        self._last_status_turn = -1
+        self._last_turn_number = -1
+        self._debug = DebugLogger(self, "circle-strafer")
 
     def run(self) -> None:
         self.body_color = Color.from_rgb(214, 75, 54)
@@ -74,9 +96,9 @@ class CircleStrafer(Bot):
         self.max_speed = 8
 
         while self.running:
+            self._reset_if_new_round()
             self._move()
             self._track_target()
-            self.radar_turn_rate = -16
             self.go()
 
     def _move(self) -> None:
@@ -103,14 +125,23 @@ class CircleStrafer(Bot):
                     self.x - (close_target.x - self.x),
                     self.y - (close_target.y - self.y),
                 )
-                lateral_offset = 25 if distance < PANIC_DISTANCE else 55
-                self.target_speed = ORBIT_SPEED
-                self.turn_rate = clamp(away_bearing + lateral_offset * self._move_direction, -10, 10)
+                lateral_offset = COLLISION_ESCAPE_OFFSET if escaping_collision else (
+                    25 if distance < PANIC_DISTANCE else 55
+                )
+                turn_limit = COLLISION_ESCAPE_TURN_LIMIT if escaping_collision else 10
+                self.target_speed = COLLISION_ESCAPE_SPEED if escaping_collision else ORBIT_SPEED
+                self.turn_rate = clamp(
+                    away_bearing + lateral_offset * self._move_direction,
+                    -turn_limit,
+                    turn_limit,
+                )
                 self._sample_status(
                     "separate",
                     target=close_target.bot_id,
                     distance=round(distance, 1),
                     away_bearing=round(away_bearing, 2),
+                    target_speed=self.target_speed,
+                    turn_limit=turn_limit,
                     move_direction=self._move_direction,
                     collision_escape=escaping_collision,
                 )
@@ -128,16 +159,9 @@ class CircleStrafer(Bot):
         )
 
     def on_scanned_bot(self, event: ScannedBotEvent) -> None:
+        self._reset_if_new_round()
         previous = self._targets.get(event.scanned_bot_id)
-        self._targets[event.scanned_bot_id] = TargetSnapshot(
-            bot_id=event.scanned_bot_id,
-            energy=event.energy,
-            x=event.x,
-            y=event.y,
-            direction=event.direction,
-            speed=event.speed,
-            seen_turn=self.turn_number,
-        )
+        self._targets[event.scanned_bot_id] = target_from_scan(event, self.turn_number)
         if previous is None:
             self._log(
                 "scan.new",
@@ -152,6 +176,7 @@ class CircleStrafer(Bot):
         target = self._select_target()
         if target is None:
             self.gun_turn_rate = 0
+            self.radar_turn_rate = RADAR_SEARCH_RATE
             self._sample_status("search", known_targets=0)
             return
 
@@ -159,6 +184,13 @@ class CircleStrafer(Bot):
         firepower = self._firepower_for(distance)
         predicted_x, predicted_y = predicted_position(self, target, firepower, FIELD_MARGIN)
         gun_bearing = gun_bearing_to(self, predicted_x, predicted_y)
+        radar_command = lock_priority_radar(
+            self,
+            self._targets.values(),
+            target,
+            FIRE_MEMORY_TURNS,
+            RADAR_CONFIG,
+        )
         age = self.turn_number - target.seen_turn
 
         self.set_turn_gun_left(gun_bearing)
@@ -172,6 +204,10 @@ class CircleStrafer(Bot):
                 age=age,
                 distance=round(distance, 1),
                 gun_bearing=round(gun_bearing, 2),
+                radar_turn=round(radar_command.turn, 2),
+                radar_mode=radar_command.mode,
+                radar_target=radar_command.target.bot_id,
+                radar_age=radar_command.age,
                 firepower=firepower,
                 hold_reason=hold_reason,
                 predicted_x=round(predicted_x, 1),
@@ -213,6 +249,21 @@ class CircleStrafer(Bot):
             del self._targets[bot_id]
         if self._target_id not in self._targets:
             self._target_id = None
+
+    def _reset_if_new_round(self) -> None:
+        if self._last_turn_number >= 0 and self.turn_number < self._last_turn_number:
+            self._targets.clear()
+            self._target_id = None
+            self._collision_escape_until_turn = -1
+            self._last_collision_turn = -1000
+            self._wall_escape_until_turn = -1
+            self._last_wall_hit_turn = -1000
+            self._log(
+                "round.reset",
+                previous_turn=self._last_turn_number,
+                current_turn=self.turn_number,
+            )
+        self._last_turn_number = self.turn_number
 
     def _select_target(self) -> TargetSnapshot | None:
         if not self._targets:
@@ -282,15 +333,7 @@ class CircleStrafer(Bot):
         )
 
     def on_hit_bot(self, event: HitBotEvent) -> None:
-        self._targets[event.victim_id] = TargetSnapshot(
-            bot_id=event.victim_id,
-            energy=event.energy,
-            x=event.x,
-            y=event.y,
-            direction=0,
-            speed=0,
-            seen_turn=self.turn_number,
-        )
+        self._targets[event.victim_id] = target_from_hit_bot(event, self.turn_number)
         self._collision_escape_until_turn = self.turn_number + COLLISION_ESCAPE_TURNS
         if self.turn_number - self._last_collision_turn > 8:
             self._move_direction *= -1
@@ -315,24 +358,10 @@ class CircleStrafer(Bot):
         )
 
     def _sample_status(self, event: str, **fields: object) -> None:
-        if self.turn_number - self._last_status_turn < 25:
-            return
-        self._log(event, **fields)
-        self._last_status_turn = self.turn_number
-
-    def _open_debug_log(self) -> TextIO | None:
-        if os.environ.get("ROBOCODE_DEBUG") != "1":
-            return None
-        log_dir = Path(os.environ.get("ROBOCODE_LOG_DIR", "."))
-        log_dir.mkdir(parents=True, exist_ok=True)
-        return (log_dir / f"circle-strafer-{os.getpid()}.log").open("w", encoding="utf-8")
+        self._debug.sample(event, **fields)
 
     def _log(self, event: str, **fields: object) -> None:
-        if self._debug_log is None:
-            return
-        payload = " ".join(f"{key}={value}" for key, value in fields.items())
-        self._debug_log.write(f"turn={self.turn_number} event={event} {payload}\n")
-        self._debug_log.flush()
+        self._debug.log(event, **fields)
 
 if __name__ == "__main__":
     CircleStrafer().start()

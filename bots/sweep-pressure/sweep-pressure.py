@@ -1,7 +1,4 @@
 import math
-import os
-from pathlib import Path
-from typing import TextIO
 
 from robocode_tank_royale.bot_api import Bot, BotInfo, Color
 from robocode_tank_royale.bot_api.events import (
@@ -12,6 +9,8 @@ from robocode_tank_royale.bot_api.events import (
     ScannedBotEvent,
 )
 
+from bot_utils.debug import DebugLogger
+from bot_utils.radar import RadarLockConfig, lock_priority_radar
 from bot_utils.tank_math import (
     TargetSnapshot,
     body_bearing_to,
@@ -19,6 +18,7 @@ from bot_utils.tank_math import (
     distance_to,
     gun_bearing_to,
     predicted_position,
+    target_from_scan,
 )
 
 
@@ -26,6 +26,8 @@ FIRE_ALIGNMENT_DEGREES = 8
 TARGET_MEMORY_TURNS = 30
 FIRE_MEMORY_TURNS = 4
 CURRENT_TARGET_BONUS = 160
+TARGET_SWITCH_MARGIN = 95
+FORCE_SWITCH_TARGET_AGE = 10
 LOW_ENERGY_HOLD = 18
 CRITICAL_ENERGY_HOLD = 10
 FIELD_MARGIN = 18
@@ -34,6 +36,24 @@ WALL_LOOKAHEAD_TICKS = 12
 WALL_ESCAPE_SPEED = 7
 SWEEP_SPEED = 7
 SWEEP_TURN_RATE = 3.5
+RADAR_SEARCH_RATE = 16
+RADAR_LOCK_RATE = 24
+RADAR_REACQUIRE_RATE = 24
+RADAR_RESCAN_INTERVAL = 30
+RADAR_RESCAN_TURNS = 5
+RADAR_REACQUIRE_MIN_ERROR = 8
+RADAR_LOCK_OVERSCAN = 12
+RADAR_REACQUIRE_OVERSCAN = 24
+RADAR_CONFIG = RadarLockConfig(
+    search_rate=RADAR_SEARCH_RATE,
+    lock_rate=RADAR_LOCK_RATE,
+    reacquire_rate=RADAR_REACQUIRE_RATE,
+    rescan_interval=RADAR_RESCAN_INTERVAL,
+    rescan_turns=RADAR_RESCAN_TURNS,
+    reacquire_min_error=RADAR_REACQUIRE_MIN_ERROR,
+    lock_overscan=RADAR_LOCK_OVERSCAN,
+    reacquire_overscan=RADAR_REACQUIRE_OVERSCAN,
+)
 
 
 class SweepPressure(Bot):
@@ -51,8 +71,8 @@ class SweepPressure(Bot):
         self._move_direction = 1
         self._targets: dict[int, TargetSnapshot] = {}
         self._target_id: int | None = None
-        self._debug_log = self._open_debug_log()
-        self._last_status_turn = -1
+        self._last_turn_number = -1
+        self._debug = DebugLogger(self, "sweep-pressure")
 
     def run(self) -> None:
         self.body_color = Color.from_rgb(42, 120, 210)
@@ -65,9 +85,9 @@ class SweepPressure(Bot):
         self.max_speed = 7
 
         while self.running:
+            self._reset_if_new_round()
             self._move()
             self._track_target()
-            self.radar_turn_rate = 14
             self.go()
 
     def _move(self) -> None:
@@ -99,16 +119,9 @@ class SweepPressure(Bot):
         )
 
     def on_scanned_bot(self, event: ScannedBotEvent) -> None:
+        self._reset_if_new_round()
         previous = self._targets.get(event.scanned_bot_id)
-        self._targets[event.scanned_bot_id] = TargetSnapshot(
-            bot_id=event.scanned_bot_id,
-            energy=event.energy,
-            x=event.x,
-            y=event.y,
-            direction=event.direction,
-            speed=event.speed,
-            seen_turn=self.turn_number,
-        )
+        self._targets[event.scanned_bot_id] = target_from_scan(event, self.turn_number)
         if previous is None:
             self._log(
                 "scan.new",
@@ -123,6 +136,7 @@ class SweepPressure(Bot):
         target = self._select_target()
         if target is None:
             self.gun_turn_rate = 0
+            self.radar_turn_rate = RADAR_SEARCH_RATE
             self._sample_status("search", known_targets=0)
             return
 
@@ -130,6 +144,13 @@ class SweepPressure(Bot):
         firepower = self._firepower_for(distance)
         predicted_x, predicted_y = predicted_position(self, target, firepower, FIELD_MARGIN)
         gun_bearing = gun_bearing_to(self, predicted_x, predicted_y)
+        radar_command = lock_priority_radar(
+            self,
+            self._targets.values(),
+            target,
+            FIRE_MEMORY_TURNS,
+            RADAR_CONFIG,
+        )
         age = self.turn_number - target.seen_turn
 
         self.set_turn_gun_left(gun_bearing)
@@ -145,6 +166,10 @@ class SweepPressure(Bot):
                 age=age,
                 distance=round(distance, 1),
                 gun_bearing=round(gun_bearing, 2),
+                radar_turn=round(radar_command.turn, 2),
+                radar_mode=radar_command.mode,
+                radar_target=radar_command.target.bot_id,
+                radar_age=radar_command.age,
                 firepower=firepower,
                 hold_reason=hold_reason,
                 predicted_x=round(predicted_x, 1),
@@ -187,13 +212,34 @@ class SweepPressure(Bot):
         if self._target_id not in self._targets:
             self._target_id = None
 
+    def _reset_if_new_round(self) -> None:
+        if self._last_turn_number >= 0 and self.turn_number < self._last_turn_number:
+            self._targets.clear()
+            self._target_id = None
+            self._move_direction = 1
+            self._log(
+                "round.reset",
+                previous_turn=self._last_turn_number,
+                current_turn=self.turn_number,
+            )
+        self._last_turn_number = self.turn_number
+
     def _select_target(self) -> TargetSnapshot | None:
         if not self._targets:
             self._target_id = None
             return None
 
         previous_id = self._target_id
-        target = min(self._targets.values(), key=self._target_score)
+        candidate = min(self._targets.values(), key=self._target_score)
+        target = candidate
+        current = self._targets.get(previous_id)
+        current_age = self.turn_number - current.seen_turn if current is not None else 999
+        if current is not None and candidate.bot_id != current.bot_id and current_age <= FORCE_SWITCH_TARGET_AGE:
+            candidate_score = self._target_score(candidate)
+            current_score = self._target_score(current)
+            if candidate_score + TARGET_SWITCH_MARGIN >= current_score:
+                target = current
+
         self._target_id = target.bot_id
         if previous_id != target.bot_id:
             self._log(
@@ -201,6 +247,9 @@ class SweepPressure(Bot):
                 previous=previous_id,
                 selected=target.bot_id,
                 score=round(self._target_score(target), 1),
+                candidate=candidate.bot_id,
+                candidate_score=round(self._target_score(candidate), 1),
+                previous_age=current_age if current is not None else None,
                 known_targets=len(self._targets),
             )
         return target
@@ -243,24 +292,10 @@ class SweepPressure(Bot):
         )
 
     def _sample_status(self, event: str, **fields: object) -> None:
-        if self.turn_number - self._last_status_turn < 25:
-            return
-        self._log(event, **fields)
-        self._last_status_turn = self.turn_number
-
-    def _open_debug_log(self) -> TextIO | None:
-        if os.environ.get("ROBOCODE_DEBUG") != "1":
-            return None
-        log_dir = Path(os.environ.get("ROBOCODE_LOG_DIR", "."))
-        log_dir.mkdir(parents=True, exist_ok=True)
-        return (log_dir / f"sweep-pressure-{os.getpid()}.log").open("w", encoding="utf-8")
+        self._debug.sample(event, **fields)
 
     def _log(self, event: str, **fields: object) -> None:
-        if self._debug_log is None:
-            return
-        payload = " ".join(f"{key}={value}" for key, value in fields.items())
-        self._debug_log.write(f"turn={self.turn_number} event={event} {payload}\n")
-        self._debug_log.flush()
+        self._debug.log(event, **fields)
 
 if __name__ == "__main__":
     SweepPressure().start()

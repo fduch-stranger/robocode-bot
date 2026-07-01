@@ -1,7 +1,4 @@
 import math
-import os
-from pathlib import Path
-from typing import TextIO
 
 from robocode_tank_royale.bot_api import Bot, BotInfo, Color
 from robocode_tank_royale.bot_api.events import (
@@ -13,20 +10,39 @@ from robocode_tank_royale.bot_api.events import (
     ScannedBotEvent,
 )
 
-from bot_utils.tank_math import TargetSnapshot, bearing_to, clamp, distance_to, predicted_position
+from bot_utils.debug import DebugLogger
+from bot_utils.radar import RadarLockConfig, lock_radar_to_target
+from bot_utils.tank_math import (
+    TargetSnapshot,
+    bearing_to,
+    clamp,
+    distance_to,
+    predicted_position,
+    target_from_hit_bot,
+    target_from_scan,
+)
 
 
 FIRE_ALIGNMENT_DEGREES = 7
 TARGET_MEMORY_TURNS = 24
 FIRE_MEMORY_TURNS = 1
 REACQUIRE_TARGET_TURNS = 4
-CHASE_DISTANCE = 140
-RETREAT_DISTANCE = 75
+DROP_LOST_TARGET_TURNS = 9
+CHASE_DISTANCE = 210
+RETREAT_DISTANCE = 115
+ENEMY_FIRE_MIN_DROP = 0.1
+ENEMY_FIRE_MAX_DROP = 3.0
 RADAR_LOCK_RATE = 24
 RADAR_SEARCH_RATE = 18
 RADAR_REACQUIRE_RATE = 24
 RADAR_LOST_SWEEP_RATE = 24
+GUN_SEARCH_RATE = 18
 RADAR_REACQUIRE_MIN_ERROR = 8
+RADAR_REACQUIRE_OVERSHOOT = 8
+RADAR_REACQUIRE_WIDEN_PER_TURN = 2
+RADAR_REACQUIRE_MAX_OVERSHOOT = 42
+RADAR_LOCK_OVERSCAN = 12
+RADAR_VISIBLE_REACQUIRE_OVERSCAN = 18
 CURRENT_TARGET_BONUS = 80
 RECENT_THREAT_BONUS = 120
 THREAT_MEMORY_TURNS = 35
@@ -34,10 +50,18 @@ FIELD_MARGIN = 18
 WALL_MARGIN = 90
 WALL_LOOKAHEAD_TICKS = 11
 WALL_ESCAPE_SPEED = 6
-CHASE_STRAFE_OFFSET = 30
-EVADE_STRAFE_OFFSET = 58
-RETREAT_STRAFE_OFFSET = 105
-EVADE_TURNS = 28
+CHASE_STRAFE_OFFSET = 48
+EVADE_STRAFE_OFFSET = 88
+RETREAT_STRAFE_OFFSET = 120
+EVADE_TURNS = 36
+RADAR_CONFIG = RadarLockConfig(
+    search_rate=RADAR_SEARCH_RATE,
+    lock_rate=RADAR_LOCK_RATE,
+    reacquire_rate=RADAR_REACQUIRE_RATE,
+    reacquire_min_error=RADAR_REACQUIRE_MIN_ERROR,
+    lock_overscan=RADAR_LOCK_OVERSCAN,
+    reacquire_overscan=RADAR_VISIBLE_REACQUIRE_OVERSCAN,
+)
 
 
 class ChaseLock(Bot):
@@ -59,8 +83,10 @@ class ChaseLock(Bot):
         self._evade_direction = 1
         self._evade_until_turn = -1
         self._radar_sweep_direction = 1
-        self._debug_log = self._open_debug_log()
-        self._last_status_turn = -1
+        self._last_turn_number = -1
+        self._last_enemy_fire_turn = -1000
+        self._last_enemy_fire_power = 0.0
+        self._debug = DebugLogger(self, "chase-lock")
 
     def run(self) -> None:
         self.body_color = Color.from_rgb(70, 170, 105)
@@ -77,16 +103,12 @@ class ChaseLock(Bot):
             self.go()
 
     def on_scanned_bot(self, event: ScannedBotEvent) -> None:
+        self._reset_if_new_round()
         previous = self._targets.get(event.scanned_bot_id)
-        self._targets[event.scanned_bot_id] = TargetSnapshot(
-            bot_id=event.scanned_bot_id,
-            energy=event.energy,
-            x=event.x,
-            y=event.y,
-            direction=event.direction,
-            speed=event.speed,
-            seen_turn=self.turn_number,
-        )
+        previous_age = self.turn_number - previous.seen_turn if previous is not None else None
+        if previous is not None:
+            self._detect_enemy_fire(event, previous)
+        self._targets[event.scanned_bot_id] = target_from_scan(event, self.turn_number)
         if previous is None:
             self._log(
                 "scan.new",
@@ -95,15 +117,42 @@ class ChaseLock(Bot):
                 x=round(event.x, 1),
                 y=round(event.y, 1),
             )
+        elif previous_age is not None and previous_age > REACQUIRE_TARGET_TURNS:
+            self._log(
+                "scan.reacquired",
+                bot_id=event.scanned_bot_id,
+                previous_age=previous_age,
+                previous_x=round(previous.x, 1),
+                previous_y=round(previous.y, 1),
+                x=round(event.x, 1),
+                y=round(event.y, 1),
+            )
+
+    def _detect_enemy_fire(self, event: ScannedBotEvent, previous: TargetSnapshot) -> None:
+        energy_drop = previous.energy - event.energy
+        if not (ENEMY_FIRE_MIN_DROP <= energy_drop <= ENEMY_FIRE_MAX_DROP):
+            return
+
+        self._recent_threat_id = event.scanned_bot_id
+        self._recent_threat_turn = self.turn_number
+        self._last_enemy_fire_turn = self.turn_number
+        self._last_enemy_fire_power = energy_drop
+        self._log(
+            "enemy.fire_detected",
+            bot_id=event.scanned_bot_id,
+            power=round(energy_drop, 2),
+            previous_energy=round(previous.energy, 1),
+            energy=round(event.energy, 1),
+            evade_direction=self._evade_direction,
+        )
 
     def _track_or_search(self) -> None:
+        self._reset_if_new_round()
         self._forget_stale_targets()
         target = self._select_target()
         if target is None:
             self._search()
-            if self.turn_number - self._last_status_turn >= 25:
-                self._log("search", known_targets=0)
-                self._last_status_turn = self.turn_number
+            self._sample_status("search", known_targets=0)
             return
 
         distance = distance_to(self, target.x, target.y)
@@ -111,12 +160,17 @@ class ChaseLock(Bot):
         radar_bearing = bearing_to(self, target.x, target.y, self.radar_direction)
         firepower = 2.0 if distance < 220 else 1.2
         predicted_x, predicted_y = predicted_position(self, target, firepower, FIELD_MARGIN)
+        aim_mode = "linear"
         gun_bearing = bearing_to(self, predicted_x, predicted_y, self.gun_direction)
         age = self.turn_number - target.seen_turn
 
         if age > REACQUIRE_TARGET_TURNS:
-            self._set_lost_target_radar()
-            self.set_turn_gun_left(gun_bearing)
+            if age > DROP_LOST_TARGET_TURNS:
+                self._drop_lost_target(target, age, distance)
+                return
+
+            radar_turn, radar_mode = self._set_lost_target_radar(radar_bearing, age)
+            self._set_gun_for_search()
             self._set_search_movement()
             self._sample_status(
                 "target.reacquire",
@@ -125,6 +179,8 @@ class ChaseLock(Bot):
                 distance=round(distance, 1),
                 radar_bearing=round(radar_bearing, 2),
                 radar_direction=round(self.radar_direction, 2),
+                radar_turn=round(radar_turn, 2),
+                radar_mode=radar_mode,
                 radar_sweep=self._radar_sweep_direction,
                 x=round(self.x, 1),
                 y=round(self.y, 1),
@@ -132,7 +188,9 @@ class ChaseLock(Bot):
             )
             return
 
-        self._set_radar_for_target(radar_bearing, age)
+        radar_command = lock_radar_to_target(self, target, RADAR_CONFIG)
+        if abs(radar_command.turn) >= 1:
+            self._radar_sweep_direction = 1 if radar_command.turn > 0 else -1
         self.set_turn_gun_left(gun_bearing)
 
         if self._wall_risk(8):
@@ -146,14 +204,8 @@ class ChaseLock(Bot):
                 center_bearing=round(center_bearing, 2),
                 target=target.bot_id,
             )
-        elif distance < RETREAT_DISTANCE:
-            self.target_speed = -6
-            self.set_turn_left(body_bearing + RETREAT_STRAFE_OFFSET * self._evade_direction)
         else:
-            evading = self.turn_number <= self._evade_until_turn
-            strafe_offset = EVADE_STRAFE_OFFSET if evading else CHASE_STRAFE_OFFSET
-            self.target_speed = 8 if distance > CHASE_DISTANCE else 4
-            self.set_turn_left(body_bearing + strafe_offset * self._evade_direction)
+            movement_mode, strafe_offset = self._set_chase_movement(distance, body_bearing)
 
         if (
             age <= FIRE_MEMORY_TURNS
@@ -161,45 +213,102 @@ class ChaseLock(Bot):
             and self.energy > firepower + 5
         ):
             self.set_fire(firepower)
-        elif self.turn_number - self._last_status_turn >= 25:
-            self._log(
+        else:
+            self._sample_status(
                 "track",
                 target=target.bot_id,
                 age=age,
                 distance=round(distance, 1),
                 gun_bearing=round(gun_bearing, 2),
-                radar_bearing=round(radar_bearing, 2),
+                radar_bearing=round(radar_command.bearing, 2),
+                radar_turn=round(radar_command.turn, 2),
+                radar_mode=radar_command.mode,
+                radar_age=radar_command.age,
                 predicted_x=round(predicted_x, 1),
                 predicted_y=round(predicted_y, 1),
+                aim_mode=aim_mode,
                 evade_direction=self._evade_direction,
                 evading=self.turn_number <= self._evade_until_turn,
+                movement_mode=movement_mode if "movement_mode" in locals() else "wall",
+                strafe_offset=round(strafe_offset, 1) if "strafe_offset" in locals() else None,
+                last_enemy_fire_age=self.turn_number - self._last_enemy_fire_turn,
                 known_targets=len(self._targets),
             )
-            self._last_status_turn = self.turn_number
 
-    def _set_radar_for_target(self, radar_bearing: float, age: int) -> None:
-        if age <= 1:
-            radar_turn = clamp(radar_bearing * 1.8, -RADAR_LOCK_RATE, RADAR_LOCK_RATE)
-            if abs(radar_turn) >= 1:
-                self._radar_sweep_direction = 1 if radar_turn > 0 else -1
-            self.set_turn_radar_left(radar_turn)
-            return
+    def _set_chase_movement(
+        self,
+        distance: float,
+        body_bearing: float,
+    ) -> tuple[str, float]:
+        evading = self.turn_number <= self._evade_until_turn
+        if distance < RETREAT_DISTANCE:
+            self.target_speed = -6
+            self.set_turn_left(body_bearing + RETREAT_STRAFE_OFFSET * self._evade_direction)
+            return "panic_retreat", RETREAT_STRAFE_OFFSET
 
+        strafe_offset = EVADE_STRAFE_OFFSET if evading else CHASE_STRAFE_OFFSET
+        if distance > CHASE_DISTANCE:
+            self.target_speed = 8
+            self.set_turn_left(body_bearing + strafe_offset * self._evade_direction)
+            return "close_lateral", strafe_offset
+
+        self.target_speed = 6 if evading else 5
+        self.set_turn_left(body_bearing + strafe_offset * self._evade_direction)
+        return "chase_orbit", strafe_offset
+
+    def _set_lost_target_radar(self, radar_bearing: float, age: int) -> tuple[float, str]:
         if abs(radar_bearing) > RADAR_REACQUIRE_MIN_ERROR:
-            radar_turn = clamp(radar_bearing * 1.8, -RADAR_REACQUIRE_RATE, RADAR_REACQUIRE_RATE)
-            self._radar_sweep_direction = 1 if radar_turn > 0 else -1
-        else:
-            radar_turn = RADAR_REACQUIRE_RATE * self._radar_sweep_direction
-        self.set_turn_radar_left(radar_turn)
+            overshoot = min(
+                RADAR_REACQUIRE_MAX_OVERSHOOT,
+                RADAR_REACQUIRE_OVERSHOOT + age * RADAR_REACQUIRE_WIDEN_PER_TURN,
+            )
+            direction = 1 if radar_bearing > 0 else -1
+            radar_turn = clamp(
+                radar_bearing + overshoot * direction,
+                -RADAR_LOST_SWEEP_RATE,
+                RADAR_LOST_SWEEP_RATE,
+            )
+            self._radar_sweep_direction = direction
+            self.set_turn_radar_left(radar_turn)
+            return radar_turn, "cached_bearing"
 
-    def _set_lost_target_radar(self) -> None:
-        self.radar_turn_rate = RADAR_LOST_SWEEP_RATE * self._radar_sweep_direction
+        radar_turn = RADAR_LOST_SWEEP_RATE * self._radar_sweep_direction
+        self.set_turn_radar_left(radar_turn)
+        return radar_turn, "widen"
 
     def _sample_status(self, event: str, **fields: object) -> None:
-        if self.turn_number - self._last_status_turn < 25:
-            return
-        self._log(event, **fields)
-        self._last_status_turn = self.turn_number
+        self._debug.sample(event, **fields)
+
+    def _reset_if_new_round(self) -> None:
+        if self._last_turn_number >= 0 and self.turn_number < self._last_turn_number:
+            self._targets.clear()
+            self._target_id = None
+            self._recent_threat_id = None
+            self._recent_threat_turn = -1000
+            self._evade_until_turn = -1
+            self._last_enemy_fire_turn = -1000
+            self._last_enemy_fire_power = 0.0
+            self._log(
+                "round.reset",
+                previous_turn=self._last_turn_number,
+                current_turn=self.turn_number,
+            )
+        self._last_turn_number = self.turn_number
+
+    def _drop_lost_target(self, target: TargetSnapshot, age: int, distance: float) -> None:
+        self._targets.pop(target.bot_id, None)
+        if self._target_id == target.bot_id:
+            self._target_id = None
+        self._search()
+        self._log(
+            "target.drop_lost",
+            bot_id=target.bot_id,
+            age=age,
+            cached_x=round(target.x, 1),
+            cached_y=round(target.y, 1),
+            cached_distance=round(distance, 1),
+            known_targets=len(self._targets),
+        )
 
     def _forget_stale_targets(self) -> None:
         stale_ids = [
@@ -219,7 +328,13 @@ class ChaseLock(Bot):
             return None
 
         previous_id = self._target_id
-        target = min(self._targets.values(), key=self._target_score)
+        fresh_targets = [
+            target
+            for target in self._targets.values()
+            if self.turn_number - target.seen_turn <= REACQUIRE_TARGET_TURNS
+        ]
+        candidates = fresh_targets if fresh_targets else list(self._targets.values())
+        target = min(candidates, key=self._target_score)
         self._target_id = target.bot_id
         if previous_id != target.bot_id:
             self._log(
@@ -227,6 +342,7 @@ class ChaseLock(Bot):
                 previous=previous_id,
                 selected=target.bot_id,
                 score=round(self._target_score(target), 1),
+                fresh_candidates=len(fresh_targets),
                 known_targets=len(self._targets),
             )
         return target
@@ -245,8 +361,15 @@ class ChaseLock(Bot):
 
     def _search(self) -> None:
         self._set_search_movement()
-        self.gun_turn_rate = 0
+        self._set_gun_for_search()
         self.radar_turn_rate = RADAR_SEARCH_RATE
+
+    def _set_gun_for_search(self) -> None:
+        gun_to_radar = ((self.radar_direction - self.gun_direction + 180) % 360) - 180
+        if abs(gun_to_radar) > 5:
+            self.set_turn_gun_left(clamp(gun_to_radar, -GUN_SEARCH_RATE, GUN_SEARCH_RATE))
+        else:
+            self.gun_turn_rate = GUN_SEARCH_RATE * self._radar_sweep_direction
 
     def _set_search_movement(self) -> None:
         if self._near_wall() or self._wall_risk(6):
@@ -312,15 +435,7 @@ class ChaseLock(Bot):
         )
 
     def on_hit_bot(self, event: HitBotEvent) -> None:
-        self._targets[event.victim_id] = TargetSnapshot(
-            bot_id=event.victim_id,
-            energy=event.energy,
-            x=event.x,
-            y=event.y,
-            direction=0,
-            speed=0,
-            seen_turn=self.turn_number,
-        )
+        self._targets[event.victim_id] = target_from_hit_bot(event, self.turn_number)
         self._target_id = event.victim_id
         self._evade_direction *= -1
         self._evade_until_turn = self.turn_number + EVADE_TURNS
@@ -340,28 +455,22 @@ class ChaseLock(Bot):
         self._log("target.dead", bot_id=event.victim_id)
 
     def on_bullet_fired(self, event: BulletFiredEvent) -> None:
+        target = self._targets.get(self._target_id)
+        target_age = self.turn_number - target.seen_turn if target is not None else None
         self._log(
             "bullet.fired",
             bullet_id=event.bullet.bullet_id,
             target=self._target_id,
+            target_age=target_age,
+            target_x=round(target.x, 1) if target is not None else None,
+            target_y=round(target.y, 1) if target is not None else None,
             power=event.bullet.power,
             direction=round(event.bullet.direction, 1),
             energy=round(self.energy, 1),
         )
 
-    def _open_debug_log(self) -> TextIO | None:
-        if os.environ.get("ROBOCODE_DEBUG") != "1":
-            return None
-        log_dir = Path(os.environ.get("ROBOCODE_LOG_DIR", "."))
-        log_dir.mkdir(parents=True, exist_ok=True)
-        return (log_dir / f"chase-lock-{os.getpid()}.log").open("w", encoding="utf-8")
-
     def _log(self, event: str, **fields: object) -> None:
-        if self._debug_log is None:
-            return
-        payload = " ".join(f"{key}={value}" for key, value in fields.items())
-        self._debug_log.write(f"turn={self.turn_number} event={event} {payload}\n")
-        self._debug_log.flush()
+        self._debug.log(event, **fields)
 
 if __name__ == "__main__":
     ChaseLock().start()

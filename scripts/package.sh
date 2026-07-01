@@ -2,12 +2,18 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT_DIR/scripts/lib/bots.sh"
 DIST_DIR="$ROOT_DIR/dist"
 
 cd "$ROOT_DIR"
 mkdir -p "$DIST_DIR"
 
-for bot_dir in bots/sweep-pressure bots/circle-strafer bots/chase-lock; do
+bot_dirs=()
+while IFS= read -r bot; do
+  bot_dirs+=("$bot")
+done < <(discover_bot_dirs "$ROOT_DIR")
+
+for bot_dir in "${bot_dirs[@]}"; do
   bot_name="$(basename "$bot_dir")"
   archive="$DIST_DIR/${bot_name}.zip"
   rm -f "$archive"

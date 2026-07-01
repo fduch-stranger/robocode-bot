@@ -54,6 +54,32 @@ Or pass three or more bot directories for a melee battle:
 scripts/run-battle.sh bots/chase-lock bots/sweep-pressure bots/circle-strafer
 ```
 
+Converted legacy bots can be added as external enemies. By default the tooling
+looks in `../selected-legacy-bots-copy`; override that with `--legacy-root` or
+`ROBOCODE_LEGACY_BOTS_ROOT` when needed.
+
+```sh
+scripts/run-battle.sh --rounds 10 bots/chase-lock --legacy basic-gf-surfer
+```
+
+You can also pass a legacy bot as an explicit bot argument:
+
+```sh
+scripts/run-battle.sh bots/chase-lock legacy:wiki.BasicGFSurfer_1.02
+```
+
+List available converted legacy bot directories:
+
+```sh
+scripts/run-battle.sh --list-legacy
+```
+
+Add every converted legacy bot from the legacy root:
+
+```sh
+scripts/run-battle.sh --legacy all
+```
+
 Use more rounds for less noisy comparisons:
 
 ```sh

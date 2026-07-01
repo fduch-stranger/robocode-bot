@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT_DIR/scripts/lib/bots.sh"
 MVN_REPO="$ROOT_DIR/.m2/repository"
 run_id="$(date +%Y%m%d-%H%M%S)"
 run_dir="$ROOT_DIR/battle-results/runs/$run_id"
@@ -17,6 +18,7 @@ intent_diagnostics=0
 intents_file=""
 tick_sample=0
 bot_inputs=()
+legacy_inputs=()
 
 cd "$ROOT_DIR"
 
@@ -112,8 +114,28 @@ while [[ $# -gt 0 ]]; do
       tick_sample="$2"
       shift 2
       ;;
+    --legacy)
+      if [[ $# -lt 2 ]]; then
+        echo "--legacy requires a bot alias, directory name, or 'all'." >&2
+        exit 1
+      fi
+      legacy_inputs+=("$2")
+      shift 2
+      ;;
+    --legacy-root)
+      if [[ $# -lt 2 ]]; then
+        echo "--legacy-root requires a directory path." >&2
+        exit 1
+      fi
+      export ROBOCODE_LEGACY_BOTS_ROOT="$2"
+      shift 2
+      ;;
+    --list-legacy)
+      list_legacy_bots "$ROOT_DIR"
+      exit 0
+      ;;
     --help|-h)
-      echo "Usage: scripts/run-battle.sh [--rounds N] [--run-dir DIR] [--results FILE] [--runner-log FILE] [--process-log FILE] [--debug] [--debug-log-dir DIR] [--record] [--record-file DIR] [--intent-diagnostics] [--intents FILE] [--tick-sample N] [bot-dir...]"
+      echo "Usage: scripts/run-battle.sh [--rounds N] [--run-dir DIR] [--results FILE] [--runner-log FILE] [--process-log FILE] [--debug] [--debug-log-dir DIR] [--record] [--record-file DIR] [--intent-diagnostics] [--intents FILE] [--tick-sample N] [--legacy NAME|all] [--legacy-root DIR] [--list-legacy] [bot-dir...]"
       exit 0
       ;;
     --)
@@ -134,22 +156,32 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+for legacy in "${legacy_inputs[@]}"; do
+  legacy_matches=()
+  while IFS= read -r bot; do
+    legacy_matches+=("$bot")
+  done < <(append_legacy_bot_args "$ROOT_DIR" "$legacy")
+  if [[ ${#legacy_matches[@]} -eq 0 ]]; then
+    echo "No legacy bot matched '$legacy' under $(legacy_bots_root "$ROOT_DIR")." >&2
+    exit 1
+  fi
+  bot_inputs+=("${legacy_matches[@]}")
+done
+
 if [[ ${#bot_inputs[@]} -gt 0 ]]; then
   bot_args=()
   for bot in "${bot_inputs[@]}"; do
-    if [[ "$bot" = /* ]]; then
-      bot_args+=("$bot")
-    else
-      bot_args+=("$ROOT_DIR/$bot")
-    fi
+    normalized_bot="$(normalize_bot_dir "$ROOT_DIR" "$bot")" || {
+      echo "No legacy bot matched '$bot' under $(legacy_bots_root "$ROOT_DIR")." >&2
+      exit 1
+    }
+    bot_args+=("$normalized_bot")
   done
 else
   bot_args=()
-  for bot in "$ROOT_DIR"/bots/*; do
-    if [[ -d "$bot" ]] && compgen -G "$bot/*.json" > /dev/null; then
-      bot_args+=("$bot")
-    fi
-  done
+  while IFS= read -r bot; do
+    bot_args+=("$bot")
+  done < <(discover_bot_dirs "$ROOT_DIR")
 fi
 
 if [[ ${#bot_args[@]} -lt 2 ]]; then
