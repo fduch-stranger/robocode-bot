@@ -478,7 +478,13 @@ function movementModeFromEvent(event) {
   const fields = event.fields || {};
   if (fields.movement_mode || fields.mode) return fields.movement_mode || fields.mode;
   if (event.event === "movement.flatten") return "flatten";
+  if (event.event === "movement.flatten_shadow") return "flatten_shadow";
   if (event.event === "movement.duel_flatten") return "duel_flatten";
+  if (event.event === "movement.minimum_risk") return "minimum_risk";
+  if (event.event === "movement.goto_surf") return "goto_surf";
+  if (event.event === "movement.duel_potential") return "duel_potential";
+  if (event.event === "wall.avoid") return "wall_avoid";
+  if (event.event === "separate") return "separate";
   return null;
 }
 
