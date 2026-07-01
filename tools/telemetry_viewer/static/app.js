@@ -493,6 +493,9 @@ function movementModeFromEvent(event) {
 function normalizeEvent(event) {
   const fields = event.fields || {};
   const evasion = firstValue(fields.evasion);
+  const evading = fields.evading !== undefined && fields.evading !== null
+    ? fields.evading
+    : evasion != null ? String(evasion).startsWith("active_") : null;
   const movementMode = firstValue(fields.movement_mode, fields.mode) || movementModeFromEventName(event.event);
   const gunMode = firstValue(
     fields.aim_mode,
@@ -510,7 +513,7 @@ function normalizeEvent(event) {
     gunMode,
     movementMode,
     evasion,
-    evading: fields.evading === true || String(evasion || "").startsWith("active_"),
+    evading,
     wallRisk: Boolean(firstValue(fields.wall_risk, fields.near_wall)),
     reason: firstValue(fields.reason, fields.hold_reason),
     gunBearing: numeric(firstValue(fields.gun_bearing)),

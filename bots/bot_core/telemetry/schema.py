@@ -160,6 +160,10 @@ EVENT_SPECS: dict[str, TelemetryEventSpec] = {
         "movement",
         optional_fields=("target", "current_direction", "suggested_direction", "bucket", "current_count", "alternative_count", "distance", "reason"),
     ),
+    "movement.flatten_shadow": TelemetryEventSpec(
+        "movement",
+        optional_fields=("target", "current_direction", "suggested_direction", "bucket", "current_count", "alternative_count", "distance", "reason"),
+    ),
     "movement.duel_flatten": TelemetryEventSpec("movement", optional_fields=("target", "suggested_direction", "distance")),
     "movement.goto_surf": TelemetryEventSpec(
         "movement",
