@@ -9,7 +9,6 @@ from bot_core.wave_math import (
     bullet_speed_for_power,
     escape_angle_for_guess_factor,
     guess_factor_from_offset,
-    max_escape_angle_for_speed,
     relative_bearing,
     wall_limited_escape_angle,
 )
@@ -76,7 +75,6 @@ class GunWave:
     target_id: int
     bullet_power: float
     bullet_speed: float
-    max_escape_angle: float
     max_escape_angle_positive: float
     max_escape_angle_negative: float
     lateral_direction: int
@@ -510,7 +508,6 @@ class VirtualGunSystem:
             target_id=target.bot_id,
             bullet_power=firepower,
             bullet_speed=bullet_speed,
-            max_escape_angle=max_escape_angle_for_speed(bullet_speed),
             max_escape_angle_positive=wall_limited_escape_angle(
                 bot,
                 target,
@@ -656,12 +653,6 @@ class VirtualGunSystem:
     ) -> tuple[str, str | None, bool]:
         return self._aim_selector.select(target_id, virtual_bearings, segment_key)
 
-    def _min_switch_score(self, mode: str) -> float:
-        return self._aim_selector.min_switch_score(mode)
-
-    def _min_switch_visits(self, mode: str) -> int:
-        return self._aim_selector.min_switch_visits(mode)
-
     def _gun_features(
         self,
         bot: Bot,
@@ -803,15 +794,6 @@ class VirtualGunSystem:
         target_distance: float,
     ) -> dict[str, float]:
         return self._scorer.score_virtual_guns(wave, actual_bearing, target_distance)
-
-    def _gun_score(self, target_id: int, mode: str, segment_key: tuple[int, ...] | None = None) -> float:
-        return self._scorer.gun_score(target_id, mode, segment_key)
-
-    def _raw_gun_score(self, stats: GunStats) -> float:
-        return self._scorer.raw_gun_score(stats)
-
-    def _update_stats(self, stats: GunStats, score: float) -> None:
-        self._scorer.update_stats(stats, score)
 
 
 def feature_distance(left: tuple[float, ...], right: tuple[float, ...]) -> float:

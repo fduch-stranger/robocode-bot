@@ -22,7 +22,6 @@ def make_wave(target_id: int = 1, fire_turn: int = 0, aim_mode: str = "linear") 
         target_id=target_id,
         bullet_power=2.0,
         bullet_speed=14.0,
-        max_escape_angle=30.0,
         max_escape_angle_positive=30.0,
         max_escape_angle_negative=30.0,
         lateral_direction=1,

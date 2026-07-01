@@ -412,7 +412,6 @@ class SweepPressure(Bot):
         body_bearing = body_bearing_to(self, target.x, target.y)
         flattening = self._movement.choose_direction(
             self,
-            target,
             body_bearing,
             FLATTENER_STRAFE_OFFSET,
             SWEEP_SPEED,

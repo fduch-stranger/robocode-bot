@@ -5,9 +5,6 @@ from dataclasses import dataclass
 MAX_ROBOT_SPEED = 8.0
 ROBOT_ACCELERATION = 1.0
 ROBOT_DECELERATION = 2.0
-MAX_GUN_TURN_RATE = 20.0
-MAX_RADAR_TURN_RATE = 45.0
-ROBOT_COLLISION_DAMAGE = 0.6
 
 
 @dataclass(frozen=True)

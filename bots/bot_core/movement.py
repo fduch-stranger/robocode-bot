@@ -900,7 +900,6 @@ class MovementFlattener:
     def choose_direction(
         self,
         bot: Bot,
-        target: TargetSnapshot,
         body_bearing: float,
         strafe_offset: float,
         move_speed: float,

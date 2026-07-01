@@ -71,10 +71,6 @@ def bearing_to(bot: Bot, x: float, y: float, direction: float) -> float:
     return ((absolute_angle - direction + 180) % 360) - 180
 
 
-def gun_bearing_to(bot: Bot, x: float, y: float) -> float:
-    return bearing_to(bot, x, y, bot.gun_direction)
-
-
 def body_bearing_to(bot: Bot, x: float, y: float) -> float:
     return bearing_to(bot, x, y, bot.direction)
 

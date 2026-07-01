@@ -139,7 +139,6 @@ class ChaseLock(Bot):
         self._radar_sweep_direction = 1
         self._last_turn_number = -1
         self._last_enemy_fire_turn = -1000
-        self._last_enemy_fire_power = 0.0
         self._enemy_energy_corrections = EnemyEnergyCorrectionLedger()
         self._target_accel: dict[int, float] = {}
         self._last_velocity_change_turn: dict[int, int] = {}
@@ -264,7 +263,6 @@ class ChaseLock(Bot):
         self._recent_threat_id = event.scanned_bot_id
         self._recent_threat_turn = self.turn_number
         self._last_enemy_fire_turn = self.turn_number
-        self._last_enemy_fire_power = signal.fire_power or 0.0
         previous_prediction = self._last_enemy_power_prediction.pop(event.scanned_bot_id, None)
         self._enemy_fire_power.record(
             event.scanned_bot_id,
@@ -530,7 +528,6 @@ class ChaseLock(Bot):
         movement_mode, strafe_offset, move_speed = self._movement_command(target, distance, evading)
         flattening = self._movement.choose_direction(
             self,
-            target,
             body_bearing,
             strafe_offset,
             move_speed,
@@ -704,7 +701,6 @@ class ChaseLock(Bot):
             self._recent_threat_turn = -1000
             self._evade_until_turn = -1
             self._last_enemy_fire_turn = -1000
-            self._last_enemy_fire_power = 0.0
             self._enemy_energy_corrections.clear()
             self._last_enemy_power_prediction.clear()
             self._gun.clear_round_state()
