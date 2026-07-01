@@ -31,38 +31,24 @@ def minimum_risk_fields(
 
 def flattening_fields(
     target_id: int,
-    current_direction: int,
     flattening: FlatteningDecision,
     distance: float,
+    current_direction: int | None = None,
     include_reason: bool = False,
 ) -> dict[str, object]:
     fields = {
         "target": target_id,
-        "current_direction": current_direction,
         "suggested_direction": flattening.direction,
         "bucket": flattening.bucket,
         "current_count": round(flattening.current_count, 1),
         "alternative_count": round(flattening.alternative_count, 1),
         "distance": round(distance, 1),
     }
+    if current_direction is not None:
+        fields["current_direction"] = current_direction
     if include_reason:
         fields["reason"] = flattening.reason
     return fields
-
-
-def simple_flattening_fields(
-    target_id: int,
-    flattening: FlatteningDecision,
-    distance: float,
-) -> dict[str, object]:
-    return {
-        "target": target_id,
-        "suggested_direction": flattening.direction,
-        "bucket": flattening.bucket,
-        "current_count": round(flattening.current_count, 1),
-        "alternative_count": round(flattening.alternative_count, 1),
-        "distance": round(distance, 1),
-    }
 
 
 def wall_avoid_fields(x: float, y: float, center_bearing: float, move_direction: int) -> dict[str, object]:

@@ -234,17 +234,17 @@ class AdaptivePrime(Bot):
                 signal,
                 scan_gap,
                 distance,
-                previous.energy,
-                event.energy,
                 ("active_melee" if melee_active else "active_duel") if active_evasion else "threat_only",
-                self._evade_direction,
                 self._evade_until_turn,
-                len(self._targets),
                 movement_wave is not None,
-                heat_state,
                 previous_prediction,
                 self._enemy_fire_power.sample_count(event.scanned_bot_id),
                 power_mae,
+                previous_energy=previous.energy,
+                energy=event.energy,
+                evade_direction=self._evade_direction,
+                known_targets=len(self._targets),
+                heat_state=heat_state,
             ),
         )
         return True
@@ -447,7 +447,7 @@ class AdaptivePrime(Bot):
             if flattening.changed:
                 self._log(
                     "movement.duel_flatten",
-                    **flattening_fields(target.bot_id, self._evade_direction, flattening, distance, include_reason=True),
+                    **flattening_fields(target.bot_id, flattening, distance, current_direction=self._evade_direction, include_reason=True),
                 )
                 if MOVEMENT_POLICY.flattener_active and flattening.current_count >= 2.0:
                     self._evade_direction = flattening.direction
@@ -520,7 +520,7 @@ class AdaptivePrime(Bot):
         if flattening.changed:
             self._log(
                 "movement.flatten" if MOVEMENT_POLICY.flattener_active else "movement.flatten_shadow",
-                **flattening_fields(target.bot_id, self._evade_direction, flattening, distance),
+                **flattening_fields(target.bot_id, flattening, distance, current_direction=self._evade_direction),
             )
             if MOVEMENT_POLICY.flattener_active:
                 self._evade_direction = flattening.direction

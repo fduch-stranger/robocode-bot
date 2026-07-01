@@ -27,16 +27,16 @@ from bot_core.geometry.angles import body_bearing_to
 from bot_core.geometry.numeric import clamp
 from bot_core.geometry.position import distance_to, drive_to_destination
 from bot_core.target_snapshot import TargetSnapshot, target_from_scan
-from bot_core.telemetry.energy import simple_enemy_fire_detected_fields, simple_energy_drop_ignored_fields
+from bot_core.telemetry.energy import enemy_fire_detected_fields, energy_drop_ignored_fields
 from bot_core.telemetry.fire import (
     SimpleTrackTick,
     bullet_fired_fields,
     bullet_hit_bot_fields,
     gun_switch_fields,
-    simple_track_fields,
+    track_fields,
     wave_visit_fields,
 )
-from bot_core.telemetry.movement import minimum_risk_fields, profile_visit_fields, simple_flattening_fields, wall_avoid_fields
+from bot_core.telemetry.movement import flattening_fields, minimum_risk_fields, profile_visit_fields, wall_avoid_fields
 from bot_core.telemetry.targeting import candidate_target_selection_fields, scan_new_fields
 
 
@@ -228,7 +228,7 @@ class SweepPressure(Bot):
             if signal.raw_energy_drop > 0 or signal.energy_correction:
                 self._log(
                     "enemy.energy_drop_ignored",
-                    **simple_energy_drop_ignored_fields(event.scanned_bot_id, signal, scan_gap, distance),
+                    **energy_drop_ignored_fields(event.scanned_bot_id, signal, scan_gap, distance),
                 )
             return False
 
@@ -260,19 +260,19 @@ class SweepPressure(Bot):
         power_mae = self._enemy_fire_power.mean_absolute_error(event.scanned_bot_id)
         self._log(
             "enemy.fire_detected",
-            **simple_enemy_fire_detected_fields(
+            **enemy_fire_detected_fields(
                 event.scanned_bot_id,
                 signal,
                 scan_gap,
                 distance,
                 "active_duel" if active_evasion else "threat_only",
-                active_evasion,
-                self._move_direction,
                 self._evade_until_turn,
                 movement_wave is not None,
                 prediction,
                 self._enemy_fire_power.sample_count(event.scanned_bot_id),
                 power_mae,
+                evading=active_evasion,
+                move_direction=self._move_direction,
             ),
         )
         return True
@@ -332,7 +332,7 @@ class SweepPressure(Bot):
         else:
             self._sample_status(
                 "track",
-                **simple_track_fields(
+                **track_fields(
                     SimpleTrackTick(
                         target,
                         age,
@@ -392,7 +392,7 @@ class SweepPressure(Bot):
         self._move_direction = flattening.direction
         self._log(
             "movement.flatten",
-            **simple_flattening_fields(target.bot_id, flattening, distance),
+            **flattening_fields(target.bot_id, flattening, distance),
         )
 
     def _firepower_for(self, distance: float) -> float:

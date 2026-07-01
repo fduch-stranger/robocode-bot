@@ -1,35 +1,18 @@
 from bot_core.energy import EnergyDropSignal, EnemyFirePowerPrediction, GunHeatState
 from bot_core.telemetry.tick import rounded
 
+_UNSET = object()
+
 
 def energy_drop_ignored_fields(
     target_id: int,
     signal: EnergyDropSignal,
     scan_gap: int,
     distance: float,
-    previous_energy: float,
-    energy: float,
+    previous_energy: float | None = None,
+    energy: float | None = None,
 ) -> dict[str, object]:
-    return {
-        "bot_id": target_id,
-        "reason": signal.reason,
-        "raw_drop": round(signal.raw_energy_drop, 2),
-        "corrected_drop": round(signal.energy_drop, 2),
-        "correction": round(signal.energy_correction, 2),
-        "scan_gap": scan_gap,
-        "distance": round(distance, 1),
-        "previous_energy": round(previous_energy, 1),
-        "energy": round(energy, 1),
-    }
-
-
-def simple_energy_drop_ignored_fields(
-    target_id: int,
-    signal: EnergyDropSignal,
-    scan_gap: int,
-    distance: float,
-) -> dict[str, object]:
-    return {
+    fields = {
         "bot_id": target_id,
         "reason": signal.reason,
         "raw_drop": round(signal.raw_energy_drop, 2),
@@ -38,6 +21,11 @@ def simple_energy_drop_ignored_fields(
         "scan_gap": scan_gap,
         "distance": round(distance, 1),
     }
+    if previous_energy is not None:
+        fields["previous_energy"] = round(previous_energy, 1)
+    if energy is not None:
+        fields["energy"] = round(energy, 1)
+    return fields
 
 
 def enemy_fire_detected_fields(
@@ -45,19 +33,23 @@ def enemy_fire_detected_fields(
     signal: EnergyDropSignal,
     scan_gap: int,
     distance: float,
-    previous_energy: float,
-    energy: float,
     evasion: str,
-    evade_direction: int,
     evade_until: int,
-    known_targets: int,
     movement_wave_created: bool,
-    heat_state: GunHeatState | None,
     previous_prediction: EnemyFirePowerPrediction | None,
     power_samples: int,
     power_mae: float | None,
+    *,
+    previous_energy: float | None = None,
+    energy: float | None = None,
+    evade_direction: int | None = None,
+    evading: bool | None = None,
+    move_direction: int | None = None,
+    known_targets: int | None = None,
+    heat_state: GunHeatState | None | object = _UNSET,
 ) -> dict[str, object]:
-    return {
+    actual_fire_power = signal.fire_power or 1.5
+    fields = {
         "bot_id": target_id,
         "power": round(signal.fire_power or 0.0, 2),
         "raw_drop": round(signal.raw_energy_drop, 2),
@@ -66,59 +58,34 @@ def enemy_fire_detected_fields(
         "scan_gap": scan_gap,
         "distance": round(distance, 1),
         "bullet_travel_ticks": signal.bullet_travel_ticks,
-        "previous_energy": round(previous_energy, 1),
-        "energy": round(energy, 1),
         "evasion": evasion,
-        "evade_direction": evade_direction,
         "evade_until": evade_until,
-        "known_targets": known_targets,
         "movement_wave": movement_wave_created,
-        "gun_heat": round(heat_state.heat, 2) if heat_state is not None else None,
         "predicted_power": round(previous_prediction.fire_power, 2) if previous_prediction is not None else None,
-        "prediction_error": round(abs(previous_prediction.fire_power - (signal.fire_power or 1.5)), 2)
+        "prediction_error": round(abs(previous_prediction.fire_power - actual_fire_power), 2)
         if previous_prediction is not None
         else None,
         "power_samples": power_samples,
         "power_mae": rounded(power_mae, 3),
     }
-
-
-def simple_enemy_fire_detected_fields(
-    target_id: int,
-    signal: EnergyDropSignal,
-    scan_gap: int,
-    distance: float,
-    evasion: str,
-    evading: bool,
-    move_direction: int,
-    evade_until: int,
-    movement_wave_created: bool,
-    previous_prediction: EnemyFirePowerPrediction,
-    power_samples: int,
-    power_mae: float | None,
-) -> dict[str, object]:
-    actual_fire_power = signal.fire_power or 1.5
-    return {
-        "bot_id": target_id,
-        "power": round(signal.fire_power or 0.0, 2),
-        "raw_drop": round(signal.raw_energy_drop, 2),
-        "corrected_drop": round(signal.energy_drop, 2),
-        "correction": round(signal.energy_correction, 2),
-        "scan_gap": scan_gap,
-        "distance": round(distance, 1),
-        "bullet_travel_ticks": signal.bullet_travel_ticks,
-        "evasion": evasion,
-        "evading": evading,
-        "move_direction": move_direction,
-        "evade_until": evade_until,
-        "movement_wave": movement_wave_created,
-        "predicted_power": round(previous_prediction.fire_power, 2),
-        "prediction_confidence": round(previous_prediction.confidence, 3),
-        "prediction_reason": previous_prediction.reason,
-        "prediction_error": round(abs(previous_prediction.fire_power - actual_fire_power), 2),
-        "power_samples": power_samples,
-        "power_mae": rounded(power_mae, 3),
-    }
+    if previous_energy is not None:
+        fields["previous_energy"] = round(previous_energy, 1)
+    if energy is not None:
+        fields["energy"] = round(energy, 1)
+    if evade_direction is not None:
+        fields["evade_direction"] = evade_direction
+    if evading is not None:
+        fields["evading"] = evading
+    if move_direction is not None:
+        fields["move_direction"] = move_direction
+    if known_targets is not None:
+        fields["known_targets"] = known_targets
+    if heat_state is not _UNSET:
+        fields["gun_heat"] = round(heat_state.heat, 2) if heat_state is not None else None
+    if previous_prediction is not None and evading is not None:
+        fields["prediction_confidence"] = round(previous_prediction.confidence, 3)
+        fields["prediction_reason"] = previous_prediction.reason
+    return fields
 
 
 def gun_heat_wave_fields(

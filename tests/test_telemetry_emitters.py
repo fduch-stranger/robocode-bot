@@ -9,15 +9,12 @@ from bot_core.telemetry.energy import (
     enemy_fire_detected_fields,
     energy_drop_ignored_fields,
     gun_heat_wave_fields,
-    simple_enemy_fire_detected_fields,
-    simple_energy_drop_ignored_fields,
 )
 from bot_core.telemetry.fire import (
     FireTick,
     SimpleTrackTick,
     bullet_fired_fields,
     bullet_hit_bot_fields,
-    simple_track_fields,
     track_fields,
     wave_visit_fields,
 )
@@ -27,7 +24,6 @@ from bot_core.telemetry.movement import (
     goto_surf_fields,
     minimum_risk_fields,
     profile_visit_fields,
-    simple_flattening_fields,
     wall_avoid_fields,
 )
 from bot_core.telemetry.targeting import (
@@ -133,17 +129,17 @@ class TelemetryEmitterTest(unittest.TestCase):
             fire,
             2,
             240.44,
-            80.0,
-            78.0,
             "active_duel",
-            -1,
             42,
-            2,
             True,
-            GunHeatState(heat=1.386),
             prediction,
             9,
             0.4567,
+            previous_energy=80.0,
+            energy=78.0,
+            evade_direction=-1,
+            known_targets=2,
+            heat_state=GunHeatState(heat=1.386),
         )
 
         self.assertEqual(
@@ -188,7 +184,7 @@ class TelemetryEmitterTest(unittest.TestCase):
             virtual_bearings={},
         )
         radar = RadarCommand(target, turn=4.444, mode="lock", bearing=-8.888, age=1)
-        track = simple_track_fields(
+        track = track_fields(
             SimpleTrackTick(target, 2, 321.98, aim, radar, 1.2, "gun_alignment", 42, {"linear": "0.42/9"}, 3)
         )
         self.assertEqual(
@@ -218,12 +214,25 @@ class TelemetryEmitterTest(unittest.TestCase):
         ignored = EnergyDropSignal(False, "not_fire", 0.4, 0.3, 0.1, None, None, 0)
         self.assertEqual(
             {"bot_id": 7, "reason": "not_fire", "raw_drop": 0.4, "corrected_drop": 0.3, "correction": 0.1, "scan_gap": 2, "distance": 200.1},
-            simple_energy_drop_ignored_fields(7, ignored, 2, 200.12),
+            energy_drop_ignored_fields(7, ignored, 2, 200.12),
         )
 
         fire = EnergyDropSignal(True, "fire", 1.51, 1.41, 0.1, 1.41, 13, 20)
         prediction = EnemyFirePowerPrediction(1.2, 0.75, 20, "knn", mean_absolute_error=0.2222)
-        fire_fields = simple_enemy_fire_detected_fields(7, fire, 2, 200.12, "active_duel", True, -1, 99, True, prediction, 12, 0.3333)
+        fire_fields = enemy_fire_detected_fields(
+            7,
+            fire,
+            2,
+            200.12,
+            "active_duel",
+            99,
+            True,
+            prediction,
+            12,
+            0.3333,
+            evading=True,
+            move_direction=-1,
+        )
         self.assertEqual(
             {
                 "bot_id",
@@ -260,7 +269,7 @@ class TelemetryEmitterTest(unittest.TestCase):
                 "alternative_count": 1.1,
                 "distance": 200.1,
             },
-            simple_flattening_fields(7, flattening, 200.12),
+            flattening_fields(7, flattening, 200.12),
         )
         self.assertEqual({"x": 10.1, "y": 20.2, "center_bearing": -3.46, "move_direction": 1}, wall_avoid_fields(10.12, 20.23, -3.456, 1))
 
@@ -400,7 +409,7 @@ class TelemetryEmitterTest(unittest.TestCase):
         self.assertEqual(0.457, profile_fields["ensemble_danger"])
 
         flattening = FlatteningDecision(-1, True, "lower_danger", 4, 2.22, 1.11)
-        self.assertEqual("lower_danger", flattening_fields(3, 1, flattening, 250.09, include_reason=True)["reason"])
+        self.assertEqual("lower_danger", flattening_fields(3, flattening, 250.09, current_direction=1, include_reason=True)["reason"])
 
         potential = duel_potential_fields(3, 10.04, 20.05, 0.1234, -0.4567, 300.09, "orbit", True, -1, MovementCommand("orbit", 1.234, 7))
         self.assertEqual(-0.457, potential["force_y"])
