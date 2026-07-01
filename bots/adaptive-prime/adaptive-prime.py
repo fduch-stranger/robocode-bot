@@ -1,4 +1,5 @@
 import math
+from dataclasses import dataclass
 
 from robocode_tank_royale.bot_api import Bot, BotInfo, Color
 from robocode_tank_royale.bot_api.events import (
@@ -14,19 +15,20 @@ from robocode_tank_royale.bot_api.events import (
 from bot_core.debug import DebugLogger, FiredBulletTracker
 from bot_core.energy import (
     EnemyEnergyCorrectionLedger,
+    EnemyFireDetector,
     EnemyFirePowerPrediction,
     EnemyFirePowerPredictor,
     EnergyDropConfig,
     FireGate,
     FireGateConfig,
     GunHeatTracker,
-    classify_energy_drop,
 )
 from bot_core.gun import GunConfig, TargetMotion, VirtualGunSystem
 from bot_core.movement import (
     FlatteningDecision,
     MinimumRiskConfig,
     MinimumRiskMovement,
+    MovementCommand,
     MovementFlattener,
     MovementFlatteningConfig,
 )
@@ -41,94 +43,120 @@ from bot_core.tank_math import (
     target_from_hit_bot,
     target_from_scan,
 )
+from bot_core.targeting import TargetMemory, TargetSelector
 
 
-FIRE_ALIGNMENT_DEGREES = 7
-TARGET_MEMORY_TURNS = 24
-FIRE_MEMORY_TURNS = 1
-REACQUIRE_TARGET_TURNS = 4
-DROP_LOST_TARGET_TURNS = 9
-PREFERRED_MIN_DISTANCE = 360
-PREFERRED_MAX_DISTANCE = 560
-MELEE_PRESSURE_MIN_DISTANCE = 360
-MELEE_PRESSURE_MAX_DISTANCE = 620
-MELEE_FINISH_TARGET_ENERGY = 10
-PANIC_RETREAT_DISTANCE = 190
-MELEE_PANIC_RETREAT_DISTANCE = 245
-CLOSE_RESET_DISTANCE = 330
-MELEE_CLOSE_RESET_DISTANCE = 340
-FINISH_TARGET_ENERGY = 14
-FINISH_DISTANCE = 240
-ENEMY_FIRE_MIN_DROP = 0.1
-ENEMY_FIRE_MAX_DROP = 3.0
-ENEMY_FIRE_SCAN_GAP_TURNS = 4
-ENEMY_FIRE_CLOSE_COLLISION_DISTANCE = 75
-ENEMY_FIRE_CLOSE_COLLISION_MAX_DROP = 0.8
-ENEMY_FIRE_ACTIVE_EVASION_MIN_DISTANCE = 0
-MELEE_FIRE_ACTIVE_EVASION_MIN_DISTANCE = 0
-GUN_HEAT_WAVES_ACTIVE = True
-GUN_HEAT_WAVE_MIN_DISTANCE = 220
-GUN_HEAT_WAVE_MAX_TARGET_AGE = 2
-RADAR_LOCK_RATE = 24
-RADAR_SEARCH_RATE = 18
-RADAR_REACQUIRE_RATE = 24
-RADAR_LOST_SWEEP_RATE = 24
-GUN_SEARCH_RATE = 18
-RADAR_REACQUIRE_MIN_ERROR = 8
-RADAR_REACQUIRE_OVERSHOOT = 8
-RADAR_REACQUIRE_WIDEN_PER_TURN = 2
-RADAR_REACQUIRE_MAX_OVERSHOOT = 42
-RADAR_LOCK_OVERSCAN = 12
-RADAR_VISIBLE_REACQUIRE_OVERSCAN = 18
-CURRENT_TARGET_BONUS = 58
-RECENT_THREAT_BONUS = 82
-MELEE_CURRENT_TARGET_BONUS = 18
-MELEE_RECENT_THREAT_BONUS = 34
-THREAT_MEMORY_TURNS = 35
-FIELD_MARGIN = 18
-WALL_MARGIN = 90
-WALL_LOOKAHEAD_TICKS = 11
-WALL_ESCAPE_SPEED = 6
-APPROACH_STRAFE_OFFSET = 68
-ORBIT_STRAFE_OFFSET = 92
-EVADE_STRAFE_OFFSET = 102
-RETREAT_STRAFE_OFFSET = 124
-EVADE_TURNS = 36
-FLATTENER_ACTIVE = True
-GOTO_SURFING_ACTIVE = True
-DUEL_POTENTIAL_STEP = 205.0
-DUEL_PREFERRED_DISTANCE = 580.0
-DUEL_MIN_DISTANCE = 430.0
-DUEL_MAX_DISTANCE = 730.0
-DUEL_CRITICAL_DISTANCE = 300.0
-DUEL_WALL_MARGIN = 130.0
-DUEL_CENTERING_MARGIN = 245.0
-DUEL_ENEMY_REPEL_WEIGHT = 1.65
-DUEL_WALL_REPEL_WEIGHT = 4.0
-DUEL_ORBIT_WEIGHT = 1.15
-DUEL_DODGE_ORBIT_WEIGHT = 1.9
-DUEL_RANGE_ATTRACT_WEIGHT = 0.72
-DUEL_CENTER_ATTRACT_WEIGHT = 0.48
-DUEL_THREAT_REPEL_WEIGHT = 0.68
+@dataclass(frozen=True)
+class FirePolicy:
+    alignment_degrees: float = 7
+    memory_turns: int = 1
+    finish_target_energy: float = 14
+    melee_finish_target_energy: float = 10
+    finish_distance: float = 240
+    enemy_fire_min_drop: float = 0.1
+    enemy_fire_max_drop: float = 3.0
+    enemy_fire_scan_gap_turns: int = 4
+    enemy_fire_close_collision_distance: float = 75
+    enemy_fire_close_collision_max_drop: float = 0.8
+    enemy_fire_active_evasion_min_distance: float = 0
+    melee_fire_active_evasion_min_distance: float = 0
+    gun_heat_waves_active: bool = True
+    gun_heat_wave_min_distance: float = 220
+    gun_heat_wave_max_target_age: int = 2
+
+
+@dataclass(frozen=True)
+class TargetPolicy:
+    memory_turns: int = 24
+    reacquire_turns: int = 4
+    drop_lost_turns: int = 9
+    current_target_bonus: float = 58
+    recent_threat_bonus: float = 82
+    melee_current_target_bonus: float = 18
+    melee_recent_threat_bonus: float = 34
+    threat_memory_turns: int = 35
+
+
+@dataclass(frozen=True)
+class RadarPolicy:
+    lock_rate: float = 24
+    search_rate: float = 18
+    reacquire_rate: float = 24
+    lost_sweep_rate: float = 24
+    gun_search_rate: float = 18
+    reacquire_min_error: float = 8
+    reacquire_overshoot: float = 8
+    reacquire_widen_per_turn: float = 2
+    reacquire_max_overshoot: float = 42
+    lock_overscan: float = 12
+    visible_reacquire_overscan: float = 18
+
+
+@dataclass(frozen=True)
+class MovementPolicy:
+    preferred_min_distance: float = 360
+    preferred_max_distance: float = 560
+    melee_pressure_min_distance: float = 360
+    melee_pressure_max_distance: float = 620
+    panic_retreat_distance: float = 190
+    melee_panic_retreat_distance: float = 245
+    close_reset_distance: float = 330
+    melee_close_reset_distance: float = 340
+    field_margin: float = 18
+    wall_margin: float = 90
+    wall_lookahead_ticks: int = 11
+    wall_escape_speed: float = 6
+    approach_strafe_offset: float = 68
+    orbit_strafe_offset: float = 92
+    evade_strafe_offset: float = 102
+    retreat_strafe_offset: float = 124
+    evade_turns: int = 36
+    flattener_active: bool = True
+    goto_surfing_active: bool = True
+
+
+@dataclass(frozen=True)
+class DuelMovementPolicy:
+    potential_step: float = 205.0
+    preferred_distance: float = 580.0
+    min_distance: float = 430.0
+    max_distance: float = 730.0
+    critical_distance: float = 300.0
+    wall_margin: float = 130.0
+    centering_margin: float = 245.0
+    enemy_repel_weight: float = 1.65
+    wall_repel_weight: float = 4.0
+    orbit_weight: float = 1.15
+    dodge_orbit_weight: float = 1.9
+    range_attract_weight: float = 0.72
+    center_attract_weight: float = 0.48
+    threat_repel_weight: float = 0.68
+
+
+FIRE_POLICY = FirePolicy()
+TARGET_POLICY = TargetPolicy()
+RADAR_POLICY = RadarPolicy()
+MOVEMENT_POLICY = MovementPolicy()
+DUEL_MOVEMENT_POLICY = DuelMovementPolicy()
 RADAR_CONFIG = RadarLockConfig(
-    search_rate=RADAR_SEARCH_RATE,
-    lock_rate=RADAR_LOCK_RATE,
-    reacquire_rate=RADAR_REACQUIRE_RATE,
-    reacquire_min_error=RADAR_REACQUIRE_MIN_ERROR,
-    lock_overscan=RADAR_LOCK_OVERSCAN,
-    reacquire_overscan=RADAR_VISIBLE_REACQUIRE_OVERSCAN,
+    search_rate=RADAR_POLICY.search_rate,
+    lock_rate=RADAR_POLICY.lock_rate,
+    reacquire_rate=RADAR_POLICY.reacquire_rate,
+    reacquire_min_error=RADAR_POLICY.reacquire_min_error,
+    lock_overscan=RADAR_POLICY.lock_overscan,
+    reacquire_overscan=RADAR_POLICY.visible_reacquire_overscan,
 )
 ENERGY_DROP_CONFIG = EnergyDropConfig(
-    min_fire_power=ENEMY_FIRE_MIN_DROP,
-    max_fire_power=ENEMY_FIRE_MAX_DROP,
-    max_scan_gap=ENEMY_FIRE_SCAN_GAP_TURNS,
-    close_collision_distance=ENEMY_FIRE_CLOSE_COLLISION_DISTANCE,
-    close_collision_max_drop=ENEMY_FIRE_CLOSE_COLLISION_MAX_DROP,
+    min_fire_power=FIRE_POLICY.enemy_fire_min_drop,
+    max_fire_power=FIRE_POLICY.enemy_fire_max_drop,
+    max_scan_gap=FIRE_POLICY.enemy_fire_scan_gap_turns,
+    close_collision_distance=FIRE_POLICY.enemy_fire_close_collision_distance,
+    close_collision_max_drop=FIRE_POLICY.enemy_fire_close_collision_max_drop,
 )
 FIRE_GATE = FireGate(
     FireGateConfig(
-        fire_memory_turns=FIRE_MEMORY_TURNS,
-        alignment_degrees=FIRE_ALIGNMENT_DEGREES,
+        fire_memory_turns=FIRE_POLICY.memory_turns,
+        alignment_degrees=FIRE_POLICY.alignment_degrees,
         energy_margin=5,
     )
 )
@@ -146,7 +174,7 @@ class AdaptivePrime(Bot):
                 programming_lang="Python 3",
             )
         )
-        self._targets: dict[int, TargetSnapshot] = {}
+        self._targets = TargetMemory()
         self._target_id: int | None = None
         self._recent_threat_id: int | None = None
         self._recent_threat_turn = -1000
@@ -164,6 +192,14 @@ class AdaptivePrime(Bot):
         self._enemy_gun_heat = GunHeatTracker()
         self._enemy_fire_power = EnemyFirePowerPredictor()
         self._last_enemy_power_prediction: dict[int, EnemyFirePowerPrediction] = {}
+        self._enemy_fire_detector = EnemyFireDetector(
+            ENERGY_DROP_CONFIG,
+            self._enemy_energy_corrections,
+            self._enemy_gun_heat,
+            self._enemy_fire_power,
+            self._last_enemy_power_prediction,
+        )
+        self._target_selector = TargetSelector(TARGET_POLICY.reacquire_turns)
         self._gun = VirtualGunSystem(
             GunConfig(selectable_modes=frozenset({"linear", "traditional_gf", "dynamic_cluster", "anti_surfer"}))
         )
@@ -235,7 +271,7 @@ class AdaptivePrime(Bot):
                 x=round(event.x, 1),
                 y=round(event.y, 1),
             )
-        elif previous_age is not None and previous_age > REACQUIRE_TARGET_TURNS:
+        elif previous_age is not None and previous_age > TARGET_POLICY.reacquire_turns:
             self._log(
                 "scan.reacquired",
                 bot_id=event.scanned_bot_id,
@@ -255,21 +291,19 @@ class AdaptivePrime(Bot):
 
     def _detect_enemy_fire(self, event: ScannedBotEvent, previous: TargetSnapshot, scan_gap: int) -> bool:
         distance = distance_to(self, event.x, event.y)
-        energy_correction = self._consume_enemy_energy_correction(
+        detection = self._enemy_fire_detector.evaluate_scan(
             event.scanned_bot_id,
-            self.turn_number,
-            previous.seen_turn,
-        )
-        signal = classify_energy_drop(
             previous.energy,
             event.energy,
+            previous.seen_turn,
+            self.turn_number,
             scan_gap,
             distance,
-            ENERGY_DROP_CONFIG,
-            energy_correction=energy_correction,
+            self.energy,
+            self.gun_cooling_rate,
         )
+        signal = detection.signal
         if not signal.is_fire:
-            self._enemy_gun_heat.update(event.scanned_bot_id, self.turn_number, self.gun_cooling_rate)
             if signal.raw_energy_drop > 0 or signal.energy_correction:
                 self._log(
                     "enemy.energy_drop_ignored",
@@ -289,21 +323,8 @@ class AdaptivePrime(Bot):
         self._recent_threat_turn = self.turn_number
         self._last_enemy_fire_turn = self.turn_number
         self._last_enemy_fire_power = signal.fire_power or 0.0
-        previous_prediction = self._last_enemy_power_prediction.pop(event.scanned_bot_id, None)
-        self._enemy_fire_power.record(
-            event.scanned_bot_id,
-            enemy_energy=previous.energy,
-            our_energy=self.energy,
-            distance=distance,
-            fire_power=signal.fire_power or 1.5,
-            previous_prediction=previous_prediction,
-        )
-        heat_state = self._enemy_gun_heat.record_fire(
-            event.scanned_bot_id,
-            self.turn_number,
-            signal.fire_power or 1.5,
-            self.gun_cooling_rate,
-        )
+        previous_prediction = detection.previous_prediction
+        heat_state = detection.heat_state
         movement_wave = self._movement.record_enemy_fire(
             self,
             target_from_scan(event, self.turn_number),
@@ -312,9 +333,9 @@ class AdaptivePrime(Bot):
         )
         melee_active = self._melee_round or self.enemy_count > 1 or len(self._targets) > 1
         active_evasion = (
-            distance >= ENEMY_FIRE_ACTIVE_EVASION_MIN_DISTANCE
+            distance >= FIRE_POLICY.enemy_fire_active_evasion_min_distance
             if not melee_active
-            else distance >= MELEE_FIRE_ACTIVE_EVASION_MIN_DISTANCE
+            else distance >= FIRE_POLICY.melee_fire_active_evasion_min_distance
         )
         if active_evasion:
             if melee_active and not self._wall_risk(8):
@@ -337,7 +358,7 @@ class AdaptivePrime(Bot):
             evade_until=self._evade_until_turn,
             known_targets=len(self._targets),
             movement_wave=movement_wave is not None,
-            gun_heat=round(heat_state.heat, 2),
+            gun_heat=round(heat_state.heat, 2) if heat_state is not None else None,
             predicted_power=round(previous_prediction.fire_power, 2) if previous_prediction is not None else None,
             prediction_error=round(abs(previous_prediction.fire_power - (signal.fire_power or 1.5)), 2)
             if previous_prediction is not None
@@ -350,11 +371,11 @@ class AdaptivePrime(Bot):
         return True
 
     def _record_gun_heat_wave(self, target: TargetSnapshot) -> None:
-        if not GUN_HEAT_WAVES_ACTIVE:
+        if not FIRE_POLICY.gun_heat_waves_active:
             return
         age = self.turn_number - target.seen_turn
         distance = distance_to(self, target.x, target.y)
-        if len(self._targets) > 1 or age > GUN_HEAT_WAVE_MAX_TARGET_AGE or distance < GUN_HEAT_WAVE_MIN_DISTANCE:
+        if len(self._targets) > 1 or age > FIRE_POLICY.gun_heat_wave_max_target_age or distance < FIRE_POLICY.gun_heat_wave_min_distance:
             self._enemy_gun_heat.update(target.bot_id, self.turn_number, self.gun_cooling_rate)
             return
 
@@ -418,7 +439,7 @@ class AdaptivePrime(Bot):
             distance,
             firepower,
             self._target_motion(target),
-            FIELD_MARGIN,
+            MOVEMENT_POLICY.field_margin,
             allow_traditional_gf=use_segmented_gun_stats,
             allow_segmented_stats=use_segmented_gun_stats,
         )
@@ -433,8 +454,8 @@ class AdaptivePrime(Bot):
             )
         age = self.turn_number - target.seen_turn
 
-        if age > REACQUIRE_TARGET_TURNS:
-            if age > DROP_LOST_TARGET_TURNS:
+        if age > TARGET_POLICY.reacquire_turns:
+            if age > TARGET_POLICY.drop_lost_turns:
                 self._drop_lost_target(target, age, distance)
                 return
 
@@ -505,11 +526,17 @@ class AdaptivePrime(Bot):
     ) -> tuple[str, float, FlatteningDecision | None]:
         evading = self.turn_number <= self._evade_until_turn
         duel_active = len(self._targets) <= 1 and self.enemy_count <= 1
-        panic_distance = PANIC_RETREAT_DISTANCE if len(self._targets) <= 1 else MELEE_PANIC_RETREAT_DISTANCE
+        panic_distance = MOVEMENT_POLICY.panic_retreat_distance if len(self._targets) <= 1 else MOVEMENT_POLICY.melee_panic_retreat_distance
         if not duel_active and distance < panic_distance:
-            self.target_speed = -7
-            self.set_turn_left(body_bearing + RETREAT_STRAFE_OFFSET * self._evade_direction)
-            return "panic_retreat", RETREAT_STRAFE_OFFSET, None
+            command = MovementCommand.strafe(
+                "panic_retreat",
+                body_bearing,
+                MOVEMENT_POLICY.retreat_strafe_offset,
+                self._evade_direction,
+                -7,
+            )
+            self._apply_movement_command(command)
+            return command.mode, command.strafe_offset, None
 
         if self._melee_round and len(self._targets) > 1:
             threat_target = self._active_fire_threat() if evading else None
@@ -521,7 +548,14 @@ class AdaptivePrime(Bot):
                 dodge_direction=self._evade_direction if threat_target is not None else 0,
             )
             if decision is not None:
-                turn, speed = self._drive_to_destination(decision.x, decision.y, 8)
+                command = MovementCommand.drive_to_destination(
+                    self,
+                    decision.x,
+                    decision.y,
+                    8,
+                    "melee_minimum_risk",
+                )
+                self._apply_movement_command(command)
                 self._sample_status(
                     "movement.minimum_risk",
                     target=target.bot_id,
@@ -534,20 +568,20 @@ class AdaptivePrime(Bot):
                     reused_destination=decision.reused,
                     destination_age=decision.age,
                     fire_threat=threat_target.bot_id if threat_target is not None else None,
-                    turn=round(turn, 2),
-                    speed=speed,
+                    turn=round(command.turn, 2),
+                    speed=command.speed,
                     known_targets=len(self._targets),
                 )
-                return "melee_minimum_risk", 0.0, None
+                return command.mode, command.strafe_offset, None
 
         if duel_active:
             flattening = self._movement.choose_direction(
                 self,
                 target,
                 body_bearing,
-                EVADE_STRAFE_OFFSET if evading else ORBIT_STRAFE_OFFSET,
+                MOVEMENT_POLICY.evade_strafe_offset if evading else MOVEMENT_POLICY.orbit_strafe_offset,
                 8,
-                FIELD_MARGIN,
+                MOVEMENT_POLICY.field_margin,
                 target.bot_id,
                 distance,
                 self._evade_direction,
@@ -567,19 +601,25 @@ class AdaptivePrime(Bot):
                     distance=round(distance, 1),
                     reason=flattening.reason,
                 )
-                if FLATTENER_ACTIVE and flattening.current_count >= 2.0:
+                if MOVEMENT_POLICY.flattener_active and flattening.current_count >= 2.0:
                     self._evade_direction = flattening.direction
-            if GOTO_SURFING_ACTIVE:
+            if MOVEMENT_POLICY.goto_surfing_active:
                 surf_decision = self._movement.choose_go_to_surf_destination(
                     self,
                     target,
                     max_speed=8,
-                    field_margin=DUEL_WALL_MARGIN,
+                    field_margin=DUEL_MOVEMENT_POLICY.wall_margin,
                 )
                 if surf_decision is not None:
-                    if surf_decision.direction:
-                        self._evade_direction = surf_decision.direction
-                    turn, speed = self._drive_to_destination(surf_decision.x, surf_decision.y, 8)
+                    command = MovementCommand.drive_to_destination(
+                        self,
+                        surf_decision.x,
+                        surf_decision.y,
+                        8,
+                        "goto_surf",
+                        direction_update=surf_decision.direction or None,
+                    )
+                    self._apply_movement_command(command)
                     self._sample_status(
                         "movement.goto_surf",
                         target=target.bot_id,
@@ -599,16 +639,23 @@ class AdaptivePrime(Bot):
                         hit_bin=surf_decision.hit_bin,
                         hit_turn=surf_decision.hit_turn,
                         evade_direction=self._evade_direction,
-                        turn=round(turn, 2),
-                        speed=speed,
+                        turn=round(command.turn, 2),
+                        speed=command.speed,
                     )
-                    return "goto_surf", 0.0, flattening
+                    return command.mode, command.strafe_offset, flattening
             destination_x, destination_y, force_x, force_y, movement_mode = self._duel_potential_destination(
                 target,
                 distance,
                 evading,
             )
-            turn, speed = self._drive_to_destination(destination_x, destination_y, 8)
+            command = MovementCommand.drive_to_destination(
+                self,
+                destination_x,
+                destination_y,
+                8,
+                movement_mode,
+            )
+            self._apply_movement_command(command)
             self._sample_status(
                 "movement.duel_potential",
                 target=target.bot_id,
@@ -620,10 +667,10 @@ class AdaptivePrime(Bot):
                 mode=movement_mode,
                 evading=evading,
                 evade_direction=self._evade_direction,
-                turn=round(turn, 2),
-                speed=speed,
+                turn=round(command.turn, 2),
+                speed=command.speed,
             )
-            return movement_mode, 0.0, flattening
+            return command.mode, command.strafe_offset, flattening
 
         movement_mode, strafe_offset, move_speed = self._movement_command(target, distance, evading)
         flattening = self._movement.choose_direction(
@@ -632,7 +679,7 @@ class AdaptivePrime(Bot):
             body_bearing,
             strafe_offset,
             move_speed,
-            FIELD_MARGIN,
+            MOVEMENT_POLICY.field_margin,
             target.bot_id,
             distance,
             self._evade_direction,
@@ -642,7 +689,7 @@ class AdaptivePrime(Bot):
         )
         if flattening.changed:
             self._log(
-                "movement.flatten" if FLATTENER_ACTIVE else "movement.flatten_shadow",
+                "movement.flatten" if MOVEMENT_POLICY.flattener_active else "movement.flatten_shadow",
                 target=target.bot_id,
                 current_direction=self._evade_direction,
                 suggested_direction=flattening.direction,
@@ -651,33 +698,44 @@ class AdaptivePrime(Bot):
                 alternative_count=round(flattening.alternative_count, 1),
                 distance=round(distance, 1),
             )
-            if FLATTENER_ACTIVE:
+            if MOVEMENT_POLICY.flattener_active:
                 self._evade_direction = flattening.direction
 
-        self.target_speed = move_speed
-        self.set_turn_left(body_bearing + strafe_offset * self._evade_direction)
-        return movement_mode, strafe_offset, flattening
+        command = MovementCommand.strafe(
+            movement_mode,
+            body_bearing,
+            strafe_offset,
+            self._evade_direction,
+            move_speed,
+        )
+        self._apply_movement_command(command)
+        return command.mode, command.strafe_offset, flattening
+
+    def _apply_movement_command(self, command: MovementCommand) -> None:
+        if command.direction_update is not None:
+            self._evade_direction = command.direction_update
+        command.apply(self)
 
     def _movement_command(self, target: TargetSnapshot, distance: float, evading: bool) -> tuple[str, float, float]:
         if self._melee_round and self.enemy_count > 1:
             return self._melee_movement_command(target, distance, evading)
 
-        if target.energy <= FINISH_TARGET_ENERGY and distance > FINISH_DISTANCE:
-            return "finish_close", APPROACH_STRAFE_OFFSET, 8
+        if target.energy <= FIRE_POLICY.finish_target_energy and distance > FIRE_POLICY.finish_distance:
+            return "finish_close", MOVEMENT_POLICY.approach_strafe_offset, 8
 
-        if distance < CLOSE_RESET_DISTANCE:
-            return "reset_range", RETREAT_STRAFE_OFFSET, 7
+        if distance < MOVEMENT_POLICY.close_reset_distance:
+            return "reset_range", MOVEMENT_POLICY.retreat_strafe_offset, 7
 
-        if distance < PREFERRED_MIN_DISTANCE:
-            return "open_range", RETREAT_STRAFE_OFFSET, 7
+        if distance < MOVEMENT_POLICY.preferred_min_distance:
+            return "open_range", MOVEMENT_POLICY.retreat_strafe_offset, 7
 
-        if distance > PREFERRED_MAX_DISTANCE:
-            return "approach_orbit", APPROACH_STRAFE_OFFSET, 8
+        if distance > MOVEMENT_POLICY.preferred_max_distance:
+            return "approach_orbit", MOVEMENT_POLICY.approach_strafe_offset, 8
 
         if evading:
-            return "evade_orbit", EVADE_STRAFE_OFFSET, 7
+            return "evade_orbit", MOVEMENT_POLICY.evade_strafe_offset, 7
 
-        return "mid_orbit", ORBIT_STRAFE_OFFSET, 7
+        return "mid_orbit", MOVEMENT_POLICY.orbit_strafe_offset, 7
 
     def _duel_potential_destination(
         self,
@@ -697,27 +755,27 @@ class AdaptivePrime(Bot):
         force_y = 0.0
         mode = "duel_potential_orbit"
 
-        if distance < DUEL_PREFERRED_DISTANCE:
-            close_ratio = (DUEL_PREFERRED_DISTANCE - distance) / DUEL_PREFERRED_DISTANCE
-            repel = DUEL_ENEMY_REPEL_WEIGHT * (0.4 + close_ratio * close_ratio * 3.0)
-            if distance < DUEL_CRITICAL_DISTANCE:
+        if distance < DUEL_MOVEMENT_POLICY.preferred_distance:
+            close_ratio = (DUEL_MOVEMENT_POLICY.preferred_distance - distance) / DUEL_MOVEMENT_POLICY.preferred_distance
+            repel = DUEL_MOVEMENT_POLICY.enemy_repel_weight * (0.4 + close_ratio * close_ratio * 3.0)
+            if distance < DUEL_MOVEMENT_POLICY.critical_distance:
                 repel *= 2.0
                 mode = "duel_potential_panic"
-            elif distance < DUEL_MIN_DISTANCE:
+            elif distance < DUEL_MOVEMENT_POLICY.min_distance:
                 mode = "duel_potential_open_range"
             force_x += enemy_to_self_x * repel
             force_y += enemy_to_self_y * repel
-        elif distance > DUEL_MAX_DISTANCE:
-            far_ratio = min(1.0, (distance - DUEL_MAX_DISTANCE) / DUEL_MAX_DISTANCE)
-            attract = DUEL_RANGE_ATTRACT_WEIGHT * (0.35 + far_ratio)
+        elif distance > DUEL_MOVEMENT_POLICY.max_distance:
+            far_ratio = min(1.0, (distance - DUEL_MOVEMENT_POLICY.max_distance) / DUEL_MOVEMENT_POLICY.max_distance)
+            attract = DUEL_MOVEMENT_POLICY.range_attract_weight * (0.35 + far_ratio)
             force_x += self_to_enemy_x * attract
             force_y += self_to_enemy_y * attract
             mode = "duel_potential_reconnect"
 
-        orbit = DUEL_DODGE_ORBIT_WEIGHT if evading else DUEL_ORBIT_WEIGHT
-        if distance < DUEL_MIN_DISTANCE:
+        orbit = DUEL_MOVEMENT_POLICY.dodge_orbit_weight if evading else DUEL_MOVEMENT_POLICY.orbit_weight
+        if distance < DUEL_MOVEMENT_POLICY.min_distance:
             orbit *= 0.75
-        elif distance > DUEL_MAX_DISTANCE:
+        elif distance > DUEL_MOVEMENT_POLICY.max_distance:
             orbit *= 0.55
         force_x += tangent_x * orbit
         force_y += tangent_y * orbit
@@ -725,23 +783,23 @@ class AdaptivePrime(Bot):
         threat = self._active_fire_threat()
         if threat is not None and threat.bot_id == target.bot_id:
             fire_age = self.turn_number - self._recent_threat_turn
-            urgency = max(0.25, 1.0 - fire_age / max(1.0, THREAT_MEMORY_TURNS))
-            force_x += enemy_to_self_x * DUEL_THREAT_REPEL_WEIGHT * urgency
-            force_y += enemy_to_self_y * DUEL_THREAT_REPEL_WEIGHT * urgency
-            force_x += tangent_x * DUEL_DODGE_ORBIT_WEIGHT * urgency
-            force_y += tangent_y * DUEL_DODGE_ORBIT_WEIGHT * urgency
+            urgency = max(0.25, 1.0 - fire_age / max(1.0, TARGET_POLICY.threat_memory_turns))
+            force_x += enemy_to_self_x * DUEL_MOVEMENT_POLICY.threat_repel_weight * urgency
+            force_y += enemy_to_self_y * DUEL_MOVEMENT_POLICY.threat_repel_weight * urgency
+            force_x += tangent_x * DUEL_MOVEMENT_POLICY.dodge_orbit_weight * urgency
+            force_y += tangent_y * DUEL_MOVEMENT_POLICY.dodge_orbit_weight * urgency
             mode = "duel_potential_dodge"
 
         wall_force_x, wall_force_y = self._wall_potential_force()
         force_x += wall_force_x
         force_y += wall_force_y
 
-        if self._near_wall_margin(DUEL_CENTERING_MARGIN):
+        if self._near_wall_margin(DUEL_MOVEMENT_POLICY.centering_margin):
             center_x = self.arena_width / 2
             center_y = self.arena_height / 2
             center_distance = max(1.0, math.hypot(center_x - self.x, center_y - self.y))
-            force_x += (center_x - self.x) / center_distance * DUEL_CENTER_ATTRACT_WEIGHT
-            force_y += (center_y - self.y) / center_distance * DUEL_CENTER_ATTRACT_WEIGHT
+            force_x += (center_x - self.x) / center_distance * DUEL_MOVEMENT_POLICY.center_attract_weight
+            force_y += (center_y - self.y) / center_distance * DUEL_MOVEMENT_POLICY.center_attract_weight
 
         magnitude = math.hypot(force_x, force_y)
         if magnitude < 0.001:
@@ -749,10 +807,10 @@ class AdaptivePrime(Bot):
             force_y = tangent_y
             magnitude = 1.0
 
-        step = DUEL_POTENTIAL_STEP
-        if evading or distance < DUEL_MIN_DISTANCE:
+        step = DUEL_MOVEMENT_POLICY.potential_step
+        if evading or distance < DUEL_MOVEMENT_POLICY.min_distance:
             step += 45.0
-        if self._near_wall_margin(DUEL_CENTERING_MARGIN):
+        if self._near_wall_margin(DUEL_MOVEMENT_POLICY.centering_margin):
             step += 35.0
 
         destination_x = self.x + force_x / magnitude * step
@@ -766,11 +824,11 @@ class AdaptivePrime(Bot):
         bottom = max(1.0, self.y)
         top = max(1.0, self.arena_height - self.y)
 
-        force_x = DUEL_WALL_REPEL_WEIGHT * (
-            self._wall_axis_force(left, DUEL_WALL_MARGIN) - self._wall_axis_force(right, DUEL_WALL_MARGIN)
+        force_x = DUEL_MOVEMENT_POLICY.wall_repel_weight * (
+            self._wall_axis_force(left, DUEL_MOVEMENT_POLICY.wall_margin) - self._wall_axis_force(right, DUEL_MOVEMENT_POLICY.wall_margin)
         )
-        force_y = DUEL_WALL_REPEL_WEIGHT * (
-            self._wall_axis_force(bottom, DUEL_WALL_MARGIN) - self._wall_axis_force(top, DUEL_WALL_MARGIN)
+        force_y = DUEL_MOVEMENT_POLICY.wall_repel_weight * (
+            self._wall_axis_force(bottom, DUEL_MOVEMENT_POLICY.wall_margin) - self._wall_axis_force(top, DUEL_MOVEMENT_POLICY.wall_margin)
         )
         return force_x, force_y
 
@@ -781,7 +839,7 @@ class AdaptivePrime(Bot):
         return 0.35 + closeness * closeness * 4.0
 
     def _clamp_duel_destination(self, x: float, y: float) -> tuple[float, float]:
-        margin = DUEL_WALL_MARGIN
+        margin = DUEL_MOVEMENT_POLICY.wall_margin
         return (
             clamp(x, margin, self.arena_width - margin),
             clamp(y, margin, self.arena_height - margin),
@@ -801,22 +859,22 @@ class AdaptivePrime(Bot):
         distance: float,
         evading: bool,
     ) -> tuple[str, float, float]:
-        if target.energy <= MELEE_FINISH_TARGET_ENERGY and distance > FINISH_DISTANCE:
-            return "melee_finish_close", APPROACH_STRAFE_OFFSET, 8
+        if target.energy <= FIRE_POLICY.melee_finish_target_energy and distance > FIRE_POLICY.finish_distance:
+            return "melee_finish_close", MOVEMENT_POLICY.approach_strafe_offset, 8
 
-        if distance < MELEE_CLOSE_RESET_DISTANCE:
-            return "melee_reset_range", RETREAT_STRAFE_OFFSET, 7
+        if distance < MOVEMENT_POLICY.melee_close_reset_distance:
+            return "melee_reset_range", MOVEMENT_POLICY.retreat_strafe_offset, 7
 
-        if distance > MELEE_PRESSURE_MAX_DISTANCE:
-            return "melee_pressure_close", APPROACH_STRAFE_OFFSET, 8
+        if distance > MOVEMENT_POLICY.melee_pressure_max_distance:
+            return "melee_pressure_close", MOVEMENT_POLICY.approach_strafe_offset, 8
 
-        if distance < MELEE_PRESSURE_MIN_DISTANCE:
-            return "melee_open_range", ORBIT_STRAFE_OFFSET, 7
+        if distance < MOVEMENT_POLICY.melee_pressure_min_distance:
+            return "melee_open_range", MOVEMENT_POLICY.orbit_strafe_offset, 7
 
         if evading:
-            return "melee_evade_pressure", EVADE_STRAFE_OFFSET, 7
+            return "melee_evade_pressure", MOVEMENT_POLICY.evade_strafe_offset, 7
 
-        return "melee_pressure_orbit", APPROACH_STRAFE_OFFSET, 8
+        return "melee_pressure_orbit", MOVEMENT_POLICY.approach_strafe_offset, 8
 
     def _select_firepower(self, target: TargetSnapshot, distance: float) -> float:
         if self._melee_round and self.enemy_count > 1:
@@ -824,7 +882,7 @@ class AdaptivePrime(Bot):
 
         if self.energy <= 18:
             return 0.8 if distance < 260 else 0.6
-        if target.energy <= FINISH_TARGET_ENERGY and distance < 320:
+        if target.energy <= FIRE_POLICY.finish_target_energy and distance < 320:
             return min(2.2, max(0.6, target.energy / 3.5 + 0.2))
 
         gun_score, gun_visits = self._gun.target_confidence(target.bot_id)
@@ -845,7 +903,7 @@ class AdaptivePrime(Bot):
     def _select_melee_firepower(self, target: TargetSnapshot, distance: float) -> float:
         if self.energy <= 16:
             return 0.8 if distance < 220 else 0.6
-        if target.energy <= MELEE_FINISH_TARGET_ENERGY and distance < 260:
+        if target.energy <= FIRE_POLICY.melee_finish_target_energy and distance < 260:
             return min(2.2, max(0.8, target.energy / 3.2 + 0.2))
 
         gun_score, gun_visits = self._gun.target_confidence(target.bot_id)
@@ -895,22 +953,22 @@ class AdaptivePrime(Bot):
             )
 
     def _set_lost_target_radar(self, radar_bearing: float, age: int) -> tuple[float, str]:
-        if abs(radar_bearing) > RADAR_REACQUIRE_MIN_ERROR:
+        if abs(radar_bearing) > RADAR_POLICY.reacquire_min_error:
             overshoot = min(
-                RADAR_REACQUIRE_MAX_OVERSHOOT,
-                RADAR_REACQUIRE_OVERSHOOT + age * RADAR_REACQUIRE_WIDEN_PER_TURN,
+                RADAR_POLICY.reacquire_max_overshoot,
+                RADAR_POLICY.reacquire_overshoot + age * RADAR_POLICY.reacquire_widen_per_turn,
             )
             direction = 1 if radar_bearing > 0 else -1
             radar_turn = clamp(
                 radar_bearing + overshoot * direction,
-                -RADAR_LOST_SWEEP_RATE,
-                RADAR_LOST_SWEEP_RATE,
+                -RADAR_POLICY.lost_sweep_rate,
+                RADAR_POLICY.lost_sweep_rate,
             )
             self._radar_sweep_direction = direction
             self.set_turn_radar_left(radar_turn)
             return radar_turn, "cached_bearing"
 
-        radar_turn = RADAR_LOST_SWEEP_RATE * self._radar_sweep_direction
+        radar_turn = RADAR_POLICY.lost_sweep_rate * self._radar_sweep_direction
         self.set_turn_radar_left(radar_turn)
         return radar_turn, "widen"
 
@@ -946,8 +1004,7 @@ class AdaptivePrime(Bot):
     def _drop_lost_target(self, target: TargetSnapshot, age: int, distance: float) -> None:
         self._targets.pop(target.bot_id, None)
         self._movement.remove_target(target.bot_id, clear_profile=False)
-        self._enemy_gun_heat.remove_target(target.bot_id)
-        self._last_enemy_power_prediction.pop(target.bot_id, None)
+        self._enemy_fire_detector.remove_target(target.bot_id)
         if self._target_id == target.bot_id:
             self._target_id = None
         self._search()
@@ -962,11 +1019,7 @@ class AdaptivePrime(Bot):
         )
 
     def _forget_stale_targets(self) -> None:
-        stale_ids = [
-            bot_id
-            for bot_id, target in self._targets.items()
-            if self.turn_number - target.seen_turn > TARGET_MEMORY_TURNS
-        ]
+        stale_ids = self._targets.stale_ids(self.turn_number, TARGET_POLICY.memory_turns)
         for bot_id in stale_ids:
             self._log("target.stale", bot_id=bot_id)
             del self._targets[bot_id]
@@ -975,26 +1028,25 @@ class AdaptivePrime(Bot):
             self._target_id = None
 
     def _select_target(self) -> TargetSnapshot | None:
-        if not self._targets:
+        selection = self._target_selector.select(
+            self._targets,
+            self._target_id,
+            self.turn_number,
+            self._target_score,
+        )
+        if selection is None:
             self._target_id = None
             return None
 
-        previous_id = self._target_id
-        fresh_targets = [
-            target
-            for target in self._targets.values()
-            if self.turn_number - target.seen_turn <= REACQUIRE_TARGET_TURNS
-        ]
-        candidates = fresh_targets if fresh_targets else list(self._targets.values())
-        target = min(candidates, key=self._target_score)
+        target = selection.target
         self._target_id = target.bot_id
-        if previous_id != target.bot_id:
+        if selection.changed:
             self._log(
                 "target.select",
-                previous=previous_id,
+                previous=selection.previous_id,
                 selected=target.bot_id,
-                score=round(self._target_score(target), 1),
-                fresh_candidates=len(fresh_targets),
+                score=round(selection.score, 1),
+                fresh_candidates=selection.fresh_candidates,
                 known_targets=len(self._targets),
             )
         return target
@@ -1004,34 +1056,35 @@ class AdaptivePrime(Bot):
         age = self.turn_number - target.seen_turn
         threat_is_fresh = (
             target.bot_id == self._recent_threat_id
-            and self.turn_number - self._recent_threat_turn <= THREAT_MEMORY_TURNS
+            and self.turn_number - self._recent_threat_turn <= TARGET_POLICY.threat_memory_turns
         )
         if self._melee_round and self.enemy_count > 1:
-            current_bonus = MELEE_CURRENT_TARGET_BONUS if target.bot_id == self._target_id else 0
-            recent_threat_bonus = MELEE_RECENT_THREAT_BONUS if threat_is_fresh else 0
+            current_bonus = TARGET_POLICY.melee_current_target_bonus if target.bot_id == self._target_id else 0
+            recent_threat_bonus = TARGET_POLICY.melee_recent_threat_bonus if threat_is_fresh else 0
             return distance * 0.45 + target.energy * 2.0 + age * 92 - current_bonus - recent_threat_bonus
 
-        current_bonus = CURRENT_TARGET_BONUS if target.bot_id == self._target_id else 0
-        recent_threat_bonus = RECENT_THREAT_BONUS if threat_is_fresh else 0
+        current_bonus = TARGET_POLICY.current_target_bonus if target.bot_id == self._target_id else 0
+        recent_threat_bonus = TARGET_POLICY.recent_threat_bonus if threat_is_fresh else 0
         return distance * 0.7 + target.energy * 2.5 + age * 60 - current_bonus - recent_threat_bonus
 
     def _active_fire_threat(self) -> TargetSnapshot | None:
-        if self._recent_threat_id is None:
-            return None
-        if self.turn_number - self._recent_threat_turn > THREAT_MEMORY_TURNS:
-            return None
-        return self._targets.get(self._recent_threat_id)
+        return self._targets.active_fire_threat(
+            self._recent_threat_id,
+            self._recent_threat_turn,
+            self.turn_number,
+            TARGET_POLICY.threat_memory_turns,
+        )
 
     def _record_enemy_energy_correction(self, target_id: int, correction: float, reason: str) -> None:
-        self._enemy_energy_corrections.record(target_id, self.turn_number, correction, reason)
+        self._enemy_fire_detector.record_correction(target_id, self.turn_number, correction, reason)
 
     def _consume_enemy_energy_correction(self, target_id: int, current_turn: int, after_turn: int) -> float:
-        return self._enemy_energy_corrections.consume(target_id, current_turn, after_turn)
+        return self._enemy_fire_detector.consume_correction(target_id, current_turn, after_turn)
 
     def _search(self) -> None:
         self._set_search_movement()
         self._set_gun_for_search()
-        self.radar_turn_rate = RADAR_SEARCH_RATE
+        self.radar_turn_rate = RADAR_POLICY.search_rate
 
     def _drive_to_destination(self, x: float, y: float, speed: float) -> tuple[float, float]:
         return drive_to_destination(self, x, y, speed)
@@ -1039,14 +1092,14 @@ class AdaptivePrime(Bot):
     def _set_gun_for_search(self) -> None:
         gun_to_radar = ((self.radar_direction - self.gun_direction + 180) % 360) - 180
         if abs(gun_to_radar) > 5:
-            self.set_turn_gun_left(clamp(gun_to_radar, -GUN_SEARCH_RATE, GUN_SEARCH_RATE))
+            self.set_turn_gun_left(clamp(gun_to_radar, -RADAR_POLICY.gun_search_rate, RADAR_POLICY.gun_search_rate))
         else:
-            self.gun_turn_rate = GUN_SEARCH_RATE * self._radar_sweep_direction
+            self.gun_turn_rate = RADAR_POLICY.gun_search_rate * self._radar_sweep_direction
 
     def _set_search_movement(self) -> None:
         if self._near_wall() or self._wall_risk(6):
             center_bearing = bearing_to(self, self.arena_width / 2, self.arena_height / 2, self.direction)
-            self.target_speed = WALL_ESCAPE_SPEED
+            self.target_speed = MOVEMENT_POLICY.wall_escape_speed
             self.set_turn_left(clamp(center_bearing, -35, 35))
             self._sample_status(
                 "search.wall_avoid",
@@ -1063,35 +1116,35 @@ class AdaptivePrime(Bot):
 
     def _wall_risk(self, speed: float) -> bool:
         heading = math.radians(self.direction)
-        projected_x = self.x + math.cos(heading) * speed * WALL_LOOKAHEAD_TICKS
-        projected_y = self.y + math.sin(heading) * speed * WALL_LOOKAHEAD_TICKS
+        projected_x = self.x + math.cos(heading) * speed * MOVEMENT_POLICY.wall_lookahead_ticks
+        projected_y = self.y + math.sin(heading) * speed * MOVEMENT_POLICY.wall_lookahead_ticks
         return (
-            projected_x < WALL_MARGIN
-            or projected_x > self.arena_width - WALL_MARGIN
-            or projected_y < WALL_MARGIN
-            or projected_y > self.arena_height - WALL_MARGIN
+            projected_x < MOVEMENT_POLICY.wall_margin
+            or projected_x > self.arena_width - MOVEMENT_POLICY.wall_margin
+            or projected_y < MOVEMENT_POLICY.wall_margin
+            or projected_y > self.arena_height - MOVEMENT_POLICY.wall_margin
         )
 
     def _near_wall(self) -> bool:
         return (
-            self.x < WALL_MARGIN
-            or self.x > self.arena_width - WALL_MARGIN
-            or self.y < WALL_MARGIN
-            or self.y > self.arena_height - WALL_MARGIN
+            self.x < MOVEMENT_POLICY.wall_margin
+            or self.x > self.arena_width - MOVEMENT_POLICY.wall_margin
+            or self.y < MOVEMENT_POLICY.wall_margin
+            or self.y > self.arena_height - MOVEMENT_POLICY.wall_margin
         )
 
     def on_hit_wall(self, event: HitWallEvent) -> None:
         self._evade_direction *= -1
-        self._evade_until_turn = self.turn_number + EVADE_TURNS
+        self._evade_until_turn = self.turn_number + MOVEMENT_POLICY.evade_turns
         center_bearing = bearing_to(self, self.arena_width / 2, self.arena_height / 2, self.direction)
-        self.target_speed = WALL_ESCAPE_SPEED
+        self.target_speed = MOVEMENT_POLICY.wall_escape_speed
         self.set_turn_left(clamp(center_bearing, -35, 35))
         self._log("hit.wall", evade_direction=self._evade_direction, center_bearing=round(center_bearing, 2))
 
     def on_hit_by_bullet(self, event: HitByBulletEvent) -> None:
         if not self._wall_risk(8):
             self._evade_direction *= -1
-        self._evade_until_turn = self.turn_number + EVADE_TURNS
+        self._evade_until_turn = self.turn_number + MOVEMENT_POLICY.evade_turns
         movement_visit = None
         if not self._melee_round:
             movement_visit = self._movement.record_bullet_hit(
@@ -1137,7 +1190,7 @@ class AdaptivePrime(Bot):
         if not self._melee_round:
             self._target_id = event.victim_id
         self._evade_direction *= -1
-        self._evade_until_turn = self.turn_number + EVADE_TURNS
+        self._evade_until_turn = self.turn_number + MOVEMENT_POLICY.evade_turns
         self.target_speed = -4
         contact_distance = distance_to(self, event.x, event.y)
         self._log(

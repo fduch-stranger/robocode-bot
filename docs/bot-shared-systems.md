@@ -41,6 +41,11 @@ Bots use target age for:
 - target scoring
 - telemetry interpretation
 
+`bot_core.targeting.TargetMemory` is the shared cache wrapper for stale-target
+queries, fresh-target iteration, and recent fire-threat lookup. Target selection
+uses `TargetSelector` with a bot-provided scoring function so bot personality
+stays local while reacquire behavior stays consistent.
+
 ## Radar
 
 Radar helpers live in `bot_core.radar`.
@@ -73,6 +78,10 @@ The selected mode is reported as `aim_mode`.
 Gun selection is sticky. A different mode must have enough visits and beat the
 current score by a margin before the bot switches. A first `gun.switch` event
 with `previous=null` is an initial selection, not real churn.
+
+`VirtualGunSystem` remains the compatibility facade. Internally, wave storage,
+virtual-gun scoring, and aim-mode switching are isolated in `GunWaveTracker`,
+`VirtualGunScorer`, and `AimModeSelector`.
 
 ## Gun Learning
 
@@ -127,6 +136,9 @@ Detected fire creates:
 Expected fire can also be generated from gun heat when the enemy is likely ready
 to shoot again. The exact energy-drop correction and sample fields are described
 in [Bot Core Data Structures](bot-core-data-structures.md#enemy-fire-prediction).
+`EnemyFireDetector` owns the common correction, classification, gun-heat, and
+fire-power sample update sequence; bots still own movement-wave creation and
+evasion policy.
 
 ## Movement Learning
 
@@ -147,6 +159,13 @@ for unvisited bins. The exact approximation is in
 [Bot Core Data Structures](bot-core-data-structures.md#movement-wave-and-profile).
 Flattening compares current lateral danger against the opposite direction and
 switches when the opposite side is meaningfully safer.
+
+`MovementFlattener` remains the facade used by bots. Internally, wave storage,
+profile bins, danger scoring, and go-to surfing are split into
+`MovementWaveStore`, `MovementProfile`, `MovementDangerModel`, and
+`SurfingPlanner`. Movement command output can be represented as
+`MovementCommand` so strategy selection can be tested separately from live bot
+API calls.
 
 ## Minimum Risk Movement
 

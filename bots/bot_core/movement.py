@@ -1,10 +1,10 @@
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from robocode_tank_royale.bot_api import Bot
 
 from bot_core.physics import MAX_ROBOT_SPEED, RobotMovementState, bullet_speed_for_power, predict_robot_movement
-from bot_core.tank_math import TargetSnapshot, clamp
+from bot_core.tank_math import TargetSnapshot, clamp, drive_command_to_destination
 from bot_core.wave_math import guess_factor_from_offset, wall_limited_escape_angle_from_state
 
 
@@ -59,6 +59,60 @@ class FlatteningDecision:
     bucket: int
     current_count: float
     alternative_count: float
+
+
+@dataclass(frozen=True)
+class MovementCommand:
+    mode: str
+    turn: float
+    speed: float
+    strafe_offset: float = 0.0
+    telemetry_fields: dict[str, object] = field(default_factory=dict)
+    direction_update: int | None = None
+
+    @classmethod
+    def strafe(
+        cls,
+        mode: str,
+        body_bearing: float,
+        strafe_offset: float,
+        direction: int,
+        speed: float,
+        **telemetry_fields: object,
+    ) -> "MovementCommand":
+        return cls(
+            mode=mode,
+            turn=body_bearing + strafe_offset * direction,
+            speed=speed,
+            strafe_offset=strafe_offset,
+            telemetry_fields=telemetry_fields,
+        )
+
+    @classmethod
+    def drive_to_destination(
+        cls,
+        bot: Bot,
+        x: float,
+        y: float,
+        speed: float,
+        mode: str,
+        strafe_offset: float = 0.0,
+        direction_update: int | None = None,
+        **telemetry_fields: object,
+    ) -> "MovementCommand":
+        turn, target_speed = drive_command_to_destination(bot, x, y, speed)
+        return cls(
+            mode=mode,
+            turn=turn,
+            speed=target_speed,
+            strafe_offset=strafe_offset,
+            telemetry_fields=telemetry_fields,
+            direction_update=direction_update,
+        )
+
+    def apply(self, bot: Bot) -> None:
+        bot.target_speed = self.speed
+        bot.set_turn_left(self.turn)
 
 
 @dataclass(frozen=True)
@@ -297,6 +351,131 @@ class MovementStatsBufferSet:
     def remove_target(self, target_id: int) -> None:
         for buffer in self._buffers:
             buffer.remove_target(target_id)
+
+
+class MovementWaveStore:
+    def __init__(self) -> None:
+        self.waves: list[MovementWave] = []
+
+    def add(self, wave: MovementWave) -> None:
+        self.waves.append(wave)
+
+    def replace(self, waves: list[MovementWave]) -> None:
+        self.waves[:] = waves
+
+    def remove(self, wave: MovementWave) -> None:
+        self.replace([candidate for candidate in self.waves if candidate is not wave])
+
+    def remove_target(self, target_id: int) -> None:
+        self.replace([wave for wave in self.waves if wave.target_id != target_id])
+
+    def remove_recent_expected(self, target_id: int, turn_number: int, max_age: int) -> None:
+        self.replace(
+            [
+                wave
+                for wave in self.waves
+                if not (
+                    wave.target_id == target_id
+                    and wave.kind == "expected"
+                    and 0 <= turn_number - wave.fired_turn <= max_age
+                )
+            ]
+        )
+
+    def for_target(self, target_id: int) -> list[MovementWave]:
+        return [wave for wave in self.waves if wave.target_id == target_id]
+
+    def matching_target_speed(self, target_id: int, bullet_speed: float, tolerance: float) -> list[MovementWave]:
+        return [
+            wave
+            for wave in self.waves
+            if wave.target_id == target_id and abs(wave.bullet_speed - bullet_speed) <= tolerance
+        ]
+
+    def clear_round_state(self) -> None:
+        self.waves.clear()
+
+
+class MovementProfile:
+    def __init__(self, config: MovementFlatteningConfig) -> None:
+        self.config = config
+        self.profile: dict[tuple[int, int, int], float] = {}
+        self.stats_buffers = MovementStatsBufferSet(config)
+
+    def record(self, wave: MovementWave, bin_index: int, weight: float) -> float:
+        key = (wave.target_id, wave.distance_bucket, bin_index)
+        self.profile[key] = self.profile.get(key, 0.0) + weight
+        self.stats_buffers.record(wave, bin_index, weight)
+        self._decay_if_needed(wave.target_id)
+        return self.profile[key]
+
+    def smoothed_count(self, target_id: int, bucket: int, bin_index: int) -> float:
+        score = 0.0
+        for offset, weight in ((0, 1.0), (-1, 0.55), (1, 0.55), (-2, 0.25), (2, 0.25)):
+            neighbor = bin_index + offset
+            if 0 <= neighbor < self.config.bin_count:
+                score += self.profile.get((target_id, bucket, neighbor), 0.0) * weight
+        return score
+
+    def remove_target(self, target_id: int) -> None:
+        for key in list(self.profile):
+            if key[0] == target_id:
+                del self.profile[key]
+        self.stats_buffers.remove_target(target_id)
+
+    def _decay_if_needed(self, target_id: int) -> None:
+        total = sum(value for key, value in self.profile.items() if key[0] == target_id)
+        if total <= self.config.profile_decay_after:
+            return
+        for key in list(self.profile):
+            if key[0] == target_id:
+                self.profile[key] *= 0.5
+
+
+class MovementDangerModel:
+    def __init__(self, config: MovementFlatteningConfig, profile: MovementProfile) -> None:
+        self.config = config
+        self.profile = profile
+
+    def breakdown(self, wave: MovementWave, bin_index: int) -> MovementDangerBreakdown:
+        profile_danger = self.profile.smoothed_count(wave.target_id, wave.distance_bucket, bin_index)
+        ensemble = self.profile.stats_buffers.danger(wave, bin_index)
+        ensemble_confidence = clamp(
+            ensemble.samples / max(1.0, self.config.stats_buffer_max_effective_samples),
+            0.0,
+            1.0,
+        )
+        ensemble_weight = self.config.stats_buffer_weight * ensemble_confidence
+        ensemble_delta = max(0.0, ensemble.danger - profile_danger)
+        learned_danger = profile_danger + ensemble_delta * ensemble_weight
+        return MovementDangerBreakdown(
+            profile_danger=profile_danger,
+            ensemble_danger=ensemble.danger,
+            ensemble_samples=ensemble.samples,
+            ensemble_weight=ensemble_weight,
+            total_danger=learned_danger + self.config.unvisited_bin_danger,
+        )
+
+
+class SurfingPlanner:
+    def __init__(self, config: MovementFlatteningConfig, wave_store: MovementWaveStore) -> None:
+        self.config = config
+        self.wave_store = wave_store
+
+    def surf_wave(self, bot: Bot, target_id: int) -> MovementWave | None:
+        candidates = self.wave_store.for_target(target_id)
+        if not candidates:
+            return None
+
+        def remaining_distance(wave: MovementWave) -> float:
+            radius = wave.bullet_speed * max(0, bot.turn_number - wave.fired_turn)
+            distance = math.hypot(bot.x - wave.source_x, bot.y - wave.source_y)
+            return distance - radius
+
+        incoming = [wave for wave in candidates if remaining_distance(wave) > -self.config.surf_intercept_margin]
+        if incoming:
+            return min(incoming, key=remaining_distance)
+        return max(candidates, key=lambda wave: wave.fired_turn)
 
 
 @dataclass(frozen=True)
@@ -545,9 +724,13 @@ class MinimumRiskMovement:
 class MovementFlattener:
     def __init__(self, config: MovementFlatteningConfig | None = None) -> None:
         self.config = config or MovementFlatteningConfig()
-        self._profile: dict[tuple[int, int, int], float] = {}
-        self._stats_buffers = MovementStatsBufferSet(self.config)
-        self._waves: list[MovementWave] = []
+        self._wave_store = MovementWaveStore()
+        self._profile_store = MovementProfile(self.config)
+        self._danger_model = MovementDangerModel(self.config, self._profile_store)
+        self._surfing = SurfingPlanner(self.config, self._wave_store)
+        self._profile = self._profile_store.profile
+        self._stats_buffers = self._profile_store.stats_buffers
+        self._waves = self._wave_store.waves
         self._shadow_bullets: list[ShadowBullet] = []
         self._last_switch_turn: dict[int, int] = {}
 
@@ -595,15 +778,7 @@ class MovementFlattener:
             return None
 
         if wave_kind == "confirmed":
-            self._waves = [
-                wave
-                for wave in self._waves
-                if not (
-                    wave.target_id == target.bot_id
-                    and wave.kind == "expected"
-                    and 0 <= bot.turn_number - wave.fired_turn <= 4
-                )
-            ]
+            self._wave_store.remove_recent_expected(target.bot_id, bot.turn_number, 4)
 
         bullet_speed = bullet_speed_for_power(fire_power)
         wave_lateral_direction = self._lateral_direction(bot, target) or 1
@@ -649,14 +824,14 @@ class MovementFlattener:
             expected_confidence=clamp(expected_confidence, 0.0, 1.0),
             features=features,
         )
-        self._waves.append(wave)
+        self._wave_store.add(wave)
         return wave
 
     def update(self, bot: Bot) -> list[MovementProfileVisit]:
         self._expire_shadow_bullets(bot)
         visits: list[MovementProfileVisit] = []
         remaining_waves: list[MovementWave] = []
-        for wave in self._waves:
+        for wave in self._wave_store.waves:
             wave_age = bot.turn_number - wave.fired_turn
             if wave_age < 1:
                 remaining_waves.append(wave)
@@ -684,19 +859,15 @@ class MovementFlattener:
                     ensemble_samples=danger.ensemble_samples,
                 )
             )
-        self._waves = remaining_waves
+        self._wave_store.replace(remaining_waves)
         return visits
 
     def record_bullet_hit(self, bot: Bot, target_id: int, bullet_power: float) -> MovementProfileVisit | None:
-        if not self._waves:
+        if not self._wave_store.waves:
             return None
 
         bullet_speed = bullet_speed_for_power(bullet_power)
-        candidates = [
-            wave
-            for wave in self._waves
-            if wave.target_id == target_id and abs(wave.bullet_speed - bullet_speed) <= 1.2
-        ]
+        candidates = self._wave_store.matching_target_speed(target_id, bullet_speed, 1.2)
         if not candidates:
             return None
 
@@ -714,7 +885,7 @@ class MovementFlattener:
         bin_index = self._bin_index(guess_factor)
         visits = self._record_visit(wave, bin_index, self.config.bullet_hit_visit_weight)
         danger = self._danger_breakdown(wave, bin_index)
-        self._waves = [candidate for candidate in self._waves if candidate is not wave]
+        self._wave_store.remove(wave)
         return MovementProfileVisit(
             target_id=wave.target_id,
             guess_factor=guess_factor,
@@ -855,15 +1026,14 @@ class MovementFlattener:
         )
 
     def clear_round_state(self) -> None:
-        self._waves.clear()
+        self._wave_store.clear_round_state()
         self._shadow_bullets.clear()
         self._last_switch_turn.clear()
 
     def remove_target(self, target_id: int, clear_profile: bool = True) -> None:
-        self._waves = [wave for wave in self._waves if wave.target_id != target_id]
+        self._wave_store.remove_target(target_id)
         if clear_profile:
-            self._profile = {key: value for key, value in self._profile.items() if key[0] != target_id}
-            self._stats_buffers.remove_target(target_id)
+            self._profile_store.remove_target(target_id)
         self._last_switch_turn.pop(target_id, None)
 
     def _decision(
@@ -893,19 +1063,10 @@ class MovementFlattener:
         return self._smoothed_count(target_id, bucket, offset_bin)
 
     def _decay_if_needed(self, target_id: int) -> None:
-        total = sum(value for key, value in self._profile.items() if key[0] == target_id)
-        if total <= self.config.profile_decay_after:
-            return
-        for key in list(self._profile):
-            if key[0] == target_id:
-                self._profile[key] *= 0.5
+        self._profile_store._decay_if_needed(target_id)
 
     def _record_visit(self, wave: MovementWave, bin_index: int, weight: float) -> float:
-        key = (wave.target_id, wave.distance_bucket, bin_index)
-        self._profile[key] = self._profile.get(key, 0.0) + weight
-        self._stats_buffers.record(wave, bin_index, weight)
-        self._decay_if_needed(wave.target_id)
-        return self._profile[key]
+        return self._profile_store.record(wave, bin_index, weight)
 
     def _wave_features(
         self,
@@ -943,25 +1104,13 @@ class MovementFlattener:
         return 2
 
     def _best_wave(self, target_id: int) -> MovementWave | None:
-        candidates = [wave for wave in self._waves if wave.target_id == target_id]
+        candidates = self._wave_store.for_target(target_id)
         if not candidates:
             return None
         return max(candidates, key=lambda wave: wave.fired_turn)
 
     def _surf_wave(self, bot: Bot, target_id: int) -> MovementWave | None:
-        candidates = [wave for wave in self._waves if wave.target_id == target_id]
-        if not candidates:
-            return None
-
-        def remaining_distance(wave: MovementWave) -> float:
-            radius = wave.bullet_speed * max(0, bot.turn_number - wave.fired_turn)
-            distance = math.hypot(bot.x - wave.source_x, bot.y - wave.source_y)
-            return distance - radius
-
-        incoming = [wave for wave in candidates if remaining_distance(wave) > -self.config.surf_intercept_margin]
-        if incoming:
-            return min(incoming, key=remaining_distance)
-        return max(candidates, key=lambda wave: wave.fired_turn)
+        return self._surfing.surf_wave(bot, target_id)
 
     def _candidate_score(
         self,
@@ -1224,23 +1373,7 @@ class MovementFlattener:
         return danger
 
     def _danger_breakdown(self, wave: MovementWave, bin_index: int) -> MovementDangerBreakdown:
-        profile_danger = self._smoothed_count(wave.target_id, wave.distance_bucket, bin_index)
-        ensemble = self._stats_buffers.danger(wave, bin_index)
-        ensemble_confidence = clamp(
-            ensemble.samples / max(1.0, self.config.stats_buffer_max_effective_samples),
-            0.0,
-            1.0,
-        )
-        ensemble_weight = self.config.stats_buffer_weight * ensemble_confidence
-        ensemble_delta = max(0.0, ensemble.danger - profile_danger)
-        learned_danger = profile_danger + ensemble_delta * ensemble_weight
-        return MovementDangerBreakdown(
-            profile_danger=profile_danger,
-            ensemble_danger=ensemble.danger,
-            ensemble_samples=ensemble.samples,
-            ensemble_weight=ensemble_weight,
-            total_danger=learned_danger + self.config.unvisited_bin_danger,
-        )
+        return self._danger_model.breakdown(wave, bin_index)
 
     def _has_bullet_shadow(self, bot: Bot, wave: MovementWave, bin_index: int) -> bool:
         if not self.config.bullet_shadow_enabled or not self._shadow_bullets:
@@ -1326,12 +1459,7 @@ class MovementFlattener:
         )
 
     def _smoothed_count(self, target_id: int, bucket: int, bin_index: int) -> float:
-        score = 0.0
-        for offset, weight in ((0, 1.0), (-1, 0.55), (1, 0.55), (-2, 0.25), (2, 0.25)):
-            neighbor = bin_index + offset
-            if 0 <= neighbor < self.config.bin_count:
-                score += self._profile.get((target_id, bucket, neighbor), 0.0) * weight
-        return score
+        return self._profile_store.smoothed_count(target_id, bucket, bin_index)
 
     def _bin_index(self, guess_factor: float) -> int:
         normalized = clamp((guess_factor + 1.0) / 2.0, 0.0, 1.0)

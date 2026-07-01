@@ -1,6 +1,37 @@
 import unittest
 
-from bot_core.gun import GunConfig, GunSample, RollingKnnBuffer, VirtualGunSystem
+from bot_core.gun import (
+    AimModeSelector,
+    GunConfig,
+    GunSample,
+    GunStats,
+    GunWave,
+    GunWaveTracker,
+    RollingKnnBuffer,
+    VirtualGunScorer,
+    VirtualGunSystem,
+)
+
+
+def make_wave(target_id: int = 1, fire_turn: int = 0, aim_mode: str = "linear") -> GunWave:
+    return GunWave(
+        source_x=100.0,
+        source_y=100.0,
+        fire_turn=fire_turn,
+        fire_bearing=0.0,
+        target_id=target_id,
+        bullet_power=2.0,
+        bullet_speed=14.0,
+        max_escape_angle=30.0,
+        max_escape_angle_positive=30.0,
+        max_escape_angle_negative=30.0,
+        lateral_direction=1,
+        features=(0.0,) * 7,
+        segment_key=(0, 0, 0, 0, 0, 0),
+        aim_mode=aim_mode,
+        aim_guess_factor=None,
+        virtual_bearings={"linear": 0.0, "dynamic_cluster": 1.0},
+    )
 
 
 class GunStatsTest(unittest.TestCase):
@@ -31,6 +62,52 @@ class GunStatsTest(unittest.TestCase):
 
         self.assertAlmostEqual(0.5, buffer.decayed_weight(buffer.samples_for(1)[0], 100, 100.0))
         self.assertAlmostEqual(1.5, buffer.effective_count(1, 100, 100.0))
+
+    def test_gun_wave_tracker_records_pending_fire_and_trims_old_waves(self) -> None:
+        waves = [make_wave(fire_turn=0), make_wave(fire_turn=1)]
+        tracker = GunWaveTracker(GunConfig(max_waves=2), waves)
+        pending = make_wave(fire_turn=2)
+
+        tracker.set_pending_wave(pending)
+        recorded = tracker.record_pending_fire()
+
+        self.assertIs(pending, recorded)
+        self.assertIsNone(tracker.pending_wave)
+        self.assertEqual([1, 2], [wave.fire_turn for wave in waves])
+
+    def test_virtual_gun_scorer_updates_global_and_segment_scores(self) -> None:
+        stats: dict[tuple[int, str], GunStats] = {}
+        segment_stats: dict[tuple[int, str, tuple[int, ...]], GunStats] = {}
+        scorer = VirtualGunScorer(GunConfig(score_alpha=0.5), stats, segment_stats)
+        wave = make_wave()
+
+        scores = scorer.score_virtual_guns(wave, actual_bearing=0.0, target_distance=300.0)
+
+        self.assertEqual(1.0, scores["linear"])
+        self.assertEqual(1, stats[(1, "linear")].visits)
+        self.assertEqual(1, stats[(1, "linear")].hits)
+        self.assertEqual(1, segment_stats[(1, "linear", wave.segment_key)].visits)
+
+    def test_aim_mode_selector_respects_visit_and_score_thresholds(self) -> None:
+        config = GunConfig(min_visits=2, min_switch_score=0.25, switch_margin=0.05)
+        stats = {
+            (1, "linear"): GunStats(visits=3, hits=1, rolling_score=0.2),
+            (1, "dynamic_cluster"): GunStats(visits=1, hits=1, rolling_score=1.0),
+        }
+        scorer = VirtualGunScorer(config, stats, {})
+        active_modes = {1: "linear"}
+        selector = AimModeSelector(config, scorer, active_modes, stats)
+
+        selected, previous, changed = selector.select(1, {"linear": 0.0, "dynamic_cluster": 1.0}, None)
+        self.assertEqual("linear", selected)
+        self.assertEqual("linear", previous)
+        self.assertFalse(changed)
+
+        stats[(1, "dynamic_cluster")].visits = 2
+        selected, previous, changed = selector.select(1, {"linear": 0.0, "dynamic_cluster": 1.0}, None)
+        self.assertEqual("dynamic_cluster", selected)
+        self.assertEqual("linear", previous)
+        self.assertTrue(changed)
 
     def test_dynamic_cluster_requires_recent_effective_samples(self) -> None:
         gun = VirtualGunSystem(

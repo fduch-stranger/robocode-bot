@@ -200,6 +200,186 @@ class RollingKnnBuffer:
                 del self._samples_by_target[oldest_target]
 
 
+class GunWaveTracker:
+    def __init__(self, config: GunConfig, waves: list[GunWave]) -> None:
+        self.config = config
+        self.waves = waves
+        self.pending_wave: GunWave | None = None
+
+    def set_pending_wave(self, wave: GunWave) -> None:
+        self.pending_wave = wave
+
+    def record_pending_fire(self) -> GunWave | None:
+        wave = self.pending_wave
+        if wave is None:
+            return None
+        self.waves.append(wave)
+        if len(self.waves) > self.config.max_waves:
+            del self.waves[: len(self.waves) - self.config.max_waves]
+        self.pending_wave = None
+        return wave
+
+    def replace(self, waves: list[GunWave]) -> None:
+        self.waves[:] = waves[-self.config.max_waves :]
+
+    def clear_round_state(self) -> None:
+        self.waves.clear()
+        self.pending_wave = None
+
+    def remove_target(self, target_id: int) -> None:
+        self.waves[:] = [wave for wave in self.waves if wave.target_id != target_id]
+
+
+class VirtualGunScorer:
+    def __init__(
+        self,
+        config: GunConfig,
+        stats: dict[tuple[int, str], GunStats],
+        segment_stats: dict[tuple[int, str, tuple[int, ...]], GunStats],
+    ) -> None:
+        self.config = config
+        self.stats = stats
+        self.segment_stats = segment_stats
+
+    def score_virtual_guns(
+        self,
+        wave: GunWave,
+        actual_bearing: float,
+        target_distance: float,
+    ) -> dict[str, float]:
+        hit_angle = math.degrees(math.atan2(self.config.virtual_hit_radius, max(1.0, target_distance)))
+        scores: dict[str, float] = {}
+        for mode, aim_bearing in wave.virtual_bearings.items():
+            error = abs(relative_bearing(actual_bearing, aim_bearing))
+            score = max(0.0, 1.0 - error / max(hit_angle, 0.1))
+            self.update_stats(self.stats.setdefault((wave.target_id, mode), GunStats()), score)
+            self.update_stats(
+                self.segment_stats.setdefault((wave.target_id, mode, wave.segment_key), GunStats()),
+                score,
+            )
+            scores[mode] = round(score, 3)
+        return scores
+
+    def score_summary(self, target_id: int, segment_key: tuple[int, ...] | None = None) -> dict[str, str]:
+        summary: dict[str, str] = {}
+        for (stats_target_id, mode), stats in self.stats.items():
+            if stats_target_id != target_id:
+                continue
+            if segment_key is None:
+                summary[mode] = f"{self.gun_score(target_id, mode):.3f}/{stats.visits}"
+                continue
+
+            segment_stats = self.segment_stats.get((target_id, mode, segment_key))
+            segment_visits = segment_stats.visits if segment_stats is not None else 0
+            summary[mode] = (
+                f"{self.gun_score(target_id, mode, segment_key):.3f}/{stats.visits}"
+                f"/s{segment_visits}"
+            )
+        return summary
+
+    def target_confidence(self, target_id: int) -> tuple[float, int]:
+        best_score = 0.0
+        best_visits = 0
+        for (stats_target_id, mode), stats in self.stats.items():
+            if stats_target_id != target_id or mode not in self.config.selectable_modes:
+                continue
+            score = self.gun_score(target_id, mode)
+            if score > best_score:
+                best_score = score
+                best_visits = stats.visits
+        return best_score, best_visits
+
+    def gun_score(self, target_id: int, mode: str, segment_key: tuple[int, ...] | None = None) -> float:
+        stats = self.stats.get((target_id, mode))
+        if stats is None:
+            return 0.0
+        global_score = self.raw_gun_score(stats)
+        if segment_key is None:
+            return global_score
+
+        segment_stats = self.segment_stats.get((target_id, mode, segment_key))
+        if segment_stats is None or segment_stats.visits < self.config.segment_min_visits:
+            return global_score
+
+        segment_score = self.raw_gun_score(segment_stats)
+        blend = clamp(
+            (segment_stats.visits - self.config.segment_min_visits)
+            / max(1, self.config.segment_full_weight_visits - self.config.segment_min_visits),
+            0.0,
+            1.0,
+        )
+        return global_score * (1.0 - blend) + segment_score * blend
+
+    def raw_gun_score(self, stats: GunStats) -> float:
+        accuracy = stats.hits / max(1, stats.visits)
+        return 0.7 * stats.rolling_score + 0.3 * accuracy
+
+    def update_stats(self, stats: GunStats, score: float) -> None:
+        stats.visits += 1
+        if score > 0:
+            stats.hits += 1
+        stats.rolling_score = (1.0 - self.config.score_alpha) * stats.rolling_score + self.config.score_alpha * score
+
+
+class AimModeSelector:
+    def __init__(
+        self,
+        config: GunConfig,
+        scorer: VirtualGunScorer,
+        active_modes: dict[int, str],
+        stats: dict[tuple[int, str], GunStats],
+    ) -> None:
+        self.config = config
+        self.scorer = scorer
+        self.active_modes = active_modes
+        self.stats = stats
+
+    def select(
+        self,
+        target_id: int,
+        virtual_bearings: dict[str, float],
+        segment_key: tuple[int, ...] | None,
+    ) -> tuple[str, str | None, bool]:
+        current = self.active_modes.get(target_id, self.config.default_mode)
+        if current not in self.config.selectable_modes or current not in virtual_bearings:
+            current = self.config.default_mode if self.config.default_mode in virtual_bearings else next(iter(virtual_bearings))
+
+        best_mode = current
+        best_score = self.scorer.gun_score(target_id, current, segment_key)
+        for mode in virtual_bearings:
+            if mode not in self.config.selectable_modes:
+                continue
+            stats = self.stats.get((target_id, mode))
+            if stats is None or stats.visits < self.min_switch_visits(mode):
+                continue
+            score = self.scorer.gun_score(target_id, mode, segment_key)
+            if score < self.min_switch_score(mode):
+                continue
+            if score > best_score + self.config.switch_margin:
+                best_mode = mode
+                best_score = score
+
+        previous = self.active_modes.get(target_id)
+        self.active_modes[target_id] = best_mode
+        return best_mode, previous, previous != best_mode
+
+    def min_switch_score(self, mode: str) -> float:
+        if mode == "head_on":
+            return self.config.head_on_min_switch_score
+        if mode == "traditional_gf":
+            return self.config.traditional_gf_min_switch_score
+        if mode == "anti_surfer":
+            return self.config.anti_surfer_min_switch_score
+        return self.config.min_switch_score
+
+    def min_switch_visits(self, mode: str) -> int:
+        if mode == "traditional_gf":
+            return self.config.traditional_gf_min_switch_visits
+        if mode == "anti_surfer":
+            return self.config.anti_surfer_min_switch_visits
+        return self.config.min_visits
+
+
 @dataclass
 class VirtualGunSystem:
     config: GunConfig = field(default_factory=GunConfig)
@@ -211,11 +391,16 @@ class VirtualGunSystem:
     _target_history: dict[int, list[TargetPosition]] = field(default_factory=dict)
     _traditional_profiles: dict[int, GuessFactorProfile] = field(default_factory=dict)
     _anti_surfer_profiles: dict[int, GuessFactorProfile] = field(default_factory=dict)
-    _pending_wave: GunWave | None = None
+    _wave_tracker: GunWaveTracker = field(init=False)
+    _scorer: VirtualGunScorer = field(init=False)
+    _aim_selector: AimModeSelector = field(init=False)
     _knn_sequence: int = 0
 
     def __post_init__(self) -> None:
         self._knn_memory = RollingKnnBuffer(self.config.max_samples, self.config.max_samples_per_target)
+        self._wave_tracker = GunWaveTracker(self.config, self._waves)
+        self._scorer = VirtualGunScorer(self.config, self._stats, self._segment_stats)
+        self._aim_selector = AimModeSelector(self.config, self._scorer, self._active_modes, self._stats)
 
     @property
     def sample_count(self) -> int:
@@ -347,21 +532,15 @@ class VirtualGunSystem:
         )
 
     def set_pending_wave(self, wave: GunWave) -> None:
-        self._pending_wave = wave
+        self._wave_tracker.set_pending_wave(wave)
 
     def record_pending_fire(self) -> GunWave | None:
-        wave = self._pending_wave
-        if wave is None:
-            return None
-        self._waves.append(wave)
-        self._waves = self._waves[-self.config.max_waves :]
-        self._pending_wave = None
-        return wave
+        return self._wave_tracker.record_pending_fire()
 
     def update_waves(self, bot: Bot, target: TargetSnapshot) -> list[WaveVisit]:
         visits: list[WaveVisit] = []
         remaining_waves: list[GunWave] = []
-        for wave in self._waves:
+        for wave in self._wave_tracker.waves:
             if wave.target_id != target.bot_id:
                 remaining_waves.append(wave)
                 continue
@@ -398,45 +577,21 @@ class VirtualGunSystem:
                 )
             )
 
-        self._waves = remaining_waves[-self.config.max_waves :]
+        self._wave_tracker.replace(remaining_waves)
         return visits
 
     def score_summary(self, target_id: int, segment_key: tuple[int, ...] | None = None) -> dict[str, str]:
-        summary: dict[str, str] = {}
-        for (stats_target_id, mode), stats in self._stats.items():
-            if stats_target_id != target_id:
-                continue
-            if segment_key is None:
-                summary[mode] = f"{self._gun_score(target_id, mode):.3f}/{stats.visits}"
-                continue
-
-            segment_stats = self._segment_stats.get((target_id, mode, segment_key))
-            segment_visits = segment_stats.visits if segment_stats is not None else 0
-            summary[mode] = (
-                f"{self._gun_score(target_id, mode, segment_key):.3f}/{stats.visits}"
-                f"/s{segment_visits}"
-            )
-        return summary
+        return self._scorer.score_summary(target_id, segment_key)
 
     def target_confidence(self, target_id: int) -> tuple[float, int]:
-        best_score = 0.0
-        best_visits = 0
-        for (stats_target_id, mode), stats in self._stats.items():
-            if stats_target_id != target_id or mode not in self.config.selectable_modes:
-                continue
-            score = self._gun_score(target_id, mode)
-            if score > best_score:
-                best_score = score
-                best_visits = stats.visits
-        return best_score, best_visits
+        return self._scorer.target_confidence(target_id)
 
     def clear_round_state(self) -> None:
-        self._waves.clear()
-        self._pending_wave = None
+        self._wave_tracker.clear_round_state()
         self._target_history.clear()
 
     def remove_target(self, target_id: int) -> None:
-        self._waves = [wave for wave in self._waves if wave.target_id != target_id]
+        self._wave_tracker.remove_target(target_id)
         self._active_modes.pop(target_id, None)
         self._target_history.pop(target_id, None)
 
@@ -499,44 +654,13 @@ class VirtualGunSystem:
         virtual_bearings: dict[str, float],
         segment_key: tuple[int, ...] | None,
     ) -> tuple[str, str | None, bool]:
-        current = self._active_modes.get(target_id, self.config.default_mode)
-        if current not in self.config.selectable_modes or current not in virtual_bearings:
-            current = self.config.default_mode if self.config.default_mode in virtual_bearings else next(iter(virtual_bearings))
-
-        best_mode = current
-        best_score = self._gun_score(target_id, current, segment_key)
-        for mode in virtual_bearings:
-            if mode not in self.config.selectable_modes:
-                continue
-            stats = self._stats.get((target_id, mode))
-            if stats is None or stats.visits < self._min_switch_visits(mode):
-                continue
-            score = self._gun_score(target_id, mode, segment_key)
-            if score < self._min_switch_score(mode):
-                continue
-            if score > best_score + self.config.switch_margin:
-                best_mode = mode
-                best_score = score
-
-        previous = self._active_modes.get(target_id)
-        self._active_modes[target_id] = best_mode
-        return best_mode, previous, previous != best_mode
+        return self._aim_selector.select(target_id, virtual_bearings, segment_key)
 
     def _min_switch_score(self, mode: str) -> float:
-        if mode == "head_on":
-            return self.config.head_on_min_switch_score
-        if mode == "traditional_gf":
-            return self.config.traditional_gf_min_switch_score
-        if mode == "anti_surfer":
-            return self.config.anti_surfer_min_switch_score
-        return self.config.min_switch_score
+        return self._aim_selector.min_switch_score(mode)
 
     def _min_switch_visits(self, mode: str) -> int:
-        if mode == "traditional_gf":
-            return self.config.traditional_gf_min_switch_visits
-        if mode == "anti_surfer":
-            return self.config.anti_surfer_min_switch_visits
-        return self.config.min_visits
+        return self._aim_selector.min_switch_visits(mode)
 
     def _gun_features(
         self,
@@ -678,49 +802,16 @@ class VirtualGunSystem:
         actual_bearing: float,
         target_distance: float,
     ) -> dict[str, float]:
-        hit_angle = math.degrees(math.atan2(self.config.virtual_hit_radius, max(1.0, target_distance)))
-        scores: dict[str, float] = {}
-        for mode, aim_bearing in wave.virtual_bearings.items():
-            error = abs(relative_bearing(actual_bearing, aim_bearing))
-            score = max(0.0, 1.0 - error / max(hit_angle, 0.1))
-            self._update_stats(self._stats.setdefault((wave.target_id, mode), GunStats()), score)
-            self._update_stats(
-                self._segment_stats.setdefault((wave.target_id, mode, wave.segment_key), GunStats()),
-                score,
-            )
-            scores[mode] = round(score, 3)
-        return scores
+        return self._scorer.score_virtual_guns(wave, actual_bearing, target_distance)
 
     def _gun_score(self, target_id: int, mode: str, segment_key: tuple[int, ...] | None = None) -> float:
-        stats = self._stats.get((target_id, mode))
-        if stats is None:
-            return 0.0
-        global_score = self._raw_gun_score(stats)
-        if segment_key is None:
-            return global_score
-
-        segment_stats = self._segment_stats.get((target_id, mode, segment_key))
-        if segment_stats is None or segment_stats.visits < self.config.segment_min_visits:
-            return global_score
-
-        segment_score = self._raw_gun_score(segment_stats)
-        blend = clamp(
-            (segment_stats.visits - self.config.segment_min_visits)
-            / max(1, self.config.segment_full_weight_visits - self.config.segment_min_visits),
-            0.0,
-            1.0,
-        )
-        return global_score * (1.0 - blend) + segment_score * blend
+        return self._scorer.gun_score(target_id, mode, segment_key)
 
     def _raw_gun_score(self, stats: GunStats) -> float:
-        accuracy = stats.hits / max(1, stats.visits)
-        return 0.7 * stats.rolling_score + 0.3 * accuracy
+        return self._scorer.raw_gun_score(stats)
 
     def _update_stats(self, stats: GunStats, score: float) -> None:
-        stats.visits += 1
-        if score > 0:
-            stats.hits += 1
-        stats.rolling_score = (1.0 - self.config.score_alpha) * stats.rolling_score + self.config.score_alpha * score
+        self._scorer.update_stats(stats, score)
 
 
 def feature_distance(left: tuple[float, ...], right: tuple[float, ...]) -> float:

@@ -5,8 +5,12 @@ from types import SimpleNamespace
 from bot_core.movement import (
     MinimumRiskConfig,
     MinimumRiskMovement,
+    MovementDangerModel,
+    MovementProfile,
     MovementFlattener,
     MovementFlatteningConfig,
+    SurfingPlanner,
+    MovementWaveStore,
     MovementWave,
     MovementWaveFeatures,
 )
@@ -14,6 +18,65 @@ from bot_core.tank_math import TargetSnapshot
 
 
 class MinimumRiskMovementTest(unittest.TestCase):
+    def test_movement_wave_store_removes_recent_expected_waves_for_confirmed_fire(self) -> None:
+        store = MovementWaveStore()
+        recent_expected = self._incoming_wave(1)
+        recent_expected.kind = "expected"
+        recent_expected.fired_turn = 10
+        old_expected = self._incoming_wave(1)
+        old_expected.kind = "expected"
+        old_expected.fired_turn = 4
+        other_target = self._incoming_wave(2)
+        other_target.kind = "expected"
+        other_target.fired_turn = 10
+        store.add(recent_expected)
+        store.add(old_expected)
+        store.add(other_target)
+
+        store.remove_recent_expected(target_id=1, turn_number=12, max_age=4)
+
+        self.assertEqual([old_expected, other_target], store.waves)
+
+    def test_movement_profile_records_and_smooths_visits(self) -> None:
+        config = MovementFlatteningConfig(bin_count=31)
+        profile = MovementProfile(config)
+        wave = self._incoming_wave(1)
+
+        visits = profile.record(wave, bin_index=15, weight=2.0)
+
+        self.assertAlmostEqual(2.0, visits)
+        self.assertAlmostEqual(2.0, profile.smoothed_count(1, wave.distance_bucket, 15))
+        self.assertAlmostEqual(1.1, profile.smoothed_count(1, wave.distance_bucket, 14))
+
+    def test_movement_danger_model_adds_unvisited_danger_to_profile(self) -> None:
+        config = MovementFlatteningConfig(unvisited_bin_danger=0.25)
+        profile = MovementProfile(config)
+        model = MovementDangerModel(config, profile)
+        wave = self._incoming_wave(1)
+        profile.record(wave, bin_index=15, weight=2.0)
+
+        danger = model.breakdown(wave, 15)
+
+        self.assertAlmostEqual(2.0, danger.profile_danger)
+        self.assertAlmostEqual(2.25, danger.total_danger)
+
+    def test_surfing_planner_chooses_nearest_incoming_wave(self) -> None:
+        store = MovementWaveStore()
+        planner = SurfingPlanner(MovementFlatteningConfig(), store)
+        bot = SimpleNamespace(x=500.0, y=500.0, turn_number=20)
+        far = self._incoming_wave(1)
+        far.source_x = 200.0
+        far.source_y = 500.0
+        far.fired_turn = 18
+        near = self._incoming_wave(1)
+        near.source_x = 450.0
+        near.source_y = 500.0
+        near.fired_turn = 19
+        store.add(far)
+        store.add(near)
+
+        self.assertEqual(near, planner.surf_wave(bot, 1))
+
     def test_reuses_active_destination_during_commit_window(self) -> None:
         movement = MinimumRiskMovement(
             MinimumRiskConfig(

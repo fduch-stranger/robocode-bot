@@ -2,8 +2,10 @@ import unittest
 
 from bot_core.energy import (
     EnemyEnergyCorrectionLedger,
+    EnemyFireDetector,
     EnemyFirePowerPredictor,
     EnemyFirePowerPredictorConfig,
+    EnergyDropConfig,
     FireGate,
     FireGateConfig,
     GunHeatTracker,
@@ -31,6 +33,55 @@ class EnergyTest(unittest.TestCase):
         ledger.record(3, turn_number=3, correction=3.0, reason="third")
 
         self.assertAlmostEqual(5.0, ledger.consume(3, current_turn=3, after_turn=0))
+
+    def test_enemy_fire_detector_updates_heat_for_ignored_drop(self) -> None:
+        detector = EnemyFireDetector(EnergyDropConfig(max_scan_gap=1))
+
+        detection = detector.evaluate_scan(
+            target_id=4,
+            previous_energy=80.0,
+            current_energy=78.0,
+            previous_seen_turn=10,
+            current_turn=13,
+            scan_gap=3,
+            distance=320.0,
+            our_energy=90.0,
+            cooling_rate=0.1,
+        )
+
+        self.assertFalse(detection.is_fire)
+        self.assertEqual("stale_scan", detection.signal.reason)
+        self.assertIsNotNone(detection.heat_state)
+        self.assertEqual(13, detection.heat_state.last_turn if detection.heat_state is not None else None)
+
+    def test_enemy_fire_detector_records_fire_power_and_prediction_error(self) -> None:
+        predictor = EnemyFirePowerPredictor()
+        prediction = predictor.predict(4, enemy_energy=80.0, our_energy=90.0, distance=320.0)
+        previous_predictions = {4: prediction}
+        detector = EnemyFireDetector(
+            EnergyDropConfig(),
+            fire_power=predictor,
+            previous_predictions=previous_predictions,
+        )
+
+        detection = detector.evaluate_scan(
+            target_id=4,
+            previous_energy=80.0,
+            current_energy=78.0,
+            previous_seen_turn=10,
+            current_turn=11,
+            scan_gap=1,
+            distance=320.0,
+            our_energy=90.0,
+            cooling_rate=0.1,
+        )
+
+        self.assertTrue(detection.is_fire)
+        self.assertAlmostEqual(2.0, detection.signal.fire_power or 0.0)
+        self.assertEqual(prediction, detection.previous_prediction)
+        self.assertNotIn(4, previous_predictions)
+        self.assertEqual(1, predictor.sample_count(4))
+        self.assertIsNotNone(predictor.mean_absolute_error(4))
 
     def test_fire_gate_returns_ready_decision(self) -> None:
         gate = FireGate(FireGateConfig(fire_memory_turns=1, alignment_degrees=7, energy_margin=5))

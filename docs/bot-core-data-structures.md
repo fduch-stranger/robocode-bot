@@ -13,15 +13,16 @@ fast iteration and readable telemetry rather than maximum theoretical accuracy.
 ```mermaid
 flowchart TD
     A["Bot event callbacks"] --> B["TargetSnapshot cache"]
-    B --> C["VirtualGunSystem"]
-    B --> D["MovementFlattener"]
+    B --> T["TargetMemory / TargetSelector"]
+    T --> C["VirtualGunSystem"]
+    T --> D["MovementFlattener"]
     B --> E["EnemyFirePowerPredictor"]
     E --> F["GunHeatTracker"]
-    C --> G["GunWave list"]
+    C --> G["GunWaveTracker"]
     C --> H["RollingKnnBuffer"]
     C --> I["GunStats and GF profiles"]
-    D --> J["MovementWave list"]
-    D --> K["Movement profile bins"]
+    D --> J["MovementWaveStore"]
+    D --> K["MovementProfile bins"]
     D --> L["MovementStatsBufferSet"]
     D --> M["ShadowBullet list"]
     F --> J
@@ -62,6 +63,22 @@ target_age = current_turn - seen_turn
 Bots use target age to decide if a target is still safe to fire at, whether
 radar should reacquire, and when stale targets should be dropped.
 
+### `TargetMemory` and `TargetSelector`
+
+Location: `bot_core.targeting`
+
+`TargetMemory` wraps the per-enemy snapshot mapping and provides common queries:
+
+```text
+stale_ids(current_turn, max_age)
+fresh_targets(current_turn, max_age)
+active_fire_threat(threat_id, threat_turn, current_turn, memory_turns)
+```
+
+`TargetSelector` applies reacquire-age filtering and delegates scoring to the
+bot strategy. This keeps shared target lifecycle behavior out of bot event-loop
+code while preserving bot-specific target priorities.
+
 ### Own Motion Snapshots
 
 Location: `bot_core.motion`
@@ -88,6 +105,9 @@ Location: `bot_core.gun`
 | `WaveVisit` | Telemetry/learning result when a gun wave reaches the target. |
 | `RollingKnnBuffer` | Per-target bounded memory of `GunSample` records. |
 | `VirtualGunSystem` | The orchestrator for aiming, scoring, KNN memory, waves, and virtual gun selection. |
+| `GunWaveTracker` | Owns pending/fired gun wave retention and round/target cleanup. |
+| `VirtualGunScorer` | Scores virtual bearings and updates global/segmented gun stats. |
+| `AimModeSelector` | Applies mode switch visit, score, and margin thresholds. |
 
 ### Gun Wave Lifecycle
 
@@ -222,8 +242,13 @@ Location: `bot_core.movement`
 | `MovementProfileVisit` | Recorded visit to a guess-factor bin for movement learning. |
 | `MovementStatsBuffer` | Segmented danger histogram for a specific feature set. |
 | `MovementStatsBufferSet` | Ensemble of multiple segmented buffers. |
+| `MovementWaveStore` | Owns movement wave retention, matching, and target cleanup. |
+| `MovementProfile` | Owns basic movement profile bins and decay. |
+| `MovementDangerModel` | Builds per-bin danger breakdowns from profile and ensemble stats. |
+| `SurfingPlanner` | Selects the nearest surfable wave for go-to surfing. |
 | `FlatteningDecision` | Direction-switch decision for orbit/strafe movement. |
 | `GoToSurfDecision` | Scored destination for go-to surfing. |
+| `MovementCommand` | Movement command output: mode, turn, speed, telemetry fields, and optional direction update. |
 | `ShadowBullet` | Our bullet used to lower danger where it intersects an enemy wave. |
 | `MinimumRiskDecision` | Destination selected for melee minimum-risk movement. |
 
@@ -402,6 +427,18 @@ risk = enemy_proximity
 The active destination is sticky for a few ticks unless a new destination is
 meaningfully lower risk.
 
+### Movement Commands
+
+`MovementCommand` separates movement choice from bot API application:
+
+```text
+MovementCommand(mode, turn, speed, telemetry_fields, direction_update)
+```
+
+Strategies can return strafe or destination-drive commands. The bot applies the
+command in one place, which keeps direction mutation and `set_turn_left` /
+`target_speed` calls out of scoring logic.
+
 ## Fire Gate Data
 
 Location: `bot_core.energy`
@@ -424,6 +461,11 @@ gun_alignment
 energy_margin
 ready
 ```
+
+`EnemyFireDetector` returns `EnemyFireDetection(signal, distance,
+previous_prediction, heat_state)` after consuming energy corrections, updating
+gun heat for ignored drops, and recording fire-power prediction samples for
+confirmed fire.
 
 ## Enemy Fire Prediction
 

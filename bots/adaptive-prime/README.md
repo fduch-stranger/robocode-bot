@@ -10,6 +10,11 @@ Shared systems are documented in:
 - [Shared Bot Systems](../../docs/bot-shared-systems.md)
 - [Bot Core Data Structures](../../docs/bot-core-data-structures.md)
 
+Adaptive Prime keeps its personality in small module-level policy dataclasses:
+`FirePolicy`, `TargetPolicy`, `RadarPolicy`, `MovementPolicy`, and
+`DuelMovementPolicy`. These group tuning values by responsibility without moving
+bot-specific thresholds into shared `bot_core`.
+
 ## What Makes It Different
 
 - 1v1-first movement stack.
@@ -78,10 +83,10 @@ force = enemy_repulsion
 
 Distance bands:
 
-- `< DUEL_CRITICAL_DISTANCE`: panic-open range.
-- `< DUEL_MIN_DISTANCE`: open range.
-- near `DUEL_PREFERRED_DISTANCE`: orbit.
-- `> DUEL_MAX_DISTANCE`: reconnect.
+- `< DuelMovementPolicy.critical_distance`: panic-open range.
+- `< DuelMovementPolicy.min_distance`: open range.
+- near `DuelMovementPolicy.preferred_distance`: orbit.
+- `> DuelMovementPolicy.max_distance`: reconnect.
 
 Telemetry event: `movement.duel_potential`.
 
