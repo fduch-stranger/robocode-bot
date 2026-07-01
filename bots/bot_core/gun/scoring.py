@@ -85,7 +85,8 @@ class VirtualGunScorer:
         )
         return global_score * (1.0 - blend) + segment_score * blend
 
-    def raw_gun_score(self, stats: GunStats) -> float:
+    @staticmethod
+    def raw_gun_score(stats: GunStats) -> float:
         accuracy = stats.hits / max(1, stats.visits)
         return 0.7 * stats.rolling_score + 0.3 * accuracy
 

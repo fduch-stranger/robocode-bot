@@ -1,6 +1,5 @@
 from bot_core.movement import FlatteningDecision, GoToSurfDecision, MinimumRiskDecision, MovementCommand, MovementProfileVisit
 from bot_core.telemetry.sink import TelemetrySink
-from bot_core.telemetry.tick import rounded
 
 
 class MovementTelemetry:
@@ -111,7 +110,7 @@ def _minimum_risk_fields(
     fire_threat_id: int | None = None,
     include_fire_threat: bool = False,
 ) -> dict[str, object]:
-    fields = {
+    fields: dict[str, object] = {
         "target": target_id,
         "destination_x": round(decision.x, 1),
         "destination_y": round(decision.y, 1),
@@ -137,7 +136,7 @@ def _flattening_fields(
     current_direction: int | None = None,
     include_reason: bool = False,
 ) -> dict[str, object]:
-    fields = {
+    fields: dict[str, object] = {
         "target": target_id,
         "suggested_direction": flattening.direction,
         "bucket": flattening.bucket,

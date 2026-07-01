@@ -3,6 +3,9 @@ import os
 import time
 import unittest
 from io import StringIO
+from typing import Any, cast
+
+from robocode_tank_royale.bot_api import Bot
 
 from bot_core.telemetry.recorder import TelemetryRecorder
 
@@ -27,7 +30,11 @@ class _DummyBot:
     arena_height = 600
 
 
-def _records(stream: StringIO) -> list[dict[str, object]]:
+def _dummy_bot() -> Bot:
+    return cast(Bot, cast(object, _DummyBot()))
+
+
+def _records(stream: StringIO) -> list[dict[str, Any]]:
     return [json.loads(line) for line in stream.getvalue().splitlines()]
 
 
@@ -41,7 +48,7 @@ class TelemetryRecorderTest(unittest.TestCase):
 
     def test_async_recorder_flushes_records_on_close(self) -> None:
         stream = StringIO()
-        recorder = TelemetryRecorder(_DummyBot(), "test-bot", stream, sync=False, queue_size=8)
+        recorder = TelemetryRecorder(_dummy_bot(), "test-bot", stream, sync=False, queue_size=8)
 
         recorder.write("track", {"target": 7, "distance": 250.123456, "gun_bearing": 1.2, "aim_mode": "linear"})
         recorder.close()
@@ -55,7 +62,7 @@ class TelemetryRecorderTest(unittest.TestCase):
 
     def test_async_recorder_drops_when_queue_is_full_instead_of_blocking(self) -> None:
         stream = StringIO()
-        recorder = TelemetryRecorder(_DummyBot(), "test-bot", stream, sync=False, queue_size=1)
+        recorder = TelemetryRecorder(_dummy_bot(), "test-bot", stream, sync=False, queue_size=1)
 
         for index in range(5000):
             recorder.write("track", {"target": index, "distance": 100, "gun_bearing": 0, "aim_mode": "linear"})
@@ -70,7 +77,7 @@ class TelemetryRecorderTest(unittest.TestCase):
 
     def test_sync_recorder_writes_and_flushes_immediately(self) -> None:
         stream = StringIO()
-        recorder = TelemetryRecorder(_DummyBot(), "test-bot", stream, sync=True)
+        recorder = TelemetryRecorder(_dummy_bot(), "test-bot", stream, sync=True)
 
         recorder.write("track", {"target": 7, "distance": 250, "gun_bearing": 1.2, "aim_mode": "linear"})
 
@@ -82,7 +89,7 @@ class TelemetryRecorderTest(unittest.TestCase):
 
     def test_write_after_close_is_ignored(self) -> None:
         stream = StringIO()
-        recorder = TelemetryRecorder(_DummyBot(), "test-bot", stream, sync=False, queue_size=8)
+        recorder = TelemetryRecorder(_dummy_bot(), "test-bot", stream, sync=False, queue_size=8)
 
         recorder.close()
         before = stream.getvalue()

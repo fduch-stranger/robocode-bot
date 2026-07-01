@@ -150,8 +150,8 @@ class VirtualGunSystem:
             mode_changed=mode_changed,
         )
 
+    @staticmethod
     def make_wave(
-        self,
         bot: Bot,
         target: TargetSnapshot,
         firepower: float,
@@ -252,8 +252,8 @@ class VirtualGunSystem:
         self._active_modes.pop(target_id, None)
         self._target_history.pop(target_id, None)
 
+    @staticmethod
     def _linear_aim_bearing(
-        self,
         bot: Bot,
         target: TargetSnapshot,
         firepower: float,
@@ -262,8 +262,8 @@ class VirtualGunSystem:
         predicted_x, predicted_y = predicted_position(bot, target, firepower, field_margin)
         return absolute_bearing_between(bot.x, bot.y, predicted_x, predicted_y)
 
+    @staticmethod
     def _guess_factor_aim_bearing(
-        self,
         bot: Bot,
         target: TargetSnapshot,
         firepower: float,
@@ -313,8 +313,8 @@ class VirtualGunSystem:
     ) -> tuple[str, str | None, bool]:
         return self._aim_selector.select(target_id, virtual_bearings, segment_key)
 
+    @staticmethod
     def _gun_features(
-        self,
         bot: Bot,
         target: TargetSnapshot,
         distance: float,
@@ -360,11 +360,11 @@ class VirtualGunSystem:
 
         neighbors = sorted(
             samples,
-            key=lambda sample: feature_distance(features, sample.features)
+            key=lambda neighbor_sample: feature_distance(features, neighbor_sample.features)
             / max(
                 0.25,
                 self._knn_memory.decayed_weight(
-                    sample,
+                    neighbor_sample,
                     current_turn=current_turn,
                     half_life=self.config.knn_decay_half_life,
                 ),

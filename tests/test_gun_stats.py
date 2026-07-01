@@ -170,7 +170,10 @@ class GunStatsTest(unittest.TestCase):
         for _ in range(8):
             gun._record_anti_surfer_guess_factor(1, 0.0)
 
-        self.assertGreater(abs(gun._anti_surfer_guess_factor(1)), 0.2)
+        guess_factor = gun._anti_surfer_guess_factor(1)
+        self.assertIsNotNone(guess_factor)
+        assert guess_factor is not None
+        self.assertGreater(abs(guess_factor), 0.2)
 
     def test_anti_surfer_guess_factor_reaches_default_threshold(self) -> None:
         gun = VirtualGunSystem()

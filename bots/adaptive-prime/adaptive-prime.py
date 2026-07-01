@@ -619,7 +619,8 @@ class AdaptivePrime(Bot):
         )
         return force_x, force_y
 
-    def _wall_axis_force(self, distance: float, margin: float) -> float:
+    @staticmethod
+    def _wall_axis_force(distance: float, margin: float) -> float:
         if distance >= margin:
             return 0.0
         closeness = (margin - distance) / margin
@@ -640,8 +641,8 @@ class AdaptivePrime(Bot):
             or self.y > self.arena_height - margin
         )
 
+    @staticmethod
     def _melee_movement_command(
-        self,
         target: TargetSnapshot,
         distance: float,
         evading: bool,
@@ -969,7 +970,7 @@ class AdaptivePrime(Bot):
         self._log("target.dead", bot_id=event.victim_id)
 
     def on_bullet_fired(self, event: BulletFiredEvent) -> None:
-        target = self._targets.get(self._target_id)
+        target = self._targets.get(self._target_id) if self._target_id is not None else None
         target_age = self.turn_number - target.seen_turn if target is not None else None
         gun_score, gun_visits = self._gun.target_confidence(target.bot_id) if target is not None else (0.0, 0)
         wave = self._gun.record_pending_fire()

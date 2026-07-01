@@ -74,7 +74,9 @@ class DebugLogger:
 
     @staticmethod
     def _encode_log_line(line: object) -> str:
-        return str(line)
+        if isinstance(line, str):
+            return line
+        return f"<{type(line).__name__}>"
 
     @staticmethod
     def _int_env(name: str, default: int) -> int:
@@ -116,4 +118,6 @@ class FiredBulletTracker:
     def _key(bullet_id: object) -> str | None:
         if bullet_id is None:
             return None
-        return str(bullet_id)
+        if isinstance(bullet_id, (int, str)):
+            return str(bullet_id)
+        return f"<{type(bullet_id).__name__}>"

@@ -117,7 +117,7 @@ class TelemetryRecorder:
     def _safe_number(self, name: str) -> int | float | None:
         try:
             value = getattr(self._bot, name, None)
-        except Exception:
+        except (AttributeError, RuntimeError, TypeError, ValueError):
             return None
         if isinstance(value, bool):
             return int(value)
@@ -191,7 +191,7 @@ class TelemetryRecorder:
             return {str(key): cls._json_safe(item) for key, item in value.items()}
         if isinstance(value, (list, tuple, set)):
             return [cls._json_safe(item) for item in value]
-        return str(value)
+        return f"<{type(value).__name__}>"
 
     @staticmethod
     def _encode_record(record: object) -> str:

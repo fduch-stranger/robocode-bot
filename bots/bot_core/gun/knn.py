@@ -27,7 +27,8 @@ class RollingKnnBuffer:
     def target_sample_count(self, target_id: int) -> int:
         return len(self._samples_by_target.get(target_id, []))
 
-    def decayed_weight(self, sample: GunSample, current_turn: int, half_life: float) -> float:
+    @staticmethod
+    def decayed_weight(sample: GunSample, current_turn: int, half_life: float) -> float:
         if half_life <= 0:
             return 1.0
         age = max(0, current_turn - sample.turn)
@@ -50,8 +51,8 @@ class RollingKnnBuffer:
 
     def _trim_global(self) -> None:
         while self._sample_count > self.max_samples:
-            oldest_target = None
-            oldest_turn = None
+            oldest_target: int | None = None
+            oldest_turn: int | None = None
             for target_id, samples in self._samples_by_target.items():
                 if not samples:
                     continue

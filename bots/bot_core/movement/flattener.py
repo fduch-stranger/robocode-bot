@@ -42,7 +42,7 @@ class MovementFlattener:
             return
         self._shadow_bullets.append(
             ShadowBullet(
-                bullet_id=str(bullet_id),
+                bullet_id=self._shadow_bullet_key(bullet_id),
                 source_x=bot.x,
                 source_y=bot.y,
                 direction=direction,
@@ -52,8 +52,14 @@ class MovementFlattener:
         )
 
     def remove_shadow_bullet(self, bullet_id: object) -> None:
-        key = str(bullet_id)
+        key = self._shadow_bullet_key(bullet_id)
         self._shadow_bullets = [bullet for bullet in self._shadow_bullets if bullet.bullet_id != key]
+
+    @staticmethod
+    def _shadow_bullet_key(bullet_id: object) -> str:
+        if isinstance(bullet_id, (int, str)):
+            return str(bullet_id)
+        return f"<{type(bullet_id).__name__}>"
 
     def record_enemy_fire(
         self,
@@ -164,10 +170,10 @@ class MovementFlattener:
         if not candidates:
             return None
 
-        def hit_error(wave: MovementWave) -> float:
-            wave_age = max(1, bot.turn_number - wave.fired_turn)
-            wave_radius = wave.bullet_speed * wave_age
-            distance = math.hypot(bot.x - wave.source_x, bot.y - wave.source_y)
+        def hit_error(candidate_wave: MovementWave) -> float:
+            wave_age = max(1, bot.turn_number - candidate_wave.fired_turn)
+            wave_radius = candidate_wave.bullet_speed * wave_age
+            distance = math.hypot(bot.x - candidate_wave.source_x, bot.y - candidate_wave.source_y)
             return abs(distance - wave_radius)
 
         wave = min(candidates, key=hit_error)
@@ -355,13 +361,13 @@ class MovementFlattener:
         return self._smoothed_count(target_id, bucket, offset_bin)
 
     def _decay_if_needed(self, target_id: int) -> None:
-        self._profile_store._decay_if_needed(target_id)
+        self._profile_store.decay_if_needed(target_id)
 
     def _record_visit(self, wave: MovementWave, bin_index: int, weight: float) -> float:
         return self._profile_store.record(wave, bin_index, weight)
 
+    @staticmethod
     def _wave_features(
-        self,
         bot: Bot,
         target: TargetSnapshot,
         distance: float,
@@ -640,8 +646,8 @@ class MovementFlattener:
             risk += preferred_error * preferred_error * self.config.goto_target_distance_weight * 0.12
         return risk
 
+    @staticmethod
     def _go_to_lateral_direction(
-        self,
         bot: Bot,
         target: TargetSnapshot,
         destination_x: float,

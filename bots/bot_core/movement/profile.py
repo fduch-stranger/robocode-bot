@@ -67,7 +67,8 @@ class MovementStatsBuffer:
     def _segment(self, wave: MovementWave) -> tuple[int, ...]:
         return tuple(self._bucket(wave, dimension) for dimension in self.spec.dimensions)
 
-    def _bucket(self, wave: MovementWave, dimension: str) -> int:
+    @staticmethod
+    def _bucket(wave: MovementWave, dimension: str) -> int:
         features = wave.features
         if dimension == "distance":
             return wave.distance_bucket
@@ -174,7 +175,7 @@ class MovementProfile:
         key = (wave.target_id, wave.distance_bucket, bin_index)
         self.profile[key] = self.profile.get(key, 0.0) + weight
         self.stats_buffers.record(wave, bin_index, weight)
-        self._decay_if_needed(wave.target_id)
+        self.decay_if_needed(wave.target_id)
         return self.profile[key]
 
     def smoothed_count(self, target_id: int, bucket: int, bin_index: int) -> float:
@@ -191,7 +192,7 @@ class MovementProfile:
                 del self.profile[key]
         self.stats_buffers.remove_target(target_id)
 
-    def _decay_if_needed(self, target_id: int) -> None:
+    def decay_if_needed(self, target_id: int) -> None:
         total = sum(value for key, value in self.profile.items() if key[0] == target_id)
         if total <= self.config.profile_decay_after:
             return

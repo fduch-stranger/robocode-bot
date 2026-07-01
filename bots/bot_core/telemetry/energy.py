@@ -1,3 +1,5 @@
+from typing import cast
+
 from bot_core.energy import EnergyDropSignal, EnemyFirePowerPrediction, GunHeatState
 from bot_core.telemetry.sink import TelemetrySink
 from bot_core.telemetry.tick import rounded
@@ -124,7 +126,7 @@ def _enemy_fire_detected_fields(
     heat_state: GunHeatState | None | object = _UNSET,
 ) -> dict[str, object]:
     actual_fire_power = signal.fire_power or 1.5
-    fields = {
+    fields: dict[str, object] = {
         "bot_id": target_id,
         "power": round(signal.fire_power or 0.0, 2),
         "raw_drop": round(signal.raw_energy_drop, 2),
@@ -156,7 +158,8 @@ def _enemy_fire_detected_fields(
     if known_targets is not None:
         fields["known_targets"] = known_targets
     if heat_state is not _UNSET:
-        fields["gun_heat"] = round(heat_state.heat, 2) if heat_state is not None else None
+        narrowed_heat_state = cast(GunHeatState | None, heat_state)
+        fields["gun_heat"] = round(narrowed_heat_state.heat, 2) if narrowed_heat_state is not None else None
     if previous_prediction is not None and evading is not None:
         fields["prediction_confidence"] = round(previous_prediction.confidence, 3)
         fields["prediction_reason"] = previous_prediction.reason

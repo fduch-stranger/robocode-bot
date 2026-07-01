@@ -1,5 +1,8 @@
 import unittest
 from types import SimpleNamespace
+from typing import cast
+
+from robocode_tank_royale.bot_api import Bot
 
 from bot_core.physics import (
     RobotMovementState,
@@ -16,6 +19,10 @@ from bot_core.geometry.position import predicted_position
 from bot_core.target_snapshot import TargetSnapshot
 
 
+def _bot(**attrs: object) -> Bot:
+    return cast(Bot, cast(object, SimpleNamespace(**attrs)))
+
+
 class PhysicsTest(unittest.TestCase):
     def test_robocode_physics_formulas(self) -> None:
         self.assertAlmostEqual(14.0, bullet_speed_for_power(2.0))
@@ -26,7 +33,7 @@ class PhysicsTest(unittest.TestCase):
         self.assertAlmostEqual(3.0, wall_collision_damage_for_speed(8.0))
 
     def test_predicted_position_uses_iterative_intercept_time(self) -> None:
-        bot = SimpleNamespace(x=0.0, y=0.0, arena_width=1000.0, arena_height=1000.0)
+        bot = _bot(x=0.0, y=0.0, arena_width=1000.0, arena_height=1000.0)
         target = TargetSnapshot(
             bot_id=1,
             energy=100.0,

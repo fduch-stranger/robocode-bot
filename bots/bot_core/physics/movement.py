@@ -73,7 +73,6 @@ def _next_robot_speed_for_distance(current_speed: float, max_speed: float, dista
     max_speed = abs(clamp(max_speed, 0.0, MAX_ROBOT_SPEED))
     current_velocity = current_speed
     current_abs_speed = abs(current_speed)
-    new_speed = current_abs_speed
 
     if current_velocity < 0 or current_abs_speed > max_speed:
         new_speed = current_abs_speed - ROBOT_DECELERATION

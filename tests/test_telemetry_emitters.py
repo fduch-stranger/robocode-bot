@@ -29,10 +29,12 @@ class RecordingSink:
 
 
 class TelemetryEmitterTest(unittest.TestCase):
-    def _target(self, target_id: int = 7) -> TargetSnapshot:
+    @staticmethod
+    def _target(target_id: int = 7) -> TargetSnapshot:
         return TargetSnapshot(target_id, 81.0, 120.0, 160.0, 45.0, 4.0, 10)
 
-    def _aim(self, mode: str = "dynamic_cluster", guess_factor: float | None = 0.4567) -> AimSolution:
+    @staticmethod
+    def _aim(mode: str = "dynamic_cluster", guess_factor: float | None = 0.4567) -> AimSolution:
         return AimSolution(
             predicted_x=130.04,
             predicted_y=170.05,

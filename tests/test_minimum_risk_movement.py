@@ -1,6 +1,9 @@
 import unittest
 import math
 from types import SimpleNamespace
+from typing import Any, cast
+
+from robocode_tank_royale.bot_api import Bot
 
 from bot_core.movement import (
     MinimumRiskConfig,
@@ -15,6 +18,10 @@ from bot_core.movement import (
     MovementWaveFeatures,
 )
 from bot_core.target_snapshot import TargetSnapshot
+
+
+def _bot(**attrs: object) -> Bot:
+    return cast(Bot, cast(object, SimpleNamespace(**attrs)))
 
 
 class MinimumRiskMovementTest(unittest.TestCase):
@@ -63,7 +70,7 @@ class MinimumRiskMovementTest(unittest.TestCase):
     def test_surfing_planner_chooses_nearest_incoming_wave(self) -> None:
         store = MovementWaveStore()
         planner = SurfingPlanner(MovementFlatteningConfig(), store)
-        bot = SimpleNamespace(x=500.0, y=500.0, turn_number=20)
+        bot = _bot(x=500.0, y=500.0, turn_number=20)
         far = self._incoming_wave(1)
         far.source_x = 200.0
         far.source_y = 500.0
@@ -86,7 +93,7 @@ class MinimumRiskMovementTest(unittest.TestCase):
                 destination_switch_risk_ratio=0.0,
             )
         )
-        bot = SimpleNamespace(x=500.0, y=500.0, arena_width=1000.0, arena_height=1000.0, turn_number=20)
+        bot = _bot(x=500.0, y=500.0, arena_width=1000.0, arena_height=1000.0, turn_number=20)
         targets = [
             TargetSnapshot(1, 100.0, 250.0, 500.0, 0.0, 0.0, 20),
             TargetSnapshot(2, 100.0, 750.0, 500.0, 180.0, 0.0, 20),
@@ -96,8 +103,9 @@ class MinimumRiskMovementTest(unittest.TestCase):
         self.assertIsNotNone(first)
         assert first is not None
 
-        bot.x += 6.0
-        bot.turn_number += 1
+        mutable_bot = cast(Any, bot)
+        mutable_bot.x += 6.0
+        mutable_bot.turn_number += 1
         second = movement.choose(bot, targets, targets[0])
 
         self.assertIsNotNone(second)
@@ -120,7 +128,7 @@ class MinimumRiskMovementTest(unittest.TestCase):
                 threat_distance_weight=0.0,
             )
         )
-        bot = SimpleNamespace(x=500.0, y=500.0, arena_width=1000.0, arena_height=1000.0, turn_number=20)
+        bot = _bot(x=500.0, y=500.0, arena_width=1000.0, arena_height=1000.0, turn_number=20)
         threat = TargetSnapshot(1, 100.0, 500.0, 100.0, 0.0, 0.0, 20)
         other = TargetSnapshot(2, 100.0, 850.0, 850.0, 180.0, 0.0, 20)
 
@@ -209,7 +217,7 @@ class MinimumRiskMovementTest(unittest.TestCase):
                 bullet_shadow_radius_margin=16.0,
             )
         )
-        bot = SimpleNamespace(x=500.0, y=100.0, arena_width=1000.0, arena_height=1000.0, turn_number=1)
+        bot = _bot(x=500.0, y=100.0, arena_width=1000.0, arena_height=1000.0, turn_number=1)
         wave = MovementWave(
             target_id=1,
             source_x=100.0,
@@ -240,7 +248,7 @@ class MinimumRiskMovementTest(unittest.TestCase):
                 bullet_shadow_radius_margin=16.0,
             )
         )
-        bot = SimpleNamespace(x=500.0, y=100.0, arena_width=1000.0, arena_height=1000.0, turn_number=1)
+        bot = _bot(x=500.0, y=100.0, arena_width=1000.0, arena_height=1000.0, turn_number=1)
         wave = MovementWave(
             target_id=1,
             source_x=100.0,
@@ -265,7 +273,7 @@ class MinimumRiskMovementTest(unittest.TestCase):
 
     def test_go_to_surf_returns_none_without_wave(self) -> None:
         movement = MovementFlattener()
-        bot = SimpleNamespace(
+        bot = _bot(
             x=500.0,
             y=500.0,
             direction=90.0,
@@ -282,7 +290,7 @@ class MinimumRiskMovementTest(unittest.TestCase):
 
     def test_go_to_surf_destination_stays_inside_field(self) -> None:
         movement = MovementFlattener()
-        bot = SimpleNamespace(
+        bot = _bot(
             x=500.0,
             y=500.0,
             direction=90.0,
@@ -309,7 +317,7 @@ class MinimumRiskMovementTest(unittest.TestCase):
 
     def test_go_to_surf_ignores_expected_waves_by_default(self) -> None:
         movement = MovementFlattener()
-        bot = SimpleNamespace(
+        bot = _bot(
             x=500.0,
             y=500.0,
             direction=90.0,
@@ -331,7 +339,7 @@ class MinimumRiskMovementTest(unittest.TestCase):
         movement = MovementFlattener(
             MovementFlatteningConfig(goto_use_expected_waves=True, goto_expected_wave_min_confidence=0.6)
         )
-        bot = SimpleNamespace(
+        bot = _bot(
             x=500.0,
             y=500.0,
             direction=90.0,
@@ -360,7 +368,7 @@ class MinimumRiskMovementTest(unittest.TestCase):
 
     def test_go_to_surf_scoring_uses_simulated_hit_bin_danger(self) -> None:
         movement = MovementFlattener()
-        bot = SimpleNamespace(
+        bot = _bot(
             x=500.0,
             y=500.0,
             direction=90.0,
@@ -394,7 +402,7 @@ class MinimumRiskMovementTest(unittest.TestCase):
 
     def test_movement_wave_records_segmentation_features(self) -> None:
         movement = MovementFlattener()
-        bot = SimpleNamespace(
+        bot = _bot(
             x=500.0,
             y=500.0,
             direction=90.0,

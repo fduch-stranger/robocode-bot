@@ -199,7 +199,8 @@ class CircleStrafer(Bot):
                 return
 
         if len(self._targets) >= 2:
-            focus_target = self._targets.get(self._target_id) or self._nearest_target()
+            focus_target = self._targets.get(self._target_id) if self._target_id is not None else None
+            focus_target = focus_target or self._nearest_target()
             if focus_target is not None:
                 decision = self._minimum_risk.choose(self, list(self._targets.values()), focus_target)
                 if decision is not None:
@@ -461,7 +462,7 @@ class CircleStrafer(Bot):
         previous_id = self._target_id
         candidate = min(self._targets.values(), key=self._target_score)
         target = candidate
-        current = self._targets.get(previous_id)
+        current = self._targets.get(previous_id) if previous_id is not None else None
         current_age = self.turn_number - current.seen_turn if current is not None else 999
         if current is not None and candidate.bot_id != current.bot_id and current_age <= FORCE_SWITCH_TARGET_AGE:
             candidate_score = self._target_score(candidate)
@@ -568,7 +569,7 @@ class CircleStrafer(Bot):
         )
 
     def on_bullet_fired(self, event: BulletFiredEvent) -> None:
-        target = self._targets.get(self._target_id)
+        target = self._targets.get(self._target_id) if self._target_id is not None else None
         gun_score, gun_visits = self._gun.target_confidence(target.bot_id) if target is not None else (0.0, 0)
         wave = self._gun.record_pending_fire()
         self._movement.record_shadow_bullet(

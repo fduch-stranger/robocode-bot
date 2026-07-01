@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import cast
 
 from bot_core.energy import FireDecision
 from bot_core.gun import AimSolution, WaveVisit
@@ -208,7 +209,7 @@ def _bullet_fired_fields(
     wave_created: bool | object = _UNSET,
     shadow_bullets: int | object = _UNSET,
 ) -> dict[str, object]:
-    fields = {
+    fields: dict[str, object] = {
         "bullet_id": bullet_id,
         "target": target_id,
         "power": power,
@@ -220,15 +221,17 @@ def _bullet_fired_fields(
         "gun_confidence_visits": gun_confidence_visits,
     }
     if target_age is not _UNSET:
-        fields["target_age"] = target_age
+        fields["target_age"] = cast(int | None, target_age)
     if target_x is not _UNSET:
-        fields["target_x"] = round(target_x, 1) if target_x is not None else None
+        target_x_value = cast(float | None, target_x)
+        fields["target_x"] = round(target_x_value, 1) if target_x_value is not None else None
     if target_y is not _UNSET:
-        fields["target_y"] = round(target_y, 1) if target_y is not None else None
+        target_y_value = cast(float | None, target_y)
+        fields["target_y"] = round(target_y_value, 1) if target_y_value is not None else None
     if wave_created is not _UNSET:
-        fields["wave"] = wave_created
+        fields["wave"] = cast(bool, wave_created)
     if shadow_bullets is not _UNSET:
-        fields["shadow_bullets"] = shadow_bullets
+        fields["shadow_bullets"] = cast(int, shadow_bullets)
     fields.update(tracked_fields)
     return fields
 

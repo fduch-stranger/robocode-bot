@@ -518,8 +518,8 @@ class ChaseLock(Bot):
 
         return "mid_orbit", ORBIT_STRAFE_OFFSET, 7
 
+    @staticmethod
     def _melee_movement_command(
-        self,
         target: TargetSnapshot,
         distance: float,
         evading: bool,
@@ -851,7 +851,7 @@ class ChaseLock(Bot):
         self._log("target.dead", bot_id=event.victim_id)
 
     def on_bullet_fired(self, event: BulletFiredEvent) -> None:
-        target = self._targets.get(self._target_id)
+        target = self._targets.get(self._target_id) if self._target_id is not None else None
         target_age = self.turn_number - target.seen_turn if target is not None else None
         gun_score, gun_visits = self._gun.target_confidence(target.bot_id) if target is not None else (0.0, 0)
         wave = self._gun.record_pending_fire()
