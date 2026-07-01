@@ -47,15 +47,16 @@ rounds.
 
 Adaptive Prime ranked first in all 3 melee runs.
 
-## Legacy Boss Check
+## Legacy Boss Checks
 
-Adaptive Prime was checked against the configured converted legacy
-`BasicGFSurfer 1.02` bot for 24 rounds.
+Adaptive Prime was checked against configured converted legacy bots. Each boss
+check used 24 rounds.
 
-| Rank | Bot | Score | 1sts | Avg Rank |
-| ---: | --- | ---: | ---: | ---: |
-| 1 | Adaptive Prime 1.0 | 2360 | 16 | 1.0 |
-| 2 | BasicGFSurfer 1.02 | 1418 | 8 | 2.0 |
+| Boss | Adaptive Score | Boss Score | Adaptive 1sts | Boss 1sts | Result |
+| --- | ---: | ---: | ---: | ---: | --- |
+| BasicGFSurfer 1.02 | 2360 | 1418 | 16 | 8 | Adaptive win |
+| HawkOnFire 0.1 | 2868 | 510 | 23 | 1 | Adaptive win |
+| Diamond 1.8.28 | 2225 | 1689 | 12 | 12 | Adaptive score win |
 
 ## Artifacts
 
@@ -64,6 +65,8 @@ Generated battle artifacts:
 - `battle-results/tournaments/champion-20260701-172750/summary.json`
 - `battle-results/series/local-melee-champion-20260701/summary.json`
 - `battle-results/series/adaptive-vs-basic-gf-surfer-20260701/summary.json`
+- `battle-results/series/adaptive-vs-hawk-on-fire-20260701/summary.json`
+- `battle-results/series/adaptive-vs-diamond-20260701/summary.json`
 
 `battle-results/` is ignored by git, so this document is the tracked summary of
 the championship run.
@@ -73,4 +76,3 @@ the championship run.
 One local tournament run initially failed because the embedded Robocode server
 selected a port that was already in use. The missing run was rerun with retries,
 and the final summary includes completed results for every matchup.
-

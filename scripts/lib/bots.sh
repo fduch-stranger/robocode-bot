@@ -58,6 +58,12 @@ legacy_bot_dir() {
     basic-gf-surfer|basicgfsurfer|wiki.basicgfsurfer|wiki.basicgfsurfer_1.02)
       candidate="$legacy_root/wiki.BasicGFSurfer_1.02"
       ;;
+    hawk-on-fire|hawkonfire|rz.hawkonfire|rz.hawkonfire_0.1)
+      candidate="$legacy_root/rz.HawkOnFire_0.1"
+      ;;
+    diamond|voidious.diamond|voidious.diamond_1.8.28)
+      candidate="$legacy_root/voidious.Diamond_1.8.28"
+      ;;
     *)
       candidate="$legacy_root/$name"
       ;;
@@ -78,11 +84,20 @@ list_legacy_bots() {
 
   while IFS= read -r bot; do
     name="$(basename "$bot")"
-    if [[ "$name" == "wiki.BasicGFSurfer_1.02" ]]; then
-      printf '%s\t%s\n' "basic-gf-surfer" "$bot"
-    else
-      printf '%s\t%s\n' "$name" "$bot"
-    fi
+    case "$name" in
+      wiki.BasicGFSurfer_1.02)
+        printf '%s\t%s\n' "basic-gf-surfer" "$bot"
+        ;;
+      rz.HawkOnFire_0.1)
+        printf '%s\t%s\n' "hawk-on-fire" "$bot"
+        ;;
+      voidious.Diamond_1.8.28)
+        printf '%s\t%s\n' "diamond" "$bot"
+        ;;
+      *)
+        printf '%s\t%s\n' "$name" "$bot"
+        ;;
+    esac
   done < <(discover_legacy_bot_dirs "$root_dir")
 }
 

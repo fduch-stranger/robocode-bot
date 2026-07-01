@@ -22,6 +22,7 @@ Battle/tool commands:
 - A/B smoke: `scripts/run-ab.sh --name smoke --preset adaptive-1v1-core --rounds 1 --repeats 1`.
 - Legacy discovery when configured: `scripts/run-battle.sh --list-legacy`.
 - Legacy boss smoke when configured: `scripts/run-battle.sh --rounds 1 bots/adaptive-prime --legacy basic-gf-surfer`.
+- Additional legacy boss aliases: `hawk-on-fire`, `diamond`.
 - Legacy A/B boss smoke when configured: `scripts/run-ab.sh --name boss-smoke --preset adaptive-1v1-boss --rounds 1 --repeats 1`.
 - Telemetry viewer commands: `scripts/telemetry-ui.sh start|stop|stop-all|disable|status`.
 - Telemetry audit: `tools/telemetry_audit.py battle-results/runs/<run>/telemetry --require-bot adaptive-prime`.

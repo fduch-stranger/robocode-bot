@@ -58,6 +58,8 @@ configured:
 ```sh
 scripts/run-battle.sh --list-legacy
 scripts/run-battle.sh --rounds 1 bots/adaptive-prime --legacy basic-gf-surfer
+scripts/run-battle.sh --rounds 1 bots/adaptive-prime --legacy hawk-on-fire
+scripts/run-battle.sh --rounds 1 bots/adaptive-prime --legacy diamond
 scripts/run-ab.sh --name boss-smoke --preset adaptive-1v1-boss --rounds 1 --repeats 1
 ```
 
