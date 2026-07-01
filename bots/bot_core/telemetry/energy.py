@@ -23,6 +23,23 @@ def energy_drop_ignored_fields(
     }
 
 
+def simple_energy_drop_ignored_fields(
+    target_id: int,
+    signal: EnergyDropSignal,
+    scan_gap: int,
+    distance: float,
+) -> dict[str, object]:
+    return {
+        "bot_id": target_id,
+        "reason": signal.reason,
+        "raw_drop": round(signal.raw_energy_drop, 2),
+        "corrected_drop": round(signal.energy_drop, 2),
+        "correction": round(signal.energy_correction, 2),
+        "scan_gap": scan_gap,
+        "distance": round(distance, 1),
+    }
+
+
 def enemy_fire_detected_fields(
     target_id: int,
     signal: EnergyDropSignal,
@@ -61,6 +78,44 @@ def enemy_fire_detected_fields(
         "prediction_error": round(abs(previous_prediction.fire_power - (signal.fire_power or 1.5)), 2)
         if previous_prediction is not None
         else None,
+        "power_samples": power_samples,
+        "power_mae": rounded(power_mae, 3),
+    }
+
+
+def simple_enemy_fire_detected_fields(
+    target_id: int,
+    signal: EnergyDropSignal,
+    scan_gap: int,
+    distance: float,
+    evasion: str,
+    evading: bool,
+    move_direction: int,
+    evade_until: int,
+    movement_wave_created: bool,
+    previous_prediction: EnemyFirePowerPrediction,
+    power_samples: int,
+    power_mae: float | None,
+) -> dict[str, object]:
+    actual_fire_power = signal.fire_power or 1.5
+    return {
+        "bot_id": target_id,
+        "power": round(signal.fire_power or 0.0, 2),
+        "raw_drop": round(signal.raw_energy_drop, 2),
+        "corrected_drop": round(signal.energy_drop, 2),
+        "correction": round(signal.energy_correction, 2),
+        "scan_gap": scan_gap,
+        "distance": round(distance, 1),
+        "bullet_travel_ticks": signal.bullet_travel_ticks,
+        "evasion": evasion,
+        "evading": evading,
+        "move_direction": move_direction,
+        "evade_until": evade_until,
+        "movement_wave": movement_wave_created,
+        "predicted_power": round(previous_prediction.fire_power, 2),
+        "prediction_confidence": round(previous_prediction.confidence, 3),
+        "prediction_reason": previous_prediction.reason,
+        "prediction_error": round(abs(previous_prediction.fire_power - actual_fire_power), 2),
         "power_samples": power_samples,
         "power_mae": rounded(power_mae, 3),
     }

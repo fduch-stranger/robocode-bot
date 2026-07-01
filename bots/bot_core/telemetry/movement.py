@@ -50,6 +50,30 @@ def flattening_fields(
     return fields
 
 
+def simple_flattening_fields(
+    target_id: int,
+    flattening: FlatteningDecision,
+    distance: float,
+) -> dict[str, object]:
+    return {
+        "target": target_id,
+        "suggested_direction": flattening.direction,
+        "bucket": flattening.bucket,
+        "current_count": round(flattening.current_count, 1),
+        "alternative_count": round(flattening.alternative_count, 1),
+        "distance": round(distance, 1),
+    }
+
+
+def wall_avoid_fields(x: float, y: float, center_bearing: float, move_direction: int) -> dict[str, object]:
+    return {
+        "x": round(x, 1),
+        "y": round(y, 1),
+        "center_bearing": round(center_bearing, 2),
+        "move_direction": move_direction,
+    }
+
+
 def goto_surf_fields(
     target_id: int,
     decision: GoToSurfDecision,

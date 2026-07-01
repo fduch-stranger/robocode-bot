@@ -38,6 +38,26 @@ def target_selection_fields(selection: TargetSelection, known_targets: int) -> d
     }
 
 
+def candidate_target_selection_fields(
+    previous_id: int | None,
+    selected: TargetSnapshot,
+    score: float,
+    candidate: TargetSnapshot,
+    candidate_score: float,
+    previous_age: int | None,
+    known_targets: int,
+) -> dict[str, object]:
+    return {
+        "previous": previous_id,
+        "selected": selected.bot_id,
+        "score": round(score, 1),
+        "candidate": candidate.bot_id,
+        "candidate_score": round(candidate_score, 1),
+        "previous_age": previous_age,
+        "known_targets": known_targets,
+    }
+
+
 def target_drop_lost_fields(target: TargetSnapshot, age: int, distance: float, known_targets: int) -> dict[str, object]:
     return {
         "bot_id": target.bot_id,

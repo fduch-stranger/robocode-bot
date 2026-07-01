@@ -5,16 +5,25 @@ from bot_core.gun import AimSolution, WaveVisit
 from bot_core.movement import FlatteningDecision, GoToSurfDecision, MinimumRiskDecision, MovementCommand, MovementProfileVisit
 from bot_core.radar import RadarCommand
 from bot_core.target_snapshot import TargetSnapshot
-from bot_core.telemetry.energy import enemy_fire_detected_fields, energy_drop_ignored_fields, gun_heat_wave_fields
-from bot_core.telemetry.fire import FireTick, track_fields, wave_visit_fields
+from bot_core.telemetry.energy import (
+    enemy_fire_detected_fields,
+    energy_drop_ignored_fields,
+    gun_heat_wave_fields,
+    simple_enemy_fire_detected_fields,
+    simple_energy_drop_ignored_fields,
+)
+from bot_core.telemetry.fire import FireTick, SimpleTrackTick, simple_track_fields, track_fields, wave_visit_fields
 from bot_core.telemetry.movement import (
     duel_potential_fields,
     flattening_fields,
     goto_surf_fields,
     minimum_risk_fields,
     profile_visit_fields,
+    simple_flattening_fields,
+    wall_avoid_fields,
 )
 from bot_core.telemetry.targeting import (
+    candidate_target_selection_fields,
     scan_new_fields,
     scan_reacquired_fields,
     target_drop_lost_fields,
@@ -157,6 +166,108 @@ class TelemetryEmitterTest(unittest.TestCase):
         self.assertEqual(1.93, fields["power"])
         self.assertEqual(0.43, fields["prediction_error"])
         self.assertEqual(0.457, fields["power_mae"])
+
+    def test_simple_bot_emitters_preserve_circle_sweep_fields(self) -> None:
+        target = TargetSnapshot(7, 81.0, 120.0, 160.0, 45.0, 4.0, 10)
+        aim = AimSolution(
+            predicted_x=130.04,
+            predicted_y=170.05,
+            gun_bearing=-2.345,
+            mode="linear",
+            guess_factor=None,
+            features=(0.0,) * 7,
+            segment_key=(1, 2, 3),
+            virtual_bearings={},
+        )
+        radar = RadarCommand(target, turn=4.444, mode="lock", bearing=-8.888, age=1)
+        track = simple_track_fields(
+            SimpleTrackTick(target, 2, 321.98, aim, radar, 1.2, "gun_alignment", 42, {"linear": "0.42/9"}, 3)
+        )
+        self.assertEqual(
+            {
+                "target",
+                "age",
+                "distance",
+                "gun_bearing",
+                "radar_turn",
+                "radar_mode",
+                "radar_target",
+                "radar_age",
+                "firepower",
+                "hold_reason",
+                "predicted_x",
+                "predicted_y",
+                "aim_mode",
+                "aim_guess_factor",
+                "gun_samples",
+                "gun_scores",
+                "known_targets",
+            },
+            set(track),
+        )
+        self.assertIsNone(track["aim_guess_factor"])
+
+        ignored = EnergyDropSignal(False, "not_fire", 0.4, 0.3, 0.1, None, None, 0)
+        self.assertEqual(
+            {"bot_id": 7, "reason": "not_fire", "raw_drop": 0.4, "corrected_drop": 0.3, "correction": 0.1, "scan_gap": 2, "distance": 200.1},
+            simple_energy_drop_ignored_fields(7, ignored, 2, 200.12),
+        )
+
+        fire = EnergyDropSignal(True, "fire", 1.51, 1.41, 0.1, 1.41, 13, 20)
+        prediction = EnemyFirePowerPrediction(1.2, 0.75, 20, "knn", mean_absolute_error=0.2222)
+        fire_fields = simple_enemy_fire_detected_fields(7, fire, 2, 200.12, "active_duel", True, -1, 99, True, prediction, 12, 0.3333)
+        self.assertEqual(
+            {
+                "bot_id",
+                "power",
+                "raw_drop",
+                "corrected_drop",
+                "correction",
+                "scan_gap",
+                "distance",
+                "bullet_travel_ticks",
+                "evasion",
+                "evading",
+                "move_direction",
+                "evade_until",
+                "movement_wave",
+                "predicted_power",
+                "prediction_confidence",
+                "prediction_reason",
+                "prediction_error",
+                "power_samples",
+                "power_mae",
+            },
+            set(fire_fields),
+        )
+        self.assertEqual(0.21, fire_fields["prediction_error"])
+
+        flattening = FlatteningDecision(-1, True, "lower_danger", 4, 2.22, 1.11)
+        self.assertEqual(
+            {
+                "target": 7,
+                "suggested_direction": -1,
+                "bucket": 4,
+                "current_count": 2.2,
+                "alternative_count": 1.1,
+                "distance": 200.1,
+            },
+            simple_flattening_fields(7, flattening, 200.12),
+        )
+        self.assertEqual({"x": 10.1, "y": 20.2, "center_bearing": -3.46, "move_direction": 1}, wall_avoid_fields(10.12, 20.23, -3.456, 1))
+
+        self.assertEqual(
+            {
+                "previous": 3,
+                "selected": 7,
+                "score": 12.3,
+                "candidate": 8,
+                "candidate_score": 11.1,
+                "previous_age": 4,
+                "known_targets": 2,
+            },
+            candidate_target_selection_fields(3, target, 12.34, TargetSnapshot(8, 70, 1, 2, 0, 0, 10), 11.11, 4, 2),
+        )
 
     def test_movement_emitters_preserve_adaptive_fields(self) -> None:
         command = MovementCommand("goto_surf", turn=-12.345, speed=8)

@@ -20,13 +20,17 @@ from bot_core.energy import (
     classify_energy_drop,
 )
 from bot_core.gun import TargetMotion, VirtualGunSystem
-from bot_core.movement import MinimumRiskMovement, MovementFlattener, MovementFlatteningConfig
+from bot_core.movement import MinimumRiskMovement, MovementCommand, MovementFlattener, MovementFlatteningConfig
 from bot_core.motion import OwnMotionTracker
 from bot_core.radar import RadarLockConfig, lock_priority_radar
 from bot_core.geometry.angles import body_bearing_to
 from bot_core.geometry.numeric import clamp
 from bot_core.geometry.position import distance_to, drive_to_destination
 from bot_core.target_snapshot import TargetSnapshot, target_from_scan
+from bot_core.telemetry.energy import simple_enemy_fire_detected_fields, simple_energy_drop_ignored_fields
+from bot_core.telemetry.fire import SimpleTrackTick, gun_switch_fields, simple_track_fields, wave_visit_fields
+from bot_core.telemetry.movement import minimum_risk_fields, profile_visit_fields, simple_flattening_fields, wall_avoid_fields
+from bot_core.telemetry.targeting import candidate_target_selection_fields, scan_new_fields
 
 
 FIRE_ALIGNMENT_DEGREES = 8
@@ -146,10 +150,7 @@ class SweepPressure(Bot):
             self.turn_rate = clamp(center_bearing, -10, 10)
             self._sample_status(
                 "wall.avoid",
-                x=round(self.x, 1),
-                y=round(self.y, 1),
-                center_bearing=round(center_bearing, 2),
-                move_direction=self._move_direction,
+                **wall_avoid_fields(self.x, self.y, center_bearing, self._move_direction),
             )
             return
 
@@ -161,18 +162,12 @@ class SweepPressure(Bot):
                     turn, speed = self._drive_to_destination(decision.x, decision.y, SWEEP_SPEED)
                     self._sample_status(
                         "movement.minimum_risk",
-                        target=focus_target.bot_id,
-                        destination_x=round(decision.x, 1),
-                        destination_y=round(decision.y, 1),
-                        risk=round(decision.risk, 3),
-                        candidates=decision.candidates,
-                        nearest_enemy=decision.nearest_enemy_id,
-                        nearest_enemy_distance=round(decision.nearest_enemy_distance, 1),
-                        reused_destination=decision.reused,
-                        destination_age=decision.age,
-                        turn=round(turn, 2),
-                        speed=speed,
-                        known_targets=len(self._targets),
+                        **minimum_risk_fields(
+                            focus_target.bot_id,
+                            decision,
+                            MovementCommand("minimum_risk", turn, speed),
+                            len(self._targets),
+                        ),
                     )
                     return
 
@@ -204,10 +199,7 @@ class SweepPressure(Bot):
         if previous is None:
             self._log(
                 "scan.new",
-                bot_id=event.scanned_bot_id,
-                energy=round(event.energy, 1),
-                x=round(event.x, 1),
-                y=round(event.y, 1),
+                **scan_new_fields(event.scanned_bot_id, event.energy, event.x, event.y),
             )
 
     def _detect_enemy_fire(self, event: ScannedBotEvent, previous: TargetSnapshot, scan_gap: int) -> bool:
@@ -229,13 +221,7 @@ class SweepPressure(Bot):
             if signal.raw_energy_drop > 0 or signal.energy_correction:
                 self._log(
                     "enemy.energy_drop_ignored",
-                    bot_id=event.scanned_bot_id,
-                    reason=signal.reason,
-                    raw_drop=round(signal.raw_energy_drop, 2),
-                    corrected_drop=round(signal.energy_drop, 2),
-                    correction=round(signal.energy_correction, 2),
-                    scan_gap=scan_gap,
-                    distance=round(distance, 1),
+                    **simple_energy_drop_ignored_fields(event.scanned_bot_id, signal, scan_gap, distance),
                 )
             return False
 
@@ -264,29 +250,23 @@ class SweepPressure(Bot):
         if active_evasion:
             self._move_direction *= -1
         self._evade_until_turn = max(self._evade_until_turn, self.turn_number + signal.evade_ticks)
+        power_mae = self._enemy_fire_power.mean_absolute_error(event.scanned_bot_id)
         self._log(
             "enemy.fire_detected",
-            bot_id=event.scanned_bot_id,
-            power=round(signal.fire_power or 0.0, 2),
-            raw_drop=round(signal.raw_energy_drop, 2),
-            corrected_drop=round(signal.energy_drop, 2),
-            correction=round(signal.energy_correction, 2),
-            scan_gap=scan_gap,
-            distance=round(distance, 1),
-            bullet_travel_ticks=signal.bullet_travel_ticks,
-            evasion="active_duel" if active_evasion else "threat_only",
-            evading=active_evasion,
-            move_direction=self._move_direction,
-            evade_until=self._evade_until_turn,
-            movement_wave=movement_wave is not None,
-            predicted_power=round(prediction.fire_power, 2),
-            prediction_confidence=round(prediction.confidence, 3),
-            prediction_reason=prediction.reason,
-            prediction_error=round(abs(prediction.fire_power - actual_fire_power), 2),
-            power_samples=self._enemy_fire_power.sample_count(event.scanned_bot_id),
-            power_mae=round(self._enemy_fire_power.mean_absolute_error(event.scanned_bot_id), 3)
-            if self._enemy_fire_power.mean_absolute_error(event.scanned_bot_id) is not None
-            else None,
+            **simple_enemy_fire_detected_fields(
+                event.scanned_bot_id,
+                signal,
+                scan_gap,
+                distance,
+                "active_duel" if active_evasion else "threat_only",
+                active_evasion,
+                self._move_direction,
+                self._evade_until_turn,
+                movement_wave is not None,
+                prediction,
+                self._enemy_fire_power.sample_count(event.scanned_bot_id),
+                power_mae,
+            ),
         )
         return True
 
@@ -326,10 +306,7 @@ class SweepPressure(Bot):
         if aim.mode_changed:
             self._log(
                 "gun.switch",
-                target=target.bot_id,
-                previous=aim.previous_mode,
-                selected=aim.mode,
-                scores=self._gun.score_summary(target.bot_id, score_segment),
+                **gun_switch_fields(target.bot_id, aim, self._gun.score_summary(target.bot_id, score_segment)),
             )
         radar_command = lock_priority_radar(
             self,
@@ -348,23 +325,20 @@ class SweepPressure(Bot):
         else:
             self._sample_status(
                 "track",
-                target=target.bot_id,
-                age=age,
-                distance=round(distance, 1),
-                gun_bearing=round(aim.gun_bearing, 2),
-                radar_turn=round(radar_command.turn, 2),
-                radar_mode=radar_command.mode,
-                radar_target=radar_command.target.bot_id,
-                radar_age=radar_command.age,
-                firepower=firepower,
-                hold_reason=hold_reason,
-                predicted_x=round(aim.predicted_x, 1),
-                predicted_y=round(aim.predicted_y, 1),
-                aim_mode=aim.mode,
-                aim_guess_factor=round(aim.guess_factor, 3) if aim.guess_factor is not None else None,
-                gun_samples=self._gun.sample_count,
-                gun_scores=self._gun.score_summary(target.bot_id, score_segment),
-                known_targets=len(self._targets),
+                **simple_track_fields(
+                    SimpleTrackTick(
+                        target,
+                        age,
+                        distance,
+                        aim,
+                        radar_command,
+                        firepower,
+                        hold_reason,
+                        self._gun.sample_count,
+                        self._gun.score_summary(target.bot_id, score_segment),
+                        len(self._targets),
+                    )
+                ),
             )
 
     def _target_motion(self, target: TargetSnapshot) -> TargetMotion:
@@ -377,28 +351,14 @@ class SweepPressure(Bot):
         for visit in self._gun.update_waves(self, target):
             self._log(
                 "gun.wave_visit",
-                target=visit.target_id,
-                guess_factor=round(visit.guess_factor, 3),
-                samples=visit.samples,
-                traveled=round(visit.traveled, 1),
-                distance=round(visit.distance, 1),
-                selected_gun=visit.selected_gun,
-                virtual_scores=visit.virtual_scores,
-                gun_scores=visit.gun_scores,
+                **wave_visit_fields(visit),
             )
 
     def _log_movement_profile_visits(self) -> None:
         for visit in self._movement.update(self):
             self._log(
                 "movement.profile_visit",
-                target=visit.target_id,
-                guess_factor=round(visit.guess_factor, 3),
-                bin=visit.bin_index,
-                bucket=visit.bucket,
-                visits=round(visit.visits, 1),
-                wave_age=visit.wave_age,
-                ensemble_danger=round(visit.ensemble_danger, 3),
-                ensemble_samples=round(visit.ensemble_samples, 1),
+                **profile_visit_fields(visit),
             )
 
     def _apply_movement_flattening(self, target: TargetSnapshot, distance: float) -> None:
@@ -425,12 +385,7 @@ class SweepPressure(Bot):
         self._move_direction = flattening.direction
         self._log(
             "movement.flatten",
-            target=target.bot_id,
-            suggested_direction=flattening.direction,
-            bucket=flattening.bucket,
-            current_count=round(flattening.current_count, 1),
-            alternative_count=round(flattening.alternative_count, 1),
-            distance=round(distance, 1),
+            **simple_flattening_fields(target.bot_id, flattening, distance),
         )
 
     def _firepower_for(self, distance: float) -> float:
@@ -500,13 +455,15 @@ class SweepPressure(Bot):
         if previous_id != target.bot_id:
             self._log(
                 "target.select",
-                previous=previous_id,
-                selected=target.bot_id,
-                score=round(self._target_score(target), 1),
-                candidate=candidate.bot_id,
-                candidate_score=round(self._target_score(candidate), 1),
-                previous_age=current_age if current is not None else None,
-                known_targets=len(self._targets),
+                **candidate_target_selection_fields(
+                    previous_id,
+                    target,
+                    self._target_score(target),
+                    candidate,
+                    self._target_score(candidate),
+                    current_age if current is not None else None,
+                    len(self._targets),
+                ),
             )
         return target
 
