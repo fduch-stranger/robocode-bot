@@ -606,12 +606,15 @@ arena_width, arena_height
 distance, movement mode, aim mode, radar mode, firepower, gun bearing error,
 danger breakdown, wave bin, prediction confidence, and so on.
 
-`bot_core.telemetry.recorder.TelemetryRecorder` writes JSONL records through
-`bot_core.async_writer.AsyncItemWriter` by default. Bot code still builds the
-record envelope on the hot path, but JSON serialization, file writes, and
-flushes happen on the writer thread. If the queue fills, telemetry events are
-dropped instead of blocking movement, radar, or gun decisions; close writes a
-`telemetry.dropped` lifecycle event with the dropped count.
+`bot_core.telemetry.recorder.TelemetryRecorder` builds the JSONL envelope and
+writes records through `bot_core.async_writer.AsyncItemWriter` by default. Bot
+scripts call domain emitters such as `FireTelemetry`, `MovementTelemetry`,
+`EnergyTelemetry`, and `TargetingTelemetry`; those emitters build event fields
+from structured decision records or explicit status arguments. JSON
+serialization, file writes, and flushes happen on the writer thread. If the
+queue fills, telemetry events are dropped instead of blocking movement, radar,
+or gun decisions; close writes a `telemetry.dropped` lifecycle event with the
+dropped count.
 
 `bot_core.debug.DebugLogger` owns debug-log sampling and forwards structured
 events to the recorder. Text debug logs use the same bounded background-write

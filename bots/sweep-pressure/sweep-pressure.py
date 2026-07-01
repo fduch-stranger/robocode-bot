@@ -276,7 +276,7 @@ class SweepPressure(Bot):
         if target is None:
             self.gun_turn_rate = 0
             self.radar_turn_rate = RADAR_SEARCH_RATE
-            self._targeting_telemetry.sample_search(0)
+            self._targeting_telemetry.sample_search(known_targets=0)
             return
 
         distance = distance_to(self, target.x, target.y)

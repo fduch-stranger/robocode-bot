@@ -275,7 +275,7 @@ class AdaptivePrime(Bot):
         target = self._select_target()
         if target is None:
             self._search()
-            self._targeting_telemetry.sample_search(0)
+            self._targeting_telemetry.sample_search(known_targets=0)
             return
 
         distance = distance_to(self, target.x, target.y)

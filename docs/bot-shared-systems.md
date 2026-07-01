@@ -197,6 +197,8 @@ Telemetry is JSONL. Common event names:
 - `movement.profile_visit`: movement wave learning.
 - `movement.flatten`: lateral direction flip.
 - `movement.minimum_risk`: melee destination.
+- `wall.avoid`, `separate`: sampled movement status.
+- `search`, `target.reacquire`: sampled target/radar status.
 - `bullet.fired`, `bullet.hit_bot`, `hit.bullet`.
 
 Structured telemetry helpers live in `bot_core.telemetry`. `DebugLogger`

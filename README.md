@@ -1,13 +1,22 @@
 # Robocode Bot Workspace
 
-This repository is a workspace for developing Python bots for Robocode Tank
-Royale. It contains the bots, shared bot logic, local battle tooling,
-telemetry/debugging tools, A/B benchmarks, and documentation for the algorithms
-used by the bots.
+Python bots, shared combat logic, battle automation, telemetry tooling, and
+algorithm notes for Robocode Tank Royale.
 
 The bots target [Robocode Tank Royale](https://github.com/robocode-dev/tank-royale),
 the modern Robocode engine and game server. Official project documentation is
 available at [robocode.dev](https://robocode.dev/).
+
+## Highlights
+
+- Four local bots with different personalities: adaptive 1v1, chase pressure,
+  defensive orbiting, and sweep pressure.
+- Shared `bot_core` systems for target memory, radar locking, virtual guns,
+  enemy-fire detection, movement learning, fire gates, and structured telemetry.
+- CLI battle runner, legacy-bot support, A/B experiments, telemetry audit, and
+  a browser telemetry dashboard for inspecting bot state and decision streams.
+- Tracked architecture docs and local championship summaries so tuning choices
+  are easier to review.
 
 ## Project Map
 
@@ -18,6 +27,14 @@ available at [robocode.dev](https://robocode.dev/).
 | `tools/` | Java battle runner, telemetry viewer, A/B runner, and audit utilities |
 | `docs/` | documentation hub for workflows, shared systems, and data structures |
 | `tests/` | unit tests for shared bot logic and tooling |
+
+## Requirements
+
+- Python 3.13 or compatible Python 3.x supported by the project virtualenv.
+- Java runtime for the embedded Robocode Tank Royale runner.
+- Bash-compatible shell for the scripts.
+- Optional: converted legacy bots under `legacy-bots/` or
+  `ROBOCODE_LEGACY_BOTS_ROOT`.
 
 ## First Run
 
@@ -30,6 +47,20 @@ scripts/run-battle.sh
 
 This creates local configuration, installs dependencies, packages the bots, and
 runs a default battle with every local bot.
+
+## Current Snapshot
+
+`Adaptive Prime` is the current local champion candidate. The latest tracked
+round-robin and boss-bot benchmark summary is in
+[Championship Results](docs/championship-results.md).
+
+Quick health checks:
+
+```sh
+PYTHONPATH=bots .venv/bin/python -m pytest
+scripts/run-battle.sh --rounds 1 bots/adaptive-prime bots/chase-lock
+scripts/run-battle.sh --telemetry --rounds 1 bots/adaptive-prime bots/chase-lock
+```
 
 ## Documentation
 

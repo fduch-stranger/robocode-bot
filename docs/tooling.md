@@ -185,6 +185,7 @@ CLI battle telemetry:
 ```sh
 scripts/run-battle.sh --telemetry bots/adaptive-prime bots/chase-lock
 scripts/run-battle.sh --telemetry --telemetry-open bots/adaptive-prime bots/chase-lock
+scripts/run-battle.sh --telemetry --rounds 3 bots/adaptive-prime bots/chase-lock bots/circle-strafer bots/sweep-pressure
 ```
 
 Telemetry and debug logs are buffered through bounded background writers by
@@ -283,6 +284,17 @@ The browser viewer keeps raw JSONL fields available in the event list, but its
 cards, charts, and performance summaries use normalized dashboard semantics
 derived from the raw event. This keeps the unified viewer consistent when bots
 emit different extra fields around the same concept.
+
+After a telemetry refactor, a useful end-to-end check is:
+
+```sh
+scripts/run-battle.sh --telemetry --rounds 3 bots/adaptive-prime bots/chase-lock bots/circle-strafer bots/sweep-pressure
+tools/telemetry_audit.py battle-results/runs/<run>/telemetry \
+  --require-bot adaptive-prime \
+  --require-bot chase-lock \
+  --require-bot circle-strafer \
+  --require-bot sweep-pressure
+```
 
 ## A/B Testing
 

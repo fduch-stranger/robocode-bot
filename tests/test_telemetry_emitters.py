@@ -247,10 +247,18 @@ class TelemetryEmitterTest(unittest.TestCase):
         flattening = FlatteningDecision(-1, True, "lower_danger", 4, 2.22, 1.11)
         profile = MovementProfileVisit(2, 0.3456, 16, 1, 3.21, 9, 0.4567, 8.88)
 
-        telemetry.sample_wall_avoid(10.12, 20.23, -3.456, 1)
-        telemetry.sample_target_wall_avoid(30.12, 40.23, 5.678, 9)
-        telemetry.sample_search_wall_avoid(50.12, 60.23, -7.891, -1, True)
-        telemetry.sample_separation(4, 123.45, -12.345, 6, 10, -1, False)
+        telemetry.sample_wall_avoid(x=10.12, y=20.23, center_bearing=-3.456, move_direction=1)
+        telemetry.sample_target_wall_avoid(x=30.12, y=40.23, center_bearing=5.678, target_id=9)
+        telemetry.sample_search_wall_avoid(x=50.12, y=60.23, center_bearing=-7.891, evade_direction=-1, near_wall=True)
+        telemetry.sample_separation(
+            target_id=4,
+            distance=123.45,
+            away_bearing=-12.345,
+            target_speed=6,
+            turn_limit=10,
+            move_direction=-1,
+            collision_escape=False,
+        )
         telemetry.record_flattening(7, flattening, 200.12)
         telemetry.record_profile_visit(profile)
 
@@ -350,8 +358,20 @@ class TelemetryEmitterTest(unittest.TestCase):
         candidate = TargetSnapshot(8, 70.0, 1.0, 2.0, 0.0, 0.0, 10)
         selection = TargetSelection(target, previous_id=4, fresh_candidates=2, score=33.33)
 
-        telemetry.sample_search(0)
-        telemetry.sample_reacquire(target, 6, 200.04, -3.456, 180.123, 11.111, "reacquire", -1, 90.04, 110.05, 2)
+        telemetry.sample_search(known_targets=0)
+        telemetry.sample_reacquire(
+            target=target,
+            age=6,
+            distance=200.04,
+            radar_bearing=-3.456,
+            radar_direction=180.123,
+            radar_turn=11.111,
+            radar_mode="reacquire",
+            radar_sweep=-1,
+            x=90.04,
+            y=110.05,
+            known_targets=2,
+        )
         telemetry.record_scan_new(5, 60.12, 100.11, 120.11)
         telemetry.record_scan_reacquired(5, 8, target, 130.12, 140.12)
         telemetry.record_target_selection(selection, 3)
