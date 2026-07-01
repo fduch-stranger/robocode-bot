@@ -615,6 +615,22 @@ from decision records such as `FireTick`, `FireDecision`, `MovementCommand`,
 Important invariant: event fields should make derived dashboard stats possible
 without re-running bot logic.
 
+`bot_core.telemetry.schema` defines the shared telemetry contract used by tests
+and audit tooling:
+
+- canonical dashboard fields such as `target`, `distance`, `power`, `damage`,
+  `bullet_id`, `aim_mode`, `movement_mode`, `evasion`, and `reason`
+- known event names and categories such as fire, movement, targeting, energy,
+  combat, and lifecycle
+- required fields for analyzer-critical events
+- compatibility aliases, for example `bot_id` to normalized `target` where the
+  raw event describes an enemy bot id
+
+The schema is intentionally small. It validates shared analyzer semantics while
+still allowing bot-specific raw fields that are useful for strategy debugging.
+When adding a telemetry event used by the dashboard or audit, add the event spec
+and focused emitter tests with complete field-set assertions.
+
 ## Approximation Tradeoffs
 
 The current implementation uses practical approximations:

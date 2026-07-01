@@ -204,5 +204,29 @@ remains the sink used by bots, while domain emitters in `telemetry.fire`,
 `telemetry.movement`, `telemetry.energy`, and `telemetry.targeting` keep
 event-specific field construction out of bot orchestration code.
 
+Shared dashboard/analyzer semantics are defined in `bot_core.telemetry.schema`.
+The JSONL envelope remains stable, and bot-specific extra fields are allowed,
+but common fields should keep the same meaning across bots:
+
+- `target`
+- `distance`
+- `power`
+- `damage`
+- `bullet_id`
+- `aim_mode`
+- `gun_mode`
+- `movement_mode`
+- `mode`
+- `evasion`
+- `evading`
+- `wall_risk`
+- `reason`
+
+The telemetry viewer normalizes raw event fields into these dashboard concepts
+before computing cards, charts, and performance summaries. The raw fields remain
+visible in the event list for debugging. This allows Circle/Sweep to keep their
+simpler track schema while Adaptive/Chase keep richer target and movement
+context without breaking shared analyzers.
+
 See [Tooling: Telemetry Viewer](tooling.md#telemetry-viewer) for launch,
 reset, audit, and stop commands.

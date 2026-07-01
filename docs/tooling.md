@@ -259,12 +259,17 @@ The audit validates:
 
 - telemetry files are readable JSONL
 - required bots emitted events
-- required event fields exist
+- required event fields exist according to `bot_core.telemetry.schema`
 - bullet hits can be attributed to fired gun modes
 - enemy fire events have expected evasion labels
 
 Use it after changing telemetry fields, dashboard aggregation, or bot event
 logging.
+
+The browser viewer keeps raw JSONL fields available in the event list, but its
+cards, charts, and performance summaries use normalized dashboard semantics
+derived from the raw event. This keeps the unified viewer consistent when bots
+emit different extra fields around the same concept.
 
 ## A/B Testing
 
