@@ -79,6 +79,38 @@ viewer_url() {
   fi
 }
 
+candidate_viewer_urls() {
+  {
+    printf 'http://%s:%s/\n' "$host" "$port"
+    if [[ -f "$telemetry_dir/telemetry-viewer.url" ]]; then
+      viewer_url "$telemetry_dir"
+    fi
+    if [[ -d "$ROOT_DIR/battle-results" ]]; then
+      find "$ROOT_DIR/battle-results" -name telemetry-viewer.url -type f -exec cat {} \; 2>/dev/null
+    fi
+  } | awk 'NF {print}' | sort -u
+}
+
+url_telemetry_dir() {
+  local url="$1"
+  [[ -n "$url" ]] || return 1
+  "$RUNTIME_PYTHON_BIN" - "$url" <<'PY' 2>/dev/null
+import json
+import sys
+import urllib.request
+
+try:
+    with urllib.request.urlopen(sys.argv[1].rstrip("/") + "/api/health", timeout=1.5) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+except Exception:
+    raise SystemExit(1)
+if payload.get("ok") and payload.get("dir"):
+    print(payload["dir"])
+else:
+    raise SystemExit(1)
+PY
+}
+
 pid_running() {
   local pid="$1"
   [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null
@@ -132,14 +164,29 @@ discover_viewer_dirs() {
     if [[ -d "$ROOT_DIR/battle-results" ]]; then
       find "$ROOT_DIR/battle-results" \( -name telemetry-viewer.lock -o -name telemetry-viewer.url \) -type f -exec dirname {} \; 2>/dev/null
     fi
+    while IFS= read -r candidate_url; do
+      url_telemetry_dir "$candidate_url" || true
+    done < <(candidate_viewer_urls)
   } | sort -u
+}
+
+healthy_url_for_dir() {
+  local dir="$1"
+  local candidate_url
+  while IFS= read -r candidate_url; do
+    if viewer_healthy "$candidate_url" "$dir"; then
+      printf '%s\n' "$candidate_url"
+      return 0
+    fi
+  done < <(candidate_viewer_urls)
+  return 1
 }
 
 describe_viewer() {
   local dir="$1"
   local pid url state health
   pid="$(viewer_pid "$dir")"
-  url="$(viewer_url "$dir")"
+  url="$(healthy_url_for_dir "$dir" || viewer_url "$dir")"
   state="stopped"
   health="unknown"
   if pid_matches_viewer "$pid" "$dir"; then
@@ -169,15 +216,16 @@ list_viewers() {
 stop_viewer() {
   local dir="$1"
   local lock_file="$dir/telemetry-viewer.lock"
+  local url_file="$dir/telemetry-viewer.url"
   local pid url stopped
   pid="$(viewer_pid "$dir")"
-  url="$(viewer_url "$dir")"
+  url="$(healthy_url_for_dir "$dir" || viewer_url "$dir")"
   stopped=0
 
   if request_shutdown "$url" "$dir"; then
     stopped=1
     for _ in {1..20}; do
-      if ! pid_matches_viewer "$pid" "$dir"; then
+      if ! viewer_healthy "$url" "$dir" && ! pid_matches_viewer "$pid" "$dir"; then
         break
       fi
       sleep 0.1
@@ -190,8 +238,12 @@ stop_viewer() {
 
   rm -f "$lock_file"
   if [[ "$stopped" -eq 1 ]]; then
+    rm -f "$url_file"
     echo "Stopped telemetry viewer for $dir."
   elif [[ -n "$pid" || -n "$url" ]]; then
+    if ! viewer_healthy "$url" "$dir"; then
+      rm -f "$url_file"
+    fi
     echo "Telemetry viewer already stopped for $dir."
   else
     echo "No telemetry viewer found for $dir."

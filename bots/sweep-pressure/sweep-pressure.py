@@ -10,7 +10,7 @@ from robocode_tank_royale.bot_api.events import (
     ScannedBotEvent,
 )
 
-from bot_utils.debug import DebugLogger
+from bot_utils.debug import DebugLogger, FiredBulletTracker
 from bot_utils.energy import EnergyDropConfig, classify_energy_drop
 from bot_utils.gun import TargetMotion, VirtualGunSystem
 from bot_utils.movement import MinimumRiskMovement, MovementFlattener
@@ -95,6 +95,7 @@ class SweepPressure(Bot):
         self._movement = MovementFlattener()
         self._minimum_risk = MinimumRiskMovement()
         self._debug = DebugLogger(self, "sweep-pressure")
+        self._fired_bullets = FiredBulletTracker()
 
     def run(self) -> None:
         self.body_color = Color.from_rgb(42, 120, 210)
@@ -217,7 +218,8 @@ class SweepPressure(Bot):
             target_from_scan(event, self.turn_number),
             signal.fire_power or 1.5,
         )
-        if not self._wall_risk():
+        active_evasion = not self._wall_risk()
+        if active_evasion:
             self._move_direction *= -1
         self._evade_until_turn = max(self._evade_until_turn, self.turn_number + signal.evade_ticks)
         self._log(
@@ -230,6 +232,8 @@ class SweepPressure(Bot):
             scan_gap=scan_gap,
             distance=round(distance, 1),
             bullet_travel_ticks=signal.bullet_travel_ticks,
+            evasion="active_duel" if active_evasion else "threat_only",
+            evading=active_evasion,
             move_direction=self._move_direction,
             evade_until=self._evade_until_turn,
             movement_wave=movement_wave is not None,
@@ -523,7 +527,16 @@ class SweepPressure(Bot):
         if not self._wall_risk():
             self._move_direction *= -1
         self.set_turn_left(25 * self._move_direction)
-        self._log("hit.bullet", wall_risk=self._wall_risk(), move_direction=self._move_direction)
+        self._log(
+            "hit.bullet",
+            owner=event.bullet.owner_id,
+            power=round(event.bullet.power, 2),
+            bullet_direction=round(event.bullet.direction, 1),
+            damage=round(event.damage, 2),
+            energy=round(event.energy, 1),
+            wall_risk=self._wall_risk(),
+            move_direction=self._move_direction,
+        )
 
     def on_hit_bot(self, event: HitBotEvent) -> None:
         self._move_direction *= -1
@@ -537,6 +550,7 @@ class SweepPressure(Bot):
 
     def on_bullet_hit(self, event: BulletHitBotEvent) -> None:
         self._record_enemy_energy_correction(event.victim_id, event.damage, "our_bullet_damage")
+        bullet_fields = self._fired_bullets.fields_for(event.bullet.bullet_id)
         self._log(
             "bullet.hit_bot",
             victim=event.victim_id,
@@ -544,10 +558,20 @@ class SweepPressure(Bot):
             power=round(event.bullet.power, 2),
             damage=round(event.damage, 2),
             energy=round(event.energy, 1),
+            **bullet_fields,
         )
 
     def on_bullet_fired(self, event: BulletFiredEvent) -> None:
+        target = self._targets.get(self._target_id)
+        gun_score, gun_visits = self._gun.target_confidence(target.bot_id) if target is not None else (0.0, 0)
         wave = self._gun.record_pending_fire()
+        bullet_fields = self._fired_bullets.record(
+            event.bullet.bullet_id,
+            aim_mode=wave.aim_mode if wave is not None else None,
+            aim_guess_factor=round(wave.aim_guess_factor, 3)
+            if wave is not None and wave.aim_guess_factor is not None
+            else None,
+        )
         self._log(
             "bullet.fired",
             bullet_id=event.bullet.bullet_id,
@@ -556,6 +580,11 @@ class SweepPressure(Bot):
             direction=round(event.bullet.direction, 1),
             energy=round(self.energy, 1),
             wave=wave is not None,
+            gun_waves=self._gun.wave_count,
+            gun_samples=self._gun.sample_count,
+            gun_confidence=round(gun_score, 3),
+            gun_confidence_visits=gun_visits,
+            **bullet_fields,
         )
 
     def _sample_status(self, event: str, **fields: object) -> None:

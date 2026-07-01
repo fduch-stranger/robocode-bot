@@ -17,11 +17,14 @@ from bot_utils.wave_math import (
 
 @dataclass(frozen=True)
 class GunConfig:
-    max_samples: int = 900
+    max_samples: int = 1200
+    max_samples_per_target: int = 450
     max_waves: int = 80
     knn_min_samples: int = 60
     knn_blend_samples: int = 150
     knn_neighbors: int = 17
+    knn_decay_half_life: float = 0.0
+    knn_min_effective_samples: float = 0.0
     wave_visit_margin: float = 18
     guess_factor_bins: int = 31
     guess_factor_bandwidth: float = 0.18
@@ -59,6 +62,7 @@ class TargetMotion:
 @dataclass
 class GunSample:
     target_id: int
+    turn: int
     features: tuple[float, ...]
     guess_factor: float
 
@@ -132,9 +136,74 @@ class WaveVisit:
 
 
 @dataclass
+class RollingKnnBuffer:
+    max_samples: int
+    max_samples_per_target: int
+    _samples_by_target: dict[int, list[GunSample]] = field(default_factory=dict)
+    _sample_count: int = 0
+
+    @property
+    def sample_count(self) -> int:
+        return self._sample_count
+
+    def add(self, sample: GunSample) -> None:
+        samples = self._samples_by_target.setdefault(sample.target_id, [])
+        samples.append(sample)
+        self._sample_count += 1
+        self._trim_target(sample.target_id)
+        self._trim_global()
+
+    def samples_for(self, target_id: int) -> list[GunSample]:
+        return self._samples_by_target.get(target_id, [])
+
+    def target_sample_count(self, target_id: int) -> int:
+        return len(self._samples_by_target.get(target_id, []))
+
+    def decayed_weight(self, sample: GunSample, current_turn: int, half_life: float) -> float:
+        if half_life <= 0:
+            return 1.0
+        age = max(0, current_turn - sample.turn)
+        return 0.5 ** (age / half_life)
+
+    def effective_count(self, target_id: int, current_turn: int, half_life: float) -> float:
+        return sum(self.decayed_weight(sample, current_turn, half_life) for sample in self.samples_for(target_id))
+
+    def clear(self) -> None:
+        self._samples_by_target.clear()
+        self._sample_count = 0
+
+    def _trim_target(self, target_id: int) -> None:
+        samples = self._samples_by_target.get(target_id)
+        if samples is None or len(samples) <= self.max_samples_per_target:
+            return
+        removed = len(samples) - self.max_samples_per_target
+        del samples[:removed]
+        self._sample_count -= removed
+
+    def _trim_global(self) -> None:
+        while self._sample_count > self.max_samples:
+            oldest_target = None
+            oldest_turn = None
+            for target_id, samples in self._samples_by_target.items():
+                if not samples:
+                    continue
+                if oldest_turn is None or samples[0].turn < oldest_turn:
+                    oldest_target = target_id
+                    oldest_turn = samples[0].turn
+            if oldest_target is None:
+                self._sample_count = 0
+                return
+            samples = self._samples_by_target[oldest_target]
+            del samples[0]
+            self._sample_count -= 1
+            if not samples:
+                del self._samples_by_target[oldest_target]
+
+
+@dataclass
 class VirtualGunSystem:
     config: GunConfig = field(default_factory=GunConfig)
-    _samples: list[GunSample] = field(default_factory=list)
+    _knn_memory: RollingKnnBuffer = field(init=False)
     _waves: list[GunWave] = field(default_factory=list)
     _stats: dict[tuple[int, str], GunStats] = field(default_factory=dict)
     _segment_stats: dict[tuple[int, str, tuple[int, ...]], GunStats] = field(default_factory=dict)
@@ -143,10 +212,14 @@ class VirtualGunSystem:
     _traditional_profiles: dict[int, GuessFactorProfile] = field(default_factory=dict)
     _anti_surfer_profiles: dict[int, GuessFactorProfile] = field(default_factory=dict)
     _pending_wave: GunWave | None = None
+    _knn_sequence: int = 0
+
+    def __post_init__(self) -> None:
+        self._knn_memory = RollingKnnBuffer(self.config.max_samples, self.config.max_samples_per_target)
 
     @property
     def sample_count(self) -> int:
-        return len(self._samples)
+        return self._knn_memory.sample_count
 
     @property
     def wave_count(self) -> int:
@@ -308,16 +381,15 @@ class VirtualGunSystem:
                 wave.max_escape_angle_negative,
             )
             virtual_scores = self._score_virtual_guns(wave, actual_bearing, target_distance)
-            self._samples.append(GunSample(wave.target_id, wave.features, guess_factor))
+            self._knn_sequence += 1
+            self._knn_memory.add(GunSample(wave.target_id, self._knn_sequence, wave.features, guess_factor))
             self._record_traditional_guess_factor(wave.target_id, guess_factor)
             self._record_anti_surfer_guess_factor(wave.target_id, guess_factor)
-            if len(self._samples) > self.config.max_samples:
-                del self._samples[: len(self._samples) - self.config.max_samples]
             visits.append(
                 WaveVisit(
                     target_id=target.bot_id,
                     guess_factor=guess_factor,
-                    samples=len(self._samples),
+                    samples=self._knn_memory.target_sample_count(target.bot_id),
                     traveled=traveled,
                     distance=target_distance,
                     selected_gun=wave.aim_mode,
@@ -498,19 +570,36 @@ class VirtualGunSystem:
         )
 
     def _knn_guess_factor(self, target_id: int, features: tuple[float, ...]) -> float | None:
-        samples = [sample for sample in self._samples if sample.target_id == target_id]
+        samples = self._knn_memory.samples_for(target_id)
         sample_count = len(samples)
         if sample_count < self.config.knn_min_samples:
+            return None
+        current_turn = self._knn_sequence
+        effective_count = self._knn_memory.effective_count(
+            target_id,
+            current_turn=current_turn,
+            half_life=self.config.knn_decay_half_life,
+        )
+        if effective_count < self.config.knn_min_effective_samples:
             return None
 
         neighbors = sorted(
             samples,
-            key=lambda sample: feature_distance(features, sample.features),
+            key=lambda sample: feature_distance(features, sample.features)
+            / max(
+                0.25,
+                self._knn_memory.decayed_weight(
+                    sample,
+                    current_turn=current_turn,
+                    half_life=self.config.knn_decay_half_life,
+                ),
+            ),
         )[: min(self.config.knn_neighbors, sample_count)]
         weighted_neighbors: list[tuple[GunSample, float]] = []
         for sample in neighbors:
             distance = feature_distance(features, sample.features)
-            weight = 1.0 / (0.05 + distance)
+            recency = self._knn_memory.decayed_weight(sample, current_turn, self.config.knn_decay_half_life)
+            weight = recency / (0.05 + distance)
             weighted_neighbors.append((sample, weight))
         if not weighted_neighbors:
             return None

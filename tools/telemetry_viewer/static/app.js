@@ -2,6 +2,8 @@ const state = {
   events: [],
   bots: new Map(),
   selected: null,
+  cursor: 0,
+  maxEvents: 12000,
   palette: ["#5ab0ff", "#69d391", "#f2bf62", "#ff7373", "#b68cff", "#65d6cf"],
 };
 
@@ -35,7 +37,7 @@ poll();
 setInterval(poll, 1000);
 
 async function resetTelemetry() {
-  if (!window.confirm("Reset telemetry stats for this viewer? Current JSONL event files will be deleted.")) {
+  if (!window.confirm("Reset telemetry stats for this viewer? Current JSONL event files will be truncated.")) {
     return;
   }
   try {
@@ -47,7 +49,8 @@ async function resetTelemetry() {
     state.events = [];
     state.bots.clear();
     state.selected = null;
-    document.getElementById("source").textContent = `reset ${payload.removed?.length || 0} telemetry files`;
+    state.cursor = payload.cursor || 0;
+    document.getElementById("source").textContent = `reset ${payload.reset?.length || 0} telemetry files`;
     document.getElementById("eventCount").textContent = "0 events";
     render();
     setTimeout(poll, 200);
@@ -58,9 +61,18 @@ async function resetTelemetry() {
 
 async function poll() {
   try {
-    const response = await fetch("/api/events?limit=12000", { cache: "no-store" });
+    const response = await fetch(`/api/events?limit=${state.maxEvents}&cursor=${state.cursor}`, { cache: "no-store" });
     const payload = await response.json();
-    state.events = payload.events || [];
+    const events = payload.events || [];
+    if (state.cursor && !payload.truncated) {
+      state.events.push(...events);
+      if (state.events.length > state.maxEvents) {
+        state.events = state.events.slice(-state.maxEvents);
+      }
+    } else {
+      state.events = events.slice(-state.maxEvents);
+    }
+    state.cursor = payload.cursor || state.cursor;
     document.getElementById("source").textContent = `${payload.dir || ""} (${(payload.files || []).length} files)`;
     document.getElementById("eventCount").textContent = `${state.events.length} events`;
     document.getElementById("lastUpdate").textContent = new Date().toLocaleTimeString();
@@ -355,7 +367,7 @@ function buildBotStats(bot) {
         firedBullets.set(String(fields.bullet_id), mode);
       }
     } else if (event.event === "bullet.hit_bot") {
-      const mode = fields.bullet_id != null ? firedBullets.get(String(fields.bullet_id)) || "unknown" : "unknown";
+      const mode = gunModeFromEvent(event) || (fields.bullet_id != null ? firedBullets.get(String(fields.bullet_id)) : null) || "unknown";
       const damage = numeric(fields.damage) ?? 0;
       stats.hits += 1;
       stats.damageDealt += damage;
@@ -371,10 +383,10 @@ function buildBotStats(bot) {
       stats.botHits += 1;
     } else if (event.event === "enemy.fire_detected") {
       stats.enemyFireDetected += 1;
-      if (fields.evasion === "active_duel" || fields.evading === true) stats.activeEvasion += 1;
+      if (fields.evading === true || String(fields.evasion || "").startsWith("active_")) stats.activeEvasion += 1;
     } else if (event.event === "target.reacquire" || event.event === "scan.reacquired") {
       stats.reacquires += 1;
-    } else if (event.event === "target.drop" || event.event === "scan.drop") {
+    } else if (event.event === "target.drop" || event.event === "target.drop_lost" || event.event === "target.stale" || event.event === "scan.drop") {
       stats.scanDrops += 1;
     } else if (event.event === "search") {
       stats.searchSamples += 1;

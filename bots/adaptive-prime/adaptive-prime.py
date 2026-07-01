@@ -11,7 +11,7 @@ from robocode_tank_royale.bot_api.events import (
     ScannedBotEvent,
 )
 
-from bot_utils.debug import DebugLogger
+from bot_utils.debug import DebugLogger, FiredBulletTracker
 from bot_utils.energy import EnergyDropConfig, GunHeatTracker, classify_energy_drop
 from bot_utils.gun import GunConfig, TargetMotion, VirtualGunSystem
 from bot_utils.movement import FlatteningDecision, MinimumRiskConfig, MinimumRiskMovement, MovementFlattener
@@ -158,6 +158,7 @@ class AdaptivePrime(Bot):
             )
         )
         self._debug = DebugLogger(self, "adaptive-prime")
+        self._fired_bullets = FiredBulletTracker()
 
     def run(self) -> None:
         self.body_color = Color.from_rgb(60, 112, 180)
@@ -1034,6 +1035,7 @@ class AdaptivePrime(Bot):
 
     def on_bullet_hit(self, event: BulletHitBotEvent) -> None:
         self._record_enemy_energy_correction(event.victim_id, event.damage, "our_bullet_damage")
+        bullet_fields = self._fired_bullets.fields_for(event.bullet.bullet_id)
         self._log(
             "bullet.hit_bot",
             victim=event.victim_id,
@@ -1041,6 +1043,7 @@ class AdaptivePrime(Bot):
             power=round(event.bullet.power, 2),
             damage=round(event.damage, 2),
             energy=round(event.energy, 1),
+            **bullet_fields,
         )
 
     def on_hit_bot(self, event: HitBotEvent) -> None:
@@ -1080,6 +1083,13 @@ class AdaptivePrime(Bot):
         target_age = self.turn_number - target.seen_turn if target is not None else None
         gun_score, gun_visits = self._gun.target_confidence(target.bot_id) if target is not None else (0.0, 0)
         wave = self._gun.record_pending_fire()
+        bullet_fields = self._fired_bullets.record(
+            event.bullet.bullet_id,
+            aim_mode=wave.aim_mode if wave is not None else None,
+            aim_guess_factor=round(wave.aim_guess_factor, 3)
+            if wave is not None and wave.aim_guess_factor is not None
+            else None,
+        )
         self._log(
             "bullet.fired",
             bullet_id=event.bullet.bullet_id,
@@ -1094,10 +1104,7 @@ class AdaptivePrime(Bot):
             gun_samples=self._gun.sample_count,
             gun_confidence=round(gun_score, 3),
             gun_confidence_visits=gun_visits,
-            aim_mode=wave.aim_mode if wave is not None else None,
-            aim_guess_factor=round(wave.aim_guess_factor, 3)
-            if wave is not None and wave.aim_guess_factor is not None
-            else None,
+            **bullet_fields,
         )
 
     def _log(self, event: str, **fields: object) -> None:

@@ -15,6 +15,11 @@ from urllib.parse import parse_qs, urlparse
 class TelemetryHandler(SimpleHTTPRequestHandler):
     telemetry_dir: Path
     static_dir: Path
+    event_limit = 50000
+    _cache_lock = threading.Lock()
+    _event_cache: deque[dict[str, object]] = deque(maxlen=event_limit)
+    _positions: dict[str, int] = {}
+    _next_cursor = 1
 
     def __init__(self, *args: object, **kwargs: object) -> None:
         super().__init__(*args, directory=str(self.static_dir), **kwargs)
@@ -45,13 +50,65 @@ class TelemetryHandler(SimpleHTTPRequestHandler):
 
     def _events(self, query: dict[str, list[str]]) -> dict[str, object]:
         limit = _int_query(query, "limit", 5000, 100, 50000)
-        events: deque[dict[str, object]] = deque(maxlen=limit)
-        files = self._files()
+        cursor = _int_query(query, "cursor", 0, 0, 2**63 - 1)
+        with self._cache_lock:
+            handler = type(self)
+            files = self._files()
+            self._scan_files(files)
+            latest_cursor = handler._next_cursor - 1
+            if cursor:
+                events = [event for event in handler._event_cache if int(event.get("cursor", 0)) > cursor]
+            else:
+                events = list(handler._event_cache)
+            events = events[-limit:]
+        return {
+            "dir": str(self.telemetry_dir),
+            "files": files,
+            "cursor": latest_cursor,
+            "events": events,
+            "truncated": bool(cursor and events and int(events[0].get("cursor", 0)) > cursor + 1),
+        }
 
+    def _files(self) -> list[str]:
+        try:
+            return sorted(path.name for path in self.telemetry_dir.glob("*.jsonl") if path.is_file())
+        except OSError:
+            return []
+
+    def _reset(self) -> dict[str, object]:
+        reset: list[str] = []
+        errors: list[str] = []
+        with self._cache_lock:
+            handler = type(self)
+            for path in self.telemetry_dir.glob("*.jsonl"):
+                if not path.is_file():
+                    continue
+                try:
+                    path.write_text("", encoding="utf-8")
+                    reset.append(path.name)
+                except OSError as error:
+                    errors.append(f"{path.name}: {error}")
+            handler._event_cache.clear()
+            handler._positions.clear()
+            handler._next_cursor = 1
+        return {"ok": not errors, "reset": reset, "errors": errors, "cursor": 0}
+
+    def _scan_files(self, files: list[str]) -> None:
+        handler = type(self)
+        current_files = set(files)
+        for stale_file in set(handler._positions) - current_files:
+            del handler._positions[stale_file]
+
+        batch: list[dict[str, object]] = []
         for file_name in files:
             path = self.telemetry_dir / file_name
+            position = handler._positions.get(file_name, 0)
             try:
+                size = path.stat().st_size
+                if size < position:
+                    position = 0
                 with path.open("r", encoding="utf-8") as stream:
+                    stream.seek(position)
                     for line in stream:
                         line = line.strip()
                         if not line:
@@ -61,31 +118,16 @@ class TelemetryHandler(SimpleHTTPRequestHandler):
                         except json.JSONDecodeError:
                             continue
                         event["file"] = file_name
-                        events.append(event)
+                        batch.append(event)
+                    handler._positions[file_name] = stream.tell()
             except OSError:
                 continue
 
-        ordered = sorted(events, key=lambda item: (item.get("ts", 0), item.get("pid", 0), item.get("turn", 0)))
-        return {"dir": str(self.telemetry_dir), "files": files, "events": ordered[-limit:]}
-
-    def _files(self) -> list[str]:
-        try:
-            return sorted(path.name for path in self.telemetry_dir.glob("*.jsonl") if path.is_file())
-        except OSError:
-            return []
-
-    def _reset(self) -> dict[str, object]:
-        removed: list[str] = []
-        errors: list[str] = []
-        for path in self.telemetry_dir.glob("*.jsonl"):
-            if not path.is_file():
-                continue
-            try:
-                path.unlink()
-                removed.append(path.name)
-            except OSError as error:
-                errors.append(f"{path.name}: {error}")
-        return {"ok": not errors, "removed": removed, "errors": errors}
+        batch.sort(key=lambda item: (item.get("ts", 0), item.get("pid", 0), item.get("turn", 0), item.get("file", "")))
+        for event in batch:
+            event["cursor"] = handler._next_cursor
+            handler._next_cursor += 1
+            handler._event_cache.append(event)
 
     def _write_json(self, payload: dict[str, object]) -> None:
         body = json.dumps(payload, separators=(",", ":")).encode("utf-8")

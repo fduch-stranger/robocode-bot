@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 import time
+from collections import OrderedDict
 from pathlib import Path
 from typing import TextIO
 
@@ -39,6 +40,38 @@ class DebugLogger:
         log_dir = Path(os.environ.get("ROBOCODE_LOG_DIR", "."))
         log_dir.mkdir(parents=True, exist_ok=True)
         return (log_dir / f"{log_name}-{os.getpid()}.log").open("w", encoding="utf-8")
+
+
+class FiredBulletTracker:
+    def __init__(self, max_records: int = 240) -> None:
+        self._max_records = max_records
+        self._records: OrderedDict[str, dict[str, object]] = OrderedDict()
+
+    def record(self, bullet_id: object, **fields: object) -> dict[str, object]:
+        key = self._key(bullet_id)
+        if key is None:
+            return {}
+        record = {field: value for field, value in fields.items() if value is not None}
+        self._records[key] = record
+        self._records.move_to_end(key)
+        while len(self._records) > self._max_records:
+            self._records.popitem(last=False)
+        return dict(record)
+
+    def fields_for(self, bullet_id: object) -> dict[str, object]:
+        key = self._key(bullet_id)
+        if key is None:
+            return {}
+        record = self._records.get(key, {})
+        if record:
+            self._records.move_to_end(key)
+        return dict(record)
+
+    @staticmethod
+    def _key(bullet_id: object) -> str | None:
+        if bullet_id is None:
+            return None
+        return str(bullet_id)
 
 
 class TelemetryRecorder:
