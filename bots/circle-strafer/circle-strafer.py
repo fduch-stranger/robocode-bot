@@ -186,15 +186,14 @@ class CircleStrafer(Bot):
                     -turn_limit,
                     turn_limit,
                 )
-                self._sample_status(
-                    "separate",
-                    target=close_target.bot_id,
-                    distance=round(distance, 1),
-                    away_bearing=round(away_bearing, 2),
-                    target_speed=self.target_speed,
-                    turn_limit=turn_limit,
-                    move_direction=self._move_direction,
-                    collision_escape=escaping_collision,
+                self._movement_telemetry.sample_separation(
+                    close_target.bot_id,
+                    distance,
+                    away_bearing,
+                    self.target_speed,
+                    turn_limit,
+                    self._move_direction,
+                    escaping_collision,
                 )
                 return
 
@@ -314,7 +313,7 @@ class CircleStrafer(Bot):
         if target is None:
             self.gun_turn_rate = 0
             self.radar_turn_rate = RADAR_SEARCH_RATE
-            self._sample_status("search", known_targets=0)
+            self._targeting_telemetry.sample_search(0)
             return
 
         distance = distance_to(self, target.x, target.y)
@@ -599,9 +598,6 @@ class CircleStrafer(Bot):
             wave_created=wave is not None,
             shadow_bullets=self._movement.shadow_bullet_count,
         )
-
-    def _sample_status(self, event: str, **fields: object) -> None:
-        self._debug.sample(event, **fields)
 
     def _log(self, event: str, **fields: object) -> None:
         self._debug.log(event, **fields)

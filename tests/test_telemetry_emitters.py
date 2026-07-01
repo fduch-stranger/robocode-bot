@@ -248,11 +248,41 @@ class TelemetryEmitterTest(unittest.TestCase):
         profile = MovementProfileVisit(2, 0.3456, 16, 1, 3.21, 9, 0.4567, 8.88)
 
         telemetry.sample_wall_avoid(10.12, 20.23, -3.456, 1)
+        telemetry.sample_target_wall_avoid(30.12, 40.23, 5.678, 9)
+        telemetry.sample_search_wall_avoid(50.12, 60.23, -7.891, -1, True)
+        telemetry.sample_separation(4, 123.45, -12.345, 6, 10, -1, False)
         telemetry.record_flattening(7, flattening, 200.12)
         telemetry.record_profile_visit(profile)
 
-        self.assertEqual([("sample", "wall.avoid"), ("log", "movement.flatten"), ("log", "movement.profile_visit")], [(kind, event) for kind, event, _ in sink.records])
+        self.assertEqual(
+            [
+                ("sample", "wall.avoid"),
+                ("sample", "wall.avoid"),
+                ("sample", "search.wall_avoid"),
+                ("sample", "separate"),
+                ("log", "movement.flatten"),
+                ("log", "movement.profile_visit"),
+            ],
+            [(kind, event) for kind, event, _ in sink.records],
+        )
         self.assertEqual({"x": 10.1, "y": 20.2, "center_bearing": -3.46, "move_direction": 1}, sink.records[0][2])
+        self.assertEqual({"x": 30.1, "y": 40.2, "center_bearing": 5.68, "target": 9}, sink.records[1][2])
+        self.assertEqual(
+            {"x": 50.1, "y": 60.2, "center_bearing": -7.89, "evade_direction": -1, "near_wall": True},
+            sink.records[2][2],
+        )
+        self.assertEqual(
+            {
+                "target": 4,
+                "distance": 123.5,
+                "away_bearing": -12.35,
+                "target_speed": 6,
+                "turn_limit": 10,
+                "move_direction": -1,
+                "collision_escape": False,
+            },
+            sink.records[3][2],
+        )
         self.assertEqual(
             {
                 "target": 7,
@@ -262,13 +292,13 @@ class TelemetryEmitterTest(unittest.TestCase):
                 "alternative_count": 1.1,
                 "distance": 200.1,
             },
-            sink.records[1][2],
+            sink.records[4][2],
         )
         self.assertEqual(
             {"target", "guess_factor", "bin", "bucket", "visits", "wave_age", "ensemble_danger", "ensemble_samples"},
-            set(sink.records[2][2]),
+            set(sink.records[5][2]),
         )
-        self.assertEqual(0.457, sink.records[2][2]["ensemble_danger"])
+        self.assertEqual(0.457, sink.records[5][2]["ensemble_danger"])
 
     def test_movement_telemetry_records_adaptive_events(self) -> None:
         sink = RecordingSink()
@@ -320,14 +350,36 @@ class TelemetryEmitterTest(unittest.TestCase):
         candidate = TargetSnapshot(8, 70.0, 1.0, 2.0, 0.0, 0.0, 10)
         selection = TargetSelection(target, previous_id=4, fresh_candidates=2, score=33.33)
 
+        telemetry.sample_search(0)
+        telemetry.sample_reacquire(target, 6, 200.04, -3.456, 180.123, 11.111, "reacquire", -1, 90.04, 110.05, 2)
         telemetry.record_scan_new(5, 60.12, 100.11, 120.11)
         telemetry.record_scan_reacquired(5, 8, target, 130.12, 140.12)
         telemetry.record_target_selection(selection, 3)
         telemetry.record_candidate_selection(3, target, 12.34, candidate, 11.11, 4, 2)
         telemetry.record_target_drop_lost(target, 12, 300.04, 2)
 
-        self.assertEqual(["scan.new", "scan.reacquired", "target.select", "target.select", "target.drop_lost"], [event for _, event, _ in sink.records])
-        self.assertEqual({"bot_id": 5, "energy": 60.1, "x": 100.1, "y": 120.1}, sink.records[0][2])
+        self.assertEqual(
+            ["search", "target.reacquire", "scan.new", "scan.reacquired", "target.select", "target.select", "target.drop_lost"],
+            [event for _, event, _ in sink.records],
+        )
+        self.assertEqual({"known_targets": 0}, sink.records[0][2])
+        self.assertEqual(
+            {
+                "target": 5,
+                "age": 6,
+                "distance": 200.0,
+                "radar_bearing": -3.46,
+                "radar_direction": 180.12,
+                "radar_turn": 11.11,
+                "radar_mode": "reacquire",
+                "radar_sweep": -1,
+                "x": 90.0,
+                "y": 110.0,
+                "known_targets": 2,
+            },
+            sink.records[1][2],
+        )
+        self.assertEqual({"bot_id": 5, "energy": 60.1, "x": 100.1, "y": 120.1}, sink.records[2][2])
         self.assertEqual(
             {
                 "bot_id": 5,
@@ -337,9 +389,9 @@ class TelemetryEmitterTest(unittest.TestCase):
                 "x": 130.1,
                 "y": 140.1,
             },
-            sink.records[1][2],
+            sink.records[3][2],
         )
-        self.assertEqual(33.3, sink.records[2][2]["score"])
+        self.assertEqual(33.3, sink.records[4][2]["score"])
         self.assertEqual(
             {
                 "previous": 3,
@@ -350,11 +402,11 @@ class TelemetryEmitterTest(unittest.TestCase):
                 "previous_age": 4,
                 "known_targets": 2,
             },
-            sink.records[3][2],
+            sink.records[5][2],
         )
         self.assertEqual(
             {"bot_id", "age", "cached_x", "cached_y", "cached_distance", "known_targets"},
-            set(sink.records[4][2]),
+            set(sink.records[6][2]),
         )
 
 

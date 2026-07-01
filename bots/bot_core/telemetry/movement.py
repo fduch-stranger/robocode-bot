@@ -9,6 +9,27 @@ class MovementTelemetry:
     def sample_wall_avoid(self, x: float, y: float, center_bearing: float, move_direction: int) -> None:
         self._sink.sample("wall.avoid", **_wall_avoid_fields(x, y, center_bearing, move_direction))
 
+    def sample_target_wall_avoid(self, x: float, y: float, center_bearing: float, target_id: int) -> None:
+        self._sink.sample("wall.avoid", **_target_wall_avoid_fields(x, y, center_bearing, target_id))
+
+    def sample_search_wall_avoid(self, x: float, y: float, center_bearing: float, evade_direction: int, near_wall: bool) -> None:
+        self._sink.sample("search.wall_avoid", **_search_wall_avoid_fields(x, y, center_bearing, evade_direction, near_wall))
+
+    def sample_separation(
+        self,
+        target_id: int,
+        distance: float,
+        away_bearing: float,
+        target_speed: float,
+        turn_limit: float,
+        move_direction: int,
+        collision_escape: bool,
+    ) -> None:
+        self._sink.sample(
+            "separate",
+            **_separation_fields(target_id, distance, away_bearing, target_speed, turn_limit, move_direction, collision_escape),
+        )
+
     def sample_minimum_risk(
         self,
         target_id: int,
@@ -157,6 +178,51 @@ def _wall_avoid_fields(x: float, y: float, center_bearing: float, move_direction
         "y": round(y, 1),
         "center_bearing": round(center_bearing, 2),
         "move_direction": move_direction,
+    }
+
+
+def _target_wall_avoid_fields(x: float, y: float, center_bearing: float, target_id: int) -> dict[str, object]:
+    return {
+        "x": round(x, 1),
+        "y": round(y, 1),
+        "center_bearing": round(center_bearing, 2),
+        "target": target_id,
+    }
+
+
+def _search_wall_avoid_fields(
+    x: float,
+    y: float,
+    center_bearing: float,
+    evade_direction: int,
+    near_wall: bool,
+) -> dict[str, object]:
+    return {
+        "x": round(x, 1),
+        "y": round(y, 1),
+        "center_bearing": round(center_bearing, 2),
+        "evade_direction": evade_direction,
+        "near_wall": near_wall,
+    }
+
+
+def _separation_fields(
+    target_id: int,
+    distance: float,
+    away_bearing: float,
+    target_speed: float,
+    turn_limit: float,
+    move_direction: int,
+    collision_escape: bool,
+) -> dict[str, object]:
+    return {
+        "target": target_id,
+        "distance": round(distance, 1),
+        "away_bearing": round(away_bearing, 2),
+        "target_speed": target_speed,
+        "turn_limit": turn_limit,
+        "move_direction": move_direction,
+        "collision_escape": collision_escape,
     }
 
 

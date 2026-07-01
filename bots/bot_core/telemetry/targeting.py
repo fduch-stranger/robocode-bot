@@ -7,6 +7,40 @@ class TargetingTelemetry:
     def __init__(self, sink: TelemetrySink) -> None:
         self._sink = sink
 
+    def sample_search(self, known_targets: int) -> None:
+        self._sink.sample("search", known_targets=known_targets)
+
+    def sample_reacquire(
+        self,
+        target: TargetSnapshot,
+        age: int,
+        distance: float,
+        radar_bearing: float,
+        radar_direction: float,
+        radar_turn: float,
+        radar_mode: str,
+        radar_sweep: int,
+        x: float,
+        y: float,
+        known_targets: int,
+    ) -> None:
+        self._sink.sample(
+            "target.reacquire",
+            **_target_reacquire_fields(
+                target,
+                age,
+                distance,
+                radar_bearing,
+                radar_direction,
+                radar_turn,
+                radar_mode,
+                radar_sweep,
+                x,
+                y,
+                known_targets,
+            ),
+        )
+
     def record_scan_new(self, target_id: int, energy: float, x: float, y: float) -> None:
         self._sink.log("scan.new", **_scan_new_fields(target_id, energy, x, y))
 
@@ -54,6 +88,34 @@ def _scan_new_fields(target_id: int, energy: float, x: float, y: float) -> dict[
         "energy": round(energy, 1),
         "x": round(x, 1),
         "y": round(y, 1),
+    }
+
+
+def _target_reacquire_fields(
+    target: TargetSnapshot,
+    age: int,
+    distance: float,
+    radar_bearing: float,
+    radar_direction: float,
+    radar_turn: float,
+    radar_mode: str,
+    radar_sweep: int,
+    x: float,
+    y: float,
+    known_targets: int,
+) -> dict[str, object]:
+    return {
+        "target": target.bot_id,
+        "age": age,
+        "distance": round(distance, 1),
+        "radar_bearing": round(radar_bearing, 2),
+        "radar_direction": round(radar_direction, 2),
+        "radar_turn": round(radar_turn, 2),
+        "radar_mode": radar_mode,
+        "radar_sweep": radar_sweep,
+        "x": round(x, 1),
+        "y": round(y, 1),
+        "known_targets": known_targets,
     }
 
 

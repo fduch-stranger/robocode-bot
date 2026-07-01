@@ -342,7 +342,7 @@ class ChaseLock(Bot):
         target = self._select_target()
         if target is None:
             self._search()
-            self._sample_status("search", known_targets=0)
+            self._targeting_telemetry.sample_search(0)
             return
 
         distance = distance_to(self, target.x, target.y)
@@ -373,18 +373,17 @@ class ChaseLock(Bot):
             radar_turn, radar_mode = self._set_lost_target_radar(radar_bearing, age)
             self._set_gun_for_search()
             self._set_search_movement()
-            self._sample_status(
-                "target.reacquire",
-                target=target.bot_id,
+            self._targeting_telemetry.sample_reacquire(
+                target,
                 age=age,
-                distance=round(distance, 1),
-                radar_bearing=round(radar_bearing, 2),
-                radar_direction=round(self.radar_direction, 2),
-                radar_turn=round(radar_turn, 2),
+                distance=distance,
+                radar_bearing=radar_bearing,
+                radar_direction=self.radar_direction,
+                radar_turn=radar_turn,
                 radar_mode=radar_mode,
                 radar_sweep=self._radar_sweep_direction,
-                x=round(self.x, 1),
-                y=round(self.y, 1),
+                x=self.x,
+                y=self.y,
                 known_targets=len(self._targets),
             )
             return
@@ -401,13 +400,7 @@ class ChaseLock(Bot):
             center_bearing = bearing_to(self, self.arena_width / 2, self.arena_height / 2, self.direction)
             self.target_speed = WALL_ESCAPE_SPEED
             self.set_turn_left(clamp(center_bearing, -35, 35))
-            self._sample_status(
-                "wall.avoid",
-                x=round(self.x, 1),
-                y=round(self.y, 1),
-                center_bearing=round(center_bearing, 2),
-                target=target.bot_id,
-            )
+            self._movement_telemetry.sample_target_wall_avoid(self.x, self.y, center_bearing, target.bot_id)
         else:
             movement_mode, strafe_offset, flattening = self._set_chase_movement(target, distance, body_bearing)
 
@@ -610,9 +603,6 @@ class ChaseLock(Bot):
         self.set_turn_radar_left(radar_turn)
         return radar_turn, "widen"
 
-    def _sample_status(self, event: str, **fields: object) -> None:
-        self._debug.sample(event, **fields)
-
     def _reset_if_new_round(self) -> None:
         if self._last_turn_number >= 0 and self.turn_number < self._last_turn_number:
             self._targets.clear()
@@ -737,14 +727,7 @@ class ChaseLock(Bot):
             center_bearing = bearing_to(self, self.arena_width / 2, self.arena_height / 2, self.direction)
             self.target_speed = WALL_ESCAPE_SPEED
             self.set_turn_left(clamp(center_bearing, -35, 35))
-            self._sample_status(
-                "search.wall_avoid",
-                x=round(self.x, 1),
-                y=round(self.y, 1),
-                center_bearing=round(center_bearing, 2),
-                evade_direction=self._evade_direction,
-                near_wall=self._near_wall(),
-            )
+            self._movement_telemetry.sample_search_wall_avoid(self.x, self.y, center_bearing, self._evade_direction, self._near_wall())
             return
 
         self.target_speed = 4 * self._evade_direction

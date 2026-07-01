@@ -10,6 +10,7 @@ from types import TracebackType
 from typing import TextIO
 
 from robocode_tank_royale.bot_api import Bot
+from robocode_tank_royale.bot_api.bot_exception import BotException
 
 from bot_core.async_writer import AsyncItemWriter, SyncItemWriter
 
@@ -117,7 +118,7 @@ class TelemetryRecorder:
     def _safe_number(self, name: str) -> int | float | None:
         try:
             value = getattr(self._bot, name, None)
-        except (AttributeError, RuntimeError, TypeError, ValueError):
+        except (AttributeError, BotException, RuntimeError, TypeError, ValueError):
             return None
         if isinstance(value, bool):
             return int(value)

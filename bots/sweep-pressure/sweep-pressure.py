@@ -276,7 +276,7 @@ class SweepPressure(Bot):
         if target is None:
             self.gun_turn_rate = 0
             self.radar_turn_rate = RADAR_SEARCH_RATE
-            self._sample_status("search", known_targets=0)
+            self._targeting_telemetry.sample_search(0)
             return
 
         distance = distance_to(self, target.x, target.y)
@@ -546,9 +546,6 @@ class SweepPressure(Bot):
             wave_created=wave is not None,
             shadow_bullets=self._movement.shadow_bullet_count,
         )
-
-    def _sample_status(self, event: str, **fields: object) -> None:
-        self._debug.sample(event, **fields)
 
     def _log(self, event: str, **fields: object) -> None:
         self._debug.log(event, **fields)

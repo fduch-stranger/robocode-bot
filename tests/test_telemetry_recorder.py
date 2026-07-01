@@ -6,6 +6,7 @@ from io import StringIO
 from typing import Any, cast
 
 from robocode_tank_royale.bot_api import Bot
+from robocode_tank_royale.bot_api.bot_exception import BotException
 
 from bot_core.telemetry.recorder import TelemetryRecorder
 
@@ -30,8 +31,22 @@ class _DummyBot:
     arena_height = 600
 
 
+class _UnavailableTickBot:
+    @property
+    def turn_number(self) -> int:
+        raise BotException("tick unavailable")
+
+    @property
+    def x(self) -> float:
+        raise BotException("tick unavailable")
+
+
 def _dummy_bot() -> Bot:
     return cast(Bot, cast(object, _DummyBot()))
+
+
+def _unavailable_tick_bot() -> Bot:
+    return cast(Bot, cast(object, _UnavailableTickBot()))
 
 
 def _records(stream: StringIO) -> list[dict[str, Any]]:
@@ -102,6 +117,18 @@ class TelemetryRecorderTest(unittest.TestCase):
         os.environ.pop("ROBOCODE_TELEMETRY_QUEUE_SIZE", None)
 
         self.assertEqual(16384, TelemetryRecorder._int_env("ROBOCODE_TELEMETRY_QUEUE_SIZE", 16384))
+
+    def test_session_record_tolerates_unavailable_tick(self) -> None:
+        stream = StringIO()
+        recorder = TelemetryRecorder(_unavailable_tick_bot(), "test-bot", stream, sync=True)
+
+        recorder.close()
+
+        record = _records(stream)[0]
+        self.assertEqual("telemetry.session", record["event"])
+        self.assertIsNone(record["turn"])
+        self.assertIsNone(record["state"]["x"])
+        self.assertIsNone(record["state"]["y"])
 
 
 if __name__ == "__main__":
