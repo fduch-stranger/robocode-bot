@@ -105,6 +105,43 @@ With no bot arguments, `scripts/run-battle.sh` discovers every bot directory
 under `bots/` that contains a bot JSON manifest. Helper directories such as
 `bots/bot_utils` are ignored.
 
+## A/B Bot Experiments
+
+Use A/B experiments before accepting movement, targeting, or bullet-power
+changes. The default A/B runner keeps telemetry off, runs the same preset
+against a baseline and a candidate worktree, then writes a manifest and summary.
+
+Run the core Adaptive 1v1 benchmark:
+
+```sh
+scripts/run-ab.sh \
+  --name go-to-surfing \
+  --baseline /path/to/baseline/repo \
+  --candidate /path/to/candidate/repo \
+  --preset adaptive-1v1-core
+```
+
+For a quick local smoke test, compare the current worktree against itself:
+
+```sh
+scripts/run-ab.sh --name smoke --preset adaptive-1v1-core --rounds 1 --repeats 1
+```
+
+Available presets:
+
+- `adaptive-1v1-core`: Adaptive Prime against Chase Lock, Circle Strafer, and Sweep Pressure
+- `adaptive-melee-core`: all four local bots in one melee battle
+- `adaptive-1v1-boss`: Adaptive Prime against configured legacy boss bots
+
+Each experiment writes:
+
+- `manifest.json`: command, preset, git SHA, dirty status, bot paths, rounds, repeats
+- `summary.json`: machine-readable score, first-place, survival, and damage deltas
+- `summary.md`: readable A/B table and final win/mixed/regression decision
+
+Default decision thresholds are intentionally simple: a score drop worse than
+2% or a first-place drop beyond the repeat count is marked as a regression.
+
 ## Battle Artifacts
 
 Each run writes files under `battle-results/runs/<timestamp>/`, unless you pass
