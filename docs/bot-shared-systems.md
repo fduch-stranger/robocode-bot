@@ -199,5 +199,10 @@ Telemetry is JSONL. Common event names:
 - `movement.minimum_risk`: melee destination.
 - `bullet.fired`, `bullet.hit_bot`, `hit.bullet`.
 
+Structured telemetry helpers live in `bot_core.telemetry`. `DebugLogger`
+remains the sink used by bots, while domain emitters in `telemetry.fire`,
+`telemetry.movement`, `telemetry.energy`, and `telemetry.targeting` keep
+event-specific field construction out of bot orchestration code.
+
 See [Tooling: Telemetry Viewer](tooling.md#telemetry-viewer) for launch,
 reset, audit, and stop commands.

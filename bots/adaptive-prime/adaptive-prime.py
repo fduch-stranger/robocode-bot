@@ -34,6 +34,21 @@ from bot_core.geometry.numeric import clamp
 from bot_core.geometry.position import distance_to, drive_to_destination
 from bot_core.target_snapshot import TargetSnapshot, target_from_hit_bot, target_from_scan
 from bot_core.targeting import TargetMemory, TargetSelector
+from bot_core.telemetry.energy import energy_drop_ignored_fields, enemy_fire_detected_fields, gun_heat_wave_fields
+from bot_core.telemetry.fire import FireTick, gun_switch_fields, track_fields, wave_visit_fields
+from bot_core.telemetry.movement import (
+    duel_potential_fields,
+    flattening_fields,
+    goto_surf_fields,
+    minimum_risk_fields,
+    profile_visit_fields,
+)
+from bot_core.telemetry.targeting import (
+    scan_new_fields,
+    scan_reacquired_fields,
+    target_drop_lost_fields,
+    target_selection_fields,
+)
 from adaptive_config import (
     DUEL_MOVEMENT_POLICY,
     ENERGY_DROP_CONFIG,
@@ -147,22 +162,11 @@ class AdaptivePrime(Bot):
         if not fire_detected:
             self._record_gun_heat_wave(target)
         if previous is None:
-            self._log(
-                "scan.new",
-                bot_id=event.scanned_bot_id,
-                energy=round(event.energy, 1),
-                x=round(event.x, 1),
-                y=round(event.y, 1),
-            )
+            self._log("scan.new", **scan_new_fields(event.scanned_bot_id, event.energy, event.x, event.y))
         elif previous_age is not None and previous_age > TARGET_POLICY.reacquire_turns:
             self._log(
                 "scan.reacquired",
-                bot_id=event.scanned_bot_id,
-                previous_age=previous_age,
-                previous_x=round(previous.x, 1),
-                previous_y=round(previous.y, 1),
-                x=round(event.x, 1),
-                y=round(event.y, 1),
+                **scan_reacquired_fields(event.scanned_bot_id, previous_age, previous, event.x, event.y),
             )
 
     def _update_target_motion_stats(self, event: ScannedBotEvent, previous: TargetSnapshot) -> None:
@@ -190,15 +194,14 @@ class AdaptivePrime(Bot):
             if signal.raw_energy_drop > 0 or signal.energy_correction:
                 self._log(
                     "enemy.energy_drop_ignored",
-                    bot_id=event.scanned_bot_id,
-                    reason=signal.reason,
-                    raw_drop=round(signal.raw_energy_drop, 2),
-                    corrected_drop=round(signal.energy_drop, 2),
-                    correction=round(signal.energy_correction, 2),
-                    scan_gap=scan_gap,
-                    distance=round(distance, 1),
-                    previous_energy=round(previous.energy, 1),
-                    energy=round(event.energy, 1),
+                    **energy_drop_ignored_fields(
+                        event.scanned_bot_id,
+                        signal,
+                        scan_gap,
+                        distance,
+                        previous.energy,
+                        event.energy,
+                    ),
                 )
             return False
 
@@ -223,32 +226,26 @@ class AdaptivePrime(Bot):
             if melee_active and not self._wall_risk(8):
                 self._evade_direction *= -1
             self._evade_until_turn = max(self._evade_until_turn, self.turn_number + signal.evade_ticks)
+        power_mae = self._enemy_fire_power.mean_absolute_error(event.scanned_bot_id)
         self._log(
             "enemy.fire_detected",
-            bot_id=event.scanned_bot_id,
-            power=round(signal.fire_power or 0.0, 2),
-            raw_drop=round(signal.raw_energy_drop, 2),
-            corrected_drop=round(signal.energy_drop, 2),
-            correction=round(signal.energy_correction, 2),
-            scan_gap=scan_gap,
-            distance=round(distance, 1),
-            bullet_travel_ticks=signal.bullet_travel_ticks,
-            previous_energy=round(previous.energy, 1),
-            energy=round(event.energy, 1),
-            evasion=("active_melee" if melee_active else "active_duel") if active_evasion else "threat_only",
-            evade_direction=self._evade_direction,
-            evade_until=self._evade_until_turn,
-            known_targets=len(self._targets),
-            movement_wave=movement_wave is not None,
-            gun_heat=round(heat_state.heat, 2) if heat_state is not None else None,
-            predicted_power=round(previous_prediction.fire_power, 2) if previous_prediction is not None else None,
-            prediction_error=round(abs(previous_prediction.fire_power - (signal.fire_power or 1.5)), 2)
-            if previous_prediction is not None
-            else None,
-            power_samples=self._enemy_fire_power.sample_count(event.scanned_bot_id),
-            power_mae=round(self._enemy_fire_power.mean_absolute_error(event.scanned_bot_id), 3)
-            if self._enemy_fire_power.mean_absolute_error(event.scanned_bot_id) is not None
-            else None,
+            **enemy_fire_detected_fields(
+                event.scanned_bot_id,
+                signal,
+                scan_gap,
+                distance,
+                previous.energy,
+                event.energy,
+                ("active_melee" if melee_active else "active_duel") if active_evasion else "threat_only",
+                self._evade_direction,
+                self._evade_until_turn,
+                len(self._targets),
+                movement_wave is not None,
+                heat_state,
+                previous_prediction,
+                self._enemy_fire_power.sample_count(event.scanned_bot_id),
+                power_mae,
+            ),
         )
         return True
 
@@ -287,17 +284,7 @@ class AdaptivePrime(Bot):
         )
         self._log(
             "enemy.gun_heat_wave",
-            bot_id=target.bot_id,
-            power=round(fire_power, 2),
-            confidence=round(prediction.confidence, 3),
-            samples=prediction.samples,
-            reason=prediction.reason,
-            power_mae=round(prediction.mean_absolute_error, 3)
-            if prediction.mean_absolute_error is not None
-            else None,
-            distance=round(distance, 1),
-            target_age=age,
-            movement_wave=movement_wave is not None,
+            **gun_heat_wave_fields(target.bot_id, fire_power, prediction, distance, age, movement_wave is not None),
         )
 
     def _track_or_search(self) -> None:
@@ -329,10 +316,7 @@ class AdaptivePrime(Bot):
         if aim.mode_changed:
             self._log(
                 "gun.switch",
-                target=target.bot_id,
-                previous=aim.previous_mode,
-                selected=aim.mode,
-                scores=self._gun.score_summary(target.bot_id, score_segment),
+                **gun_switch_fields(target.bot_id, aim, self._gun.score_summary(target.bot_id, score_segment)),
             )
         age = self.turn_number - target.seen_turn
 
@@ -374,30 +358,25 @@ class AdaptivePrime(Bot):
         else:
             self._sample_status(
                 "track",
-                target=target.bot_id,
-                age=age,
-                distance=round(distance, 1),
-                gun_bearing=round(aim.gun_bearing, 2),
-                radar_bearing=round(radar_command.bearing, 2),
-                radar_turn=round(radar_command.turn, 2),
-                radar_mode=radar_command.mode,
-                radar_age=radar_command.age,
-                predicted_x=round(aim.predicted_x, 1),
-                predicted_y=round(aim.predicted_y, 1),
-                aim_mode=aim.mode,
-                aim_guess_factor=round(aim.guess_factor, 3) if aim.guess_factor is not None else None,
-                gun_samples=self._gun.sample_count,
-                gun_scores=self._gun.score_summary(target.bot_id, score_segment),
-                fire_alignment_limit=fire_decision.alignment_limit,
-                hold_reason=fire_decision.reason,
-                evade_direction=self._evade_direction,
-                evading=self.turn_number <= self._evade_until_turn,
-                movement_mode=movement_mode if "movement_mode" in locals() else "wall",
-                strafe_offset=round(strafe_offset, 1) if "strafe_offset" in locals() else None,
-                flatten_reason=flattening.reason if "flattening" in locals() and flattening is not None else None,
-                flatten_bucket=flattening.bucket if "flattening" in locals() and flattening is not None else None,
-                last_enemy_fire_age=self.turn_number - self._last_enemy_fire_turn,
-                known_targets=len(self._targets),
+                **track_fields(
+                    FireTick(
+                        target=target,
+                        age=age,
+                        distance=distance,
+                        aim=aim,
+                        radar=radar_command,
+                        decision=fire_decision,
+                        gun_samples=self._gun.sample_count,
+                        gun_scores=self._gun.score_summary(target.bot_id, score_segment),
+                        evade_direction=self._evade_direction,
+                        evading=self.turn_number <= self._evade_until_turn,
+                        movement_mode=movement_mode,
+                        strafe_offset=strafe_offset,
+                        flattening=flattening,
+                        last_enemy_fire_age=self.turn_number - self._last_enemy_fire_turn,
+                        known_targets=len(self._targets),
+                    )
+                ),
             )
 
     def _set_adaptive_movement(
@@ -440,19 +419,14 @@ class AdaptivePrime(Bot):
                 self._apply_movement_command(command)
                 self._sample_status(
                     "movement.minimum_risk",
-                    target=target.bot_id,
-                    destination_x=round(decision.x, 1),
-                    destination_y=round(decision.y, 1),
-                    risk=round(decision.risk, 3),
-                    candidates=decision.candidates,
-                    nearest_enemy=decision.nearest_enemy_id,
-                    nearest_enemy_distance=round(decision.nearest_enemy_distance, 1),
-                    reused_destination=decision.reused,
-                    destination_age=decision.age,
-                    fire_threat=threat_target.bot_id if threat_target is not None else None,
-                    turn=round(command.turn, 2),
-                    speed=command.speed,
-                    known_targets=len(self._targets),
+                    **minimum_risk_fields(
+                        target.bot_id,
+                        decision,
+                        command,
+                        len(self._targets),
+                        fire_threat_id=threat_target.bot_id if threat_target is not None else None,
+                        include_fire_threat=True,
+                    ),
                 )
                 return command.mode, command.strafe_offset, None
 
@@ -473,14 +447,7 @@ class AdaptivePrime(Bot):
             if flattening.changed:
                 self._log(
                     "movement.duel_flatten",
-                    target=target.bot_id,
-                    current_direction=self._evade_direction,
-                    suggested_direction=flattening.direction,
-                    bucket=flattening.bucket,
-                    current_count=round(flattening.current_count, 1),
-                    alternative_count=round(flattening.alternative_count, 1),
-                    distance=round(distance, 1),
-                    reason=flattening.reason,
+                    **flattening_fields(target.bot_id, self._evade_direction, flattening, distance, include_reason=True),
                 )
                 if MOVEMENT_POLICY.flattener_active and flattening.current_count >= 2.0:
                     self._evade_direction = flattening.direction
@@ -503,25 +470,7 @@ class AdaptivePrime(Bot):
                     self._apply_movement_command(command)
                     self._sample_status(
                         "movement.goto_surf",
-                        target=target.bot_id,
-                        destination_x=round(surf_decision.x, 1),
-                        destination_y=round(surf_decision.y, 1),
-                        danger=round(surf_decision.danger, 3),
-                        profile_danger=round(surf_decision.profile_danger, 3),
-                        ensemble_danger=round(surf_decision.ensemble_danger, 3),
-                        ensemble_samples=round(surf_decision.ensemble_samples, 1),
-                        ensemble_weight=round(surf_decision.ensemble_weight, 3),
-                        wall_risk=round(surf_decision.wall_risk, 3),
-                        distance_risk=round(surf_decision.distance_risk, 3),
-                        travel_risk=round(surf_decision.travel_risk, 3),
-                        candidates=surf_decision.candidates,
-                        wave_kind=surf_decision.wave_kind,
-                        hit_guess_factor=round(surf_decision.hit_guess_factor, 3),
-                        hit_bin=surf_decision.hit_bin,
-                        hit_turn=surf_decision.hit_turn,
-                        evade_direction=self._evade_direction,
-                        turn=round(command.turn, 2),
-                        speed=command.speed,
+                        **goto_surf_fields(target.bot_id, surf_decision, command, self._evade_direction),
                     )
                     return command.mode, command.strafe_offset, flattening
             destination_x, destination_y, force_x, force_y, movement_mode = self._duel_potential_destination(
@@ -539,17 +488,18 @@ class AdaptivePrime(Bot):
             self._apply_movement_command(command)
             self._sample_status(
                 "movement.duel_potential",
-                target=target.bot_id,
-                destination_x=round(destination_x, 1),
-                destination_y=round(destination_y, 1),
-                force_x=round(force_x, 3),
-                force_y=round(force_y, 3),
-                distance=round(distance, 1),
-                mode=movement_mode,
-                evading=evading,
-                evade_direction=self._evade_direction,
-                turn=round(command.turn, 2),
-                speed=command.speed,
+                **duel_potential_fields(
+                    target.bot_id,
+                    destination_x,
+                    destination_y,
+                    force_x,
+                    force_y,
+                    distance,
+                    movement_mode,
+                    evading,
+                    self._evade_direction,
+                    command,
+                ),
             )
             return command.mode, command.strafe_offset, flattening
 
@@ -570,13 +520,7 @@ class AdaptivePrime(Bot):
         if flattening.changed:
             self._log(
                 "movement.flatten" if MOVEMENT_POLICY.flattener_active else "movement.flatten_shadow",
-                target=target.bot_id,
-                current_direction=self._evade_direction,
-                suggested_direction=flattening.direction,
-                bucket=flattening.bucket,
-                current_count=round(flattening.current_count, 1),
-                alternative_count=round(flattening.alternative_count, 1),
-                distance=round(distance, 1),
+                **flattening_fields(target.bot_id, self._evade_direction, flattening, distance),
             )
             if MOVEMENT_POLICY.flattener_active:
                 self._evade_direction = flattening.direction
@@ -806,31 +750,11 @@ class AdaptivePrime(Bot):
 
     def _log_wave_visits(self, target: TargetSnapshot) -> None:
         for visit in self._gun.update_waves(self, target):
-            self._log(
-                "gun.wave_visit",
-                target=visit.target_id,
-                guess_factor=round(visit.guess_factor, 3),
-                samples=visit.samples,
-                traveled=round(visit.traveled, 1),
-                distance=round(visit.distance, 1),
-                selected_gun=visit.selected_gun,
-                virtual_scores=visit.virtual_scores,
-                gun_scores=visit.gun_scores,
-            )
+            self._log("gun.wave_visit", **wave_visit_fields(visit))
 
     def _log_movement_profile_visits(self) -> None:
         for visit in self._movement.update(self):
-            self._log(
-                "movement.profile_visit",
-                target=visit.target_id,
-                guess_factor=round(visit.guess_factor, 3),
-                bin=visit.bin_index,
-                bucket=visit.bucket,
-                visits=round(visit.visits, 1),
-                wave_age=visit.wave_age,
-                ensemble_danger=round(visit.ensemble_danger, 3),
-                ensemble_samples=round(visit.ensemble_samples, 1),
-            )
+            self._log("movement.profile_visit", **profile_visit_fields(visit))
 
     def _set_lost_target_radar(self, radar_bearing: float, age: int) -> tuple[float, str]:
         if abs(radar_bearing) > RADAR_POLICY.reacquire_min_error:
@@ -889,12 +813,7 @@ class AdaptivePrime(Bot):
         self._search()
         self._log(
             "target.drop_lost",
-            bot_id=target.bot_id,
-            age=age,
-            cached_x=round(target.x, 1),
-            cached_y=round(target.y, 1),
-            cached_distance=round(distance, 1),
-            known_targets=len(self._targets),
+            **target_drop_lost_fields(target, age, distance, len(self._targets)),
         )
 
     def _forget_stale_targets(self) -> None:
@@ -922,11 +841,7 @@ class AdaptivePrime(Bot):
         if selection.changed:
             self._log(
                 "target.select",
-                previous=selection.previous_id,
-                selected=target.bot_id,
-                score=round(selection.score, 1),
-                fresh_candidates=selection.fresh_candidates,
-                known_targets=len(self._targets),
+                **target_selection_fields(selection, len(self._targets)),
             )
         return target
 

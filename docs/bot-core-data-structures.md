@@ -575,7 +575,7 @@ tracker can create an expected enemy fire wave using predicted firepower.
 
 ## Telemetry Records
 
-Location: `bot_core.debug` and `tools/telemetry_viewer`
+Location: `bot_core.telemetry`, `bot_core.debug`, and `tools/telemetry_viewer`
 
 Telemetry is JSONL. Each record has:
 
@@ -605,6 +605,12 @@ arena_width, arena_height
 `fields` are event-specific and should carry decision context: target id,
 distance, movement mode, aim mode, radar mode, firepower, gun bearing error,
 danger breakdown, wave bin, prediction confidence, and so on.
+
+`bot_core.telemetry.recorder.TelemetryRecorder` writes JSONL records.
+`bot_core.debug.DebugLogger` owns debug-log sampling and forwards structured
+events to the recorder. Domain-specific telemetry modules build event fields
+from decision records such as `FireTick`, `FireDecision`, `MovementCommand`,
+`TargetSelection`, and movement/gun wave visits.
 
 Important invariant: event fields should make derived dashboard stats possible
 without re-running bot logic.

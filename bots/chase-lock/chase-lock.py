@@ -27,6 +27,7 @@ from bot_core.movement import (
     FlatteningDecision,
     MinimumRiskConfig,
     MinimumRiskMovement,
+    MovementCommand,
     MovementFlattener,
 )
 from bot_core.motion import OwnMotionTracker
@@ -35,6 +36,10 @@ from bot_core.geometry.angles import bearing_to
 from bot_core.geometry.numeric import clamp
 from bot_core.geometry.position import distance_to, drive_to_destination
 from bot_core.target_snapshot import TargetSnapshot, target_from_hit_bot, target_from_scan
+from bot_core.telemetry.energy import energy_drop_ignored_fields, enemy_fire_detected_fields, gun_heat_wave_fields
+from bot_core.telemetry.fire import FireTick, gun_switch_fields, track_fields, wave_visit_fields
+from bot_core.telemetry.movement import flattening_fields, minimum_risk_fields, profile_visit_fields
+from bot_core.telemetry.targeting import scan_new_fields, scan_reacquired_fields, target_drop_lost_fields
 
 
 FIRE_ALIGNMENT_DEGREES = 7
@@ -198,22 +203,11 @@ class ChaseLock(Bot):
         if not fire_detected:
             self._record_gun_heat_wave(target)
         if previous is None:
-            self._log(
-                "scan.new",
-                bot_id=event.scanned_bot_id,
-                energy=round(event.energy, 1),
-                x=round(event.x, 1),
-                y=round(event.y, 1),
-            )
+            self._log("scan.new", **scan_new_fields(event.scanned_bot_id, event.energy, event.x, event.y))
         elif previous_age is not None and previous_age > REACQUIRE_TARGET_TURNS:
             self._log(
                 "scan.reacquired",
-                bot_id=event.scanned_bot_id,
-                previous_age=previous_age,
-                previous_x=round(previous.x, 1),
-                previous_y=round(previous.y, 1),
-                x=round(event.x, 1),
-                y=round(event.y, 1),
+                **scan_reacquired_fields(event.scanned_bot_id, previous_age, previous, event.x, event.y),
             )
 
     def _update_target_motion_stats(self, event: ScannedBotEvent, previous: TargetSnapshot) -> None:
@@ -243,15 +237,14 @@ class ChaseLock(Bot):
             if signal.raw_energy_drop > 0 or signal.energy_correction:
                 self._log(
                     "enemy.energy_drop_ignored",
-                    bot_id=event.scanned_bot_id,
-                    reason=signal.reason,
-                    raw_drop=round(signal.raw_energy_drop, 2),
-                    corrected_drop=round(signal.energy_drop, 2),
-                    correction=round(signal.energy_correction, 2),
-                    scan_gap=scan_gap,
-                    distance=round(distance, 1),
-                    previous_energy=round(previous.energy, 1),
-                    energy=round(event.energy, 1),
+                    **energy_drop_ignored_fields(
+                        event.scanned_bot_id,
+                        signal,
+                        scan_gap,
+                        distance,
+                        previous.energy,
+                        event.energy,
+                    ),
                 )
             return False
 
@@ -289,32 +282,26 @@ class ChaseLock(Bot):
             if melee_active and not self._wall_risk(8):
                 self._evade_direction *= -1
             self._evade_until_turn = max(self._evade_until_turn, self.turn_number + signal.evade_ticks)
+        power_mae = self._enemy_fire_power.mean_absolute_error(event.scanned_bot_id)
         self._log(
             "enemy.fire_detected",
-            bot_id=event.scanned_bot_id,
-            power=round(signal.fire_power or 0.0, 2),
-            raw_drop=round(signal.raw_energy_drop, 2),
-            corrected_drop=round(signal.energy_drop, 2),
-            correction=round(signal.energy_correction, 2),
-            scan_gap=scan_gap,
-            distance=round(distance, 1),
-            bullet_travel_ticks=signal.bullet_travel_ticks,
-            previous_energy=round(previous.energy, 1),
-            energy=round(event.energy, 1),
-            evasion=("active_melee" if melee_active else "active_duel") if active_evasion else "threat_only",
-            evade_direction=self._evade_direction,
-            evade_until=self._evade_until_turn,
-            known_targets=len(self._targets),
-            movement_wave=movement_wave is not None,
-            gun_heat=round(heat_state.heat, 2),
-            predicted_power=round(previous_prediction.fire_power, 2) if previous_prediction is not None else None,
-            prediction_error=round(abs(previous_prediction.fire_power - (signal.fire_power or 1.5)), 2)
-            if previous_prediction is not None
-            else None,
-            power_samples=self._enemy_fire_power.sample_count(event.scanned_bot_id),
-            power_mae=round(self._enemy_fire_power.mean_absolute_error(event.scanned_bot_id), 3)
-            if self._enemy_fire_power.mean_absolute_error(event.scanned_bot_id) is not None
-            else None,
+            **enemy_fire_detected_fields(
+                event.scanned_bot_id,
+                signal,
+                scan_gap,
+                distance,
+                previous.energy,
+                event.energy,
+                ("active_melee" if melee_active else "active_duel") if active_evasion else "threat_only",
+                self._evade_direction,
+                self._evade_until_turn,
+                len(self._targets),
+                movement_wave is not None,
+                heat_state,
+                previous_prediction,
+                self._enemy_fire_power.sample_count(event.scanned_bot_id),
+                power_mae,
+            ),
         )
         return True
 
@@ -353,17 +340,7 @@ class ChaseLock(Bot):
         )
         self._log(
             "enemy.gun_heat_wave",
-            bot_id=target.bot_id,
-            power=round(fire_power, 2),
-            confidence=round(prediction.confidence, 3),
-            samples=prediction.samples,
-            reason=prediction.reason,
-            power_mae=round(prediction.mean_absolute_error, 3)
-            if prediction.mean_absolute_error is not None
-            else None,
-            distance=round(distance, 1),
-            target_age=age,
-            movement_wave=movement_wave is not None,
+            **gun_heat_wave_fields(target.bot_id, fire_power, prediction, distance, age, movement_wave is not None),
         )
 
     def _track_or_search(self) -> None:
@@ -395,10 +372,7 @@ class ChaseLock(Bot):
         if aim.mode_changed:
             self._log(
                 "gun.switch",
-                target=target.bot_id,
-                previous=aim.previous_mode,
-                selected=aim.mode,
-                scores=self._gun.score_summary(target.bot_id, score_segment),
+                **gun_switch_fields(target.bot_id, aim, self._gun.score_summary(target.bot_id, score_segment)),
             )
         age = self.turn_number - target.seen_turn
 
@@ -431,6 +405,9 @@ class ChaseLock(Bot):
             self._radar_sweep_direction = 1 if radar_command.turn > 0 else -1
         self.set_turn_gun_left(aim.gun_bearing)
 
+        movement_mode = "wall"
+        strafe_offset = None
+        flattening = None
         if self._near_wall() or self._wall_risk(8):
             center_bearing = bearing_to(self, self.arena_width / 2, self.arena_height / 2, self.direction)
             self.target_speed = WALL_ESCAPE_SPEED
@@ -452,30 +429,25 @@ class ChaseLock(Bot):
         else:
             self._sample_status(
                 "track",
-                target=target.bot_id,
-                age=age,
-                distance=round(distance, 1),
-                gun_bearing=round(aim.gun_bearing, 2),
-                radar_bearing=round(radar_command.bearing, 2),
-                radar_turn=round(radar_command.turn, 2),
-                radar_mode=radar_command.mode,
-                radar_age=radar_command.age,
-                predicted_x=round(aim.predicted_x, 1),
-                predicted_y=round(aim.predicted_y, 1),
-                aim_mode=aim.mode,
-                aim_guess_factor=round(aim.guess_factor, 3) if aim.guess_factor is not None else None,
-                gun_samples=self._gun.sample_count,
-                gun_scores=self._gun.score_summary(target.bot_id, score_segment),
-                fire_alignment_limit=fire_decision.alignment_limit,
-                hold_reason=fire_decision.reason,
-                evade_direction=self._evade_direction,
-                evading=self.turn_number <= self._evade_until_turn,
-                movement_mode=movement_mode if "movement_mode" in locals() else "wall",
-                strafe_offset=round(strafe_offset, 1) if "strafe_offset" in locals() else None,
-                flatten_reason=flattening.reason if "flattening" in locals() and flattening is not None else None,
-                flatten_bucket=flattening.bucket if "flattening" in locals() and flattening is not None else None,
-                last_enemy_fire_age=self.turn_number - self._last_enemy_fire_turn,
-                known_targets=len(self._targets),
+                **track_fields(
+                    FireTick(
+                        target=target,
+                        age=age,
+                        distance=distance,
+                        aim=aim,
+                        radar=radar_command,
+                        decision=fire_decision,
+                        gun_samples=self._gun.sample_count,
+                        gun_scores=self._gun.score_summary(target.bot_id, score_segment),
+                        evade_direction=self._evade_direction,
+                        evading=self.turn_number <= self._evade_until_turn,
+                        movement_mode=movement_mode,
+                        strafe_offset=strafe_offset,
+                        flattening=flattening,
+                        last_enemy_fire_age=self.turn_number - self._last_enemy_fire_turn,
+                        known_targets=len(self._targets),
+                    )
+                ),
             )
 
     def _set_chase_movement(
@@ -502,21 +474,17 @@ class ChaseLock(Bot):
             )
             if decision is not None:
                 turn, speed = self._drive_to_destination(decision.x, decision.y, 8)
+                command = MovementCommand("melee_minimum_risk", turn, speed)
                 self._sample_status(
                     "movement.minimum_risk",
-                    target=target.bot_id,
-                    destination_x=round(decision.x, 1),
-                    destination_y=round(decision.y, 1),
-                    risk=round(decision.risk, 3),
-                    candidates=decision.candidates,
-                    nearest_enemy=decision.nearest_enemy_id,
-                    nearest_enemy_distance=round(decision.nearest_enemy_distance, 1),
-                    reused_destination=decision.reused,
-                    destination_age=decision.age,
-                    fire_threat=threat_target.bot_id if threat_target is not None else None,
-                    turn=round(turn, 2),
-                    speed=speed,
-                    known_targets=len(self._targets),
+                    **minimum_risk_fields(
+                        target.bot_id,
+                        decision,
+                        command,
+                        len(self._targets),
+                        fire_threat_id=threat_target.bot_id if threat_target is not None else None,
+                        include_fire_threat=True,
+                    ),
                 )
                 return "melee_minimum_risk", 0.0, None
 
@@ -537,13 +505,7 @@ class ChaseLock(Bot):
         if flattening.changed:
             self._log(
                 "movement.flatten" if FLATTENER_ACTIVE else "movement.flatten_shadow",
-                target=target.bot_id,
-                current_direction=self._evade_direction,
-                suggested_direction=flattening.direction,
-                bucket=flattening.bucket,
-                current_count=round(flattening.current_count, 1),
-                alternative_count=round(flattening.alternative_count, 1),
-                distance=round(distance, 1),
+                **flattening_fields(target.bot_id, self._evade_direction, flattening, distance),
             )
             if FLATTENER_ACTIVE:
                 self._evade_direction = flattening.direction
@@ -639,31 +601,11 @@ class ChaseLock(Bot):
 
     def _log_wave_visits(self, target: TargetSnapshot) -> None:
         for visit in self._gun.update_waves(self, target):
-            self._log(
-                "gun.wave_visit",
-                target=visit.target_id,
-                guess_factor=round(visit.guess_factor, 3),
-                samples=visit.samples,
-                traveled=round(visit.traveled, 1),
-                distance=round(visit.distance, 1),
-                selected_gun=visit.selected_gun,
-                virtual_scores=visit.virtual_scores,
-                gun_scores=visit.gun_scores,
-            )
+            self._log("gun.wave_visit", **wave_visit_fields(visit))
 
     def _log_movement_profile_visits(self) -> None:
         for visit in self._movement.update(self):
-            self._log(
-                "movement.profile_visit",
-                target=visit.target_id,
-                guess_factor=round(visit.guess_factor, 3),
-                bin=visit.bin_index,
-                bucket=visit.bucket,
-                visits=round(visit.visits, 1),
-                wave_age=visit.wave_age,
-                ensemble_danger=round(visit.ensemble_danger, 3),
-                ensemble_samples=round(visit.ensemble_samples, 1),
-            )
+            self._log("movement.profile_visit", **profile_visit_fields(visit))
 
     def _set_lost_target_radar(self, radar_bearing: float, age: int) -> tuple[float, str]:
         if abs(radar_bearing) > RADAR_REACQUIRE_MIN_ERROR:
@@ -723,12 +665,7 @@ class ChaseLock(Bot):
         self._search()
         self._log(
             "target.drop_lost",
-            bot_id=target.bot_id,
-            age=age,
-            cached_x=round(target.x, 1),
-            cached_y=round(target.y, 1),
-            cached_distance=round(distance, 1),
-            known_targets=len(self._targets),
+            **target_drop_lost_fields(target, age, distance, len(self._targets)),
         )
 
     def _forget_stale_targets(self) -> None:
