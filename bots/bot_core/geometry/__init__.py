@@ -1,4 +1,6 @@
-from bot_core.geometry.angles import absolute_bearing_between, relative_bearing
+from bot_core.geometry.angles import absolute_bearing_between, bearing_to, body_bearing_to, relative_bearing
+from bot_core.geometry.numeric import clamp
+from bot_core.geometry.position import distance_to, drive_command_to_destination, drive_to_destination, predicted_position
 from bot_core.geometry.waves import (
     escape_angle_for_guess_factor,
     guess_factor_from_offset,
@@ -6,14 +8,19 @@ from bot_core.geometry.waves import (
     wall_limited_escape_angle,
     wall_limited_escape_angle_from_state,
 )
-from bot_core.physics import bullet_speed_for_power
 
 __all__ = [
     "absolute_bearing_between",
-    "bullet_speed_for_power",
+    "bearing_to",
+    "body_bearing_to",
+    "clamp",
+    "distance_to",
+    "drive_command_to_destination",
+    "drive_to_destination",
     "escape_angle_for_guess_factor",
     "guess_factor_from_offset",
     "max_escape_angle_for_speed",
+    "predicted_position",
     "relative_bearing",
     "wall_limited_escape_angle",
     "wall_limited_escape_angle_from_state",

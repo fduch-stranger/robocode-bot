@@ -101,7 +101,9 @@ The exact formulas and guess-factor details are in
 
 ## Fire Gate
 
-Shared fire-gate helpers live in `bot_core.energy`.
+Shared fire-gate helpers live in `bot_core.energy`. The package also owns
+enemy-energy drop classification, correction ledgers, enemy fire-power
+prediction, and gun-heat tracking behind compatibility exports.
 
 Bots generally fire only when:
 

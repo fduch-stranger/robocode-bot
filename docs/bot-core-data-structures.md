@@ -36,7 +36,8 @@ flowchart TD
 
 ### `TargetSnapshot`
 
-Location: `bot_core.tank_math`
+Location: `bot_core.target_snapshot` (`bot_core.tank_math` re-exports this
+for compatibility)
 
 ```text
 TargetSnapshot(
@@ -144,6 +145,10 @@ guess_factor = bearing_offset / max_escape_angle
 The code uses wall-limited positive and negative escape angles, not only the
 theoretical maximum, so the denominator depends on which side of the firing
 bearing the target escaped toward.
+
+Bullet physics lives in `bot_core.physics`, while angle, position, and
+guess-factor geometry lives in `bot_core.geometry`. `bot_core.tank_math` and
+`bot_core.wave_math` remain compatibility facades for existing imports.
 
 Bullet physics:
 
@@ -442,6 +447,10 @@ command in one place, which keeps direction mutation and `set_turn_left` /
 ## Fire Gate Data
 
 Location: `bot_core.energy`
+
+`bot_core.energy` is a package. It keeps compatibility exports at the package
+root while grouping energy drops, correction ledgers, fire detection, fire
+gates, fire-power prediction, and gun heat into separate components.
 
 `FireGate` evaluates common firing constraints and returns:
 
