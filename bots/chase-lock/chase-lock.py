@@ -15,6 +15,7 @@ from bot_utils.debug import DebugLogger, FiredBulletTracker
 from bot_utils.energy import EnergyDropConfig, GunHeatTracker, classify_energy_drop
 from bot_utils.gun import TargetMotion, VirtualGunSystem
 from bot_utils.movement import FlatteningDecision, MinimumRiskConfig, MinimumRiskMovement, MovementFlattener
+from bot_utils.motion import OwnMotionTracker
 from bot_utils.radar import RadarLockConfig, lock_radar_to_target
 from bot_utils.tank_math import (
     TargetSnapshot,
@@ -124,6 +125,7 @@ class ChaseLock(Bot):
         self._enemy_gun_heat = GunHeatTracker()
         self._gun = VirtualGunSystem()
         self._movement = MovementFlattener()
+        self._own_motion = OwnMotionTracker()
         self._minimum_risk = MinimumRiskMovement(
             MinimumRiskConfig(
                 candidate_distances=(180.0, 260.0, 340.0, 430.0),
@@ -155,6 +157,7 @@ class ChaseLock(Bot):
         self.max_speed = 8
 
         while self.running:
+            self._own_motion.update(self)
             self._track_or_search()
             self.go()
 
@@ -248,6 +251,7 @@ class ChaseLock(Bot):
             self,
             target_from_scan(event, self.turn_number),
             signal.fire_power or 1.5,
+            **self._own_motion.movement_wave_kwargs(self.turn_number),
         )
         melee_active = self._melee_round or self.enemy_count > 1 or len(self._targets) > 1
         active_evasion = (
@@ -297,7 +301,13 @@ class ChaseLock(Bot):
         if fire_power is None:
             return
 
-        movement_wave = self._movement.record_enemy_fire(self, target, fire_power, wave_kind="expected")
+        movement_wave = self._movement.record_enemy_fire(
+            self,
+            target,
+            fire_power,
+            wave_kind="expected",
+            **self._own_motion.movement_wave_kwargs(self.turn_number),
+        )
         self._log(
             "enemy.gun_heat_wave",
             bot_id=target.bot_id,
@@ -604,6 +614,8 @@ class ChaseLock(Bot):
                 bucket=visit.bucket,
                 visits=round(visit.visits, 1),
                 wave_age=visit.wave_age,
+                ensemble_danger=round(visit.ensemble_danger, 3),
+                ensemble_samples=round(visit.ensemble_samples, 1),
             )
 
     def _set_lost_target_radar(self, radar_bearing: float, age: int) -> tuple[float, str]:
@@ -645,6 +657,7 @@ class ChaseLock(Bot):
             self._enemy_gun_heat.clear_round_state()
             self._target_accel.clear()
             self._last_velocity_change_turn.clear()
+            self._own_motion.reset(self.turn_number)
             self._melee_round = False
             self._log(
                 "round.reset",

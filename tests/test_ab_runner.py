@@ -29,6 +29,19 @@ class RunAbTest(unittest.TestCase):
             [matchup["name"] for matchup in preset["matchups"]],
         )
 
+    def test_local_bot_presets_target_each_sparring_bot(self) -> None:
+        expected = {
+            "chase-1v1-core": ("Chase Lock", ["chase-vs-adaptive", "chase-vs-circle", "chase-vs-sweep"]),
+            "circle-1v1-core": ("Circle Strafer", ["circle-vs-adaptive", "circle-vs-chase", "circle-vs-sweep"]),
+            "sweep-1v1-core": ("Sweep Pressure", ["sweep-vs-adaptive", "sweep-vs-chase", "sweep-vs-circle"]),
+        }
+
+        for preset_name, (target_bot, matchup_names) in expected.items():
+            with self.subTest(preset=preset_name):
+                preset = run_ab.PRESETS[preset_name]
+                self.assertEqual(target_bot, preset["targetBot"])
+                self.assertEqual(matchup_names, [matchup["name"] for matchup in preset["matchups"]])
+
     def test_resolve_bot_args_keeps_legacy_token(self) -> None:
         repo = Path("/repo")
 

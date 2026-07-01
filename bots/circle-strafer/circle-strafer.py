@@ -14,6 +14,7 @@ from bot_utils.debug import DebugLogger, FiredBulletTracker
 from bot_utils.energy import EnergyDropConfig, classify_energy_drop
 from bot_utils.gun import TargetMotion, VirtualGunSystem
 from bot_utils.movement import MinimumRiskMovement, MovementFlattener
+from bot_utils.motion import OwnMotionTracker
 from bot_utils.radar import RadarLockConfig, lock_priority_radar
 from bot_utils.tank_math import (
     TargetSnapshot,
@@ -104,6 +105,7 @@ class CircleStrafer(Bot):
         self._last_velocity_change_turn: dict[int, int] = {}
         self._gun = VirtualGunSystem()
         self._movement = MovementFlattener()
+        self._own_motion = OwnMotionTracker()
         self._minimum_risk = MinimumRiskMovement()
         self._debug = DebugLogger(self, "circle-strafer")
         self._fired_bullets = FiredBulletTracker()
@@ -120,6 +122,7 @@ class CircleStrafer(Bot):
 
         while self.running:
             self._reset_if_new_round()
+            self._own_motion.update(self)
             self._move()
             self._track_target()
             self.go()
@@ -258,6 +261,7 @@ class CircleStrafer(Bot):
             self,
             target_from_scan(event, self.turn_number),
             signal.fire_power or 1.5,
+            **self._own_motion.movement_wave_kwargs(self.turn_number),
         )
         active_evasion = not self._near_wall()
         if active_evasion:
@@ -388,6 +392,8 @@ class CircleStrafer(Bot):
                 bucket=visit.bucket,
                 visits=round(visit.visits, 1),
                 wave_age=visit.wave_age,
+                ensemble_danger=round(visit.ensemble_danger, 3),
+                ensemble_samples=round(visit.ensemble_samples, 1),
             )
 
     def _apply_movement_flattening(self, target: TargetSnapshot, distance: float) -> None:
@@ -472,6 +478,7 @@ class CircleStrafer(Bot):
             self._evade_until_turn = -1
             self._target_accel.clear()
             self._last_velocity_change_turn.clear()
+            self._own_motion.reset(self.turn_number)
             self._gun.clear_round_state()
             self._movement.clear_round_state()
             self._minimum_risk.clear_round_state()

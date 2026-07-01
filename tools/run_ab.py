@@ -14,6 +14,9 @@ from typing import Any
 
 METRICS = ("totalScore", "survival", "bulletDamage", "ramDamage", "firstPlaces")
 TARGET_BOT = "Adaptive Prime"
+CHASE_BOT = "Chase Lock"
+CIRCLE_BOT = "Circle Strafer"
+SWEEP_BOT = "Sweep Pressure"
 
 
 PRESETS: dict[str, dict[str, Any]] = {
@@ -26,6 +29,39 @@ PRESETS: dict[str, dict[str, Any]] = {
             {"name": "adaptive-vs-chase", "bots": ["bots/adaptive-prime", "bots/chase-lock"]},
             {"name": "adaptive-vs-circle", "bots": ["bots/adaptive-prime", "bots/circle-strafer"]},
             {"name": "adaptive-vs-sweep", "bots": ["bots/adaptive-prime", "bots/sweep-pressure"]},
+        ],
+    },
+    "chase-1v1-core": {
+        "description": "Chase Lock 1v1 benchmark against the other local bots.",
+        "rounds": 24,
+        "repeats": 3,
+        "targetBot": CHASE_BOT,
+        "matchups": [
+            {"name": "chase-vs-adaptive", "bots": ["bots/chase-lock", "bots/adaptive-prime"]},
+            {"name": "chase-vs-circle", "bots": ["bots/chase-lock", "bots/circle-strafer"]},
+            {"name": "chase-vs-sweep", "bots": ["bots/chase-lock", "bots/sweep-pressure"]},
+        ],
+    },
+    "circle-1v1-core": {
+        "description": "Circle Strafer 1v1 benchmark against the other local bots.",
+        "rounds": 24,
+        "repeats": 3,
+        "targetBot": CIRCLE_BOT,
+        "matchups": [
+            {"name": "circle-vs-adaptive", "bots": ["bots/circle-strafer", "bots/adaptive-prime"]},
+            {"name": "circle-vs-chase", "bots": ["bots/circle-strafer", "bots/chase-lock"]},
+            {"name": "circle-vs-sweep", "bots": ["bots/circle-strafer", "bots/sweep-pressure"]},
+        ],
+    },
+    "sweep-1v1-core": {
+        "description": "Sweep Pressure 1v1 benchmark against the other local bots.",
+        "rounds": 24,
+        "repeats": 3,
+        "targetBot": SWEEP_BOT,
+        "matchups": [
+            {"name": "sweep-vs-adaptive", "bots": ["bots/sweep-pressure", "bots/adaptive-prime"]},
+            {"name": "sweep-vs-chase", "bots": ["bots/sweep-pressure", "bots/chase-lock"]},
+            {"name": "sweep-vs-circle", "bots": ["bots/sweep-pressure", "bots/circle-strafer"]},
         ],
     },
     "adaptive-melee-core": {

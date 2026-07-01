@@ -10,3 +10,4 @@ target/
 *.pyc
 __pycache__/
 *.battle.gz
+/.telemetry-cli-suppressed

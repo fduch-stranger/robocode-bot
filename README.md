@@ -130,6 +130,9 @@ scripts/run-ab.sh --name smoke --preset adaptive-1v1-core --rounds 1 --repeats 1
 Available presets:
 
 - `adaptive-1v1-core`: Adaptive Prime against Chase Lock, Circle Strafer, and Sweep Pressure
+- `chase-1v1-core`: Chase Lock against Adaptive Prime, Circle Strafer, and Sweep Pressure
+- `circle-1v1-core`: Circle Strafer against Adaptive Prime, Chase Lock, and Sweep Pressure
+- `sweep-1v1-core`: Sweep Pressure against Adaptive Prime, Chase Lock, and Circle Strafer
 - `adaptive-melee-core`: all four local bots in one melee battle
 - `adaptive-1v1-boss`: Adaptive Prime against configured legacy boss bots
 

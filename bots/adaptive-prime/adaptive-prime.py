@@ -27,6 +27,7 @@ from bot_utils.movement import (
     MovementFlattener,
     MovementFlatteningConfig,
 )
+from bot_utils.motion import OwnMotionTracker
 from bot_utils.radar import RadarLockConfig, lock_radar_to_target
 from bot_utils.tank_math import (
     TargetSnapshot,
@@ -147,11 +148,7 @@ class AdaptivePrime(Bot):
         self._enemy_energy_corrections: dict[int, list[tuple[int, float, str]]] = {}
         self._target_accel: dict[int, float] = {}
         self._last_velocity_change_turn: dict[int, int] = {}
-        self._own_previous_speed: float | None = None
-        self._own_previous_direction: float | None = None
-        self._own_accel = 0.0
-        self._last_own_direction_change_turn = 0
-        self._last_own_decel_turn = 0
+        self._own_motion = OwnMotionTracker()
         self._melee_round = False
         self._enemy_gun_heat = GunHeatTracker()
         self._enemy_fire_power = EnemyFirePowerPredictor()
@@ -300,9 +297,7 @@ class AdaptivePrime(Bot):
             self,
             target_from_scan(event, self.turn_number),
             signal.fire_power or 1.5,
-            acceleration=self._own_accel,
-            direction_change_age=self.turn_number - self._last_own_direction_change_turn,
-            decel_age=self.turn_number - self._last_own_decel_turn,
+            **self._own_motion.movement_wave_kwargs(self.turn_number),
         )
         melee_active = self._melee_round or self.enemy_count > 1 or len(self._targets) > 1
         active_evasion = (
@@ -374,9 +369,7 @@ class AdaptivePrime(Bot):
             fire_power,
             wave_kind="expected",
             expected_confidence=prediction.confidence,
-            acceleration=self._own_accel,
-            direction_change_age=self.turn_number - self._last_own_direction_change_turn,
-            decel_age=self.turn_number - self._last_own_decel_turn,
+            **self._own_motion.movement_wave_kwargs(self.turn_number),
         )
         self._log(
             "enemy.gun_heat_wave",
@@ -861,24 +854,7 @@ class AdaptivePrime(Bot):
         )
 
     def _update_own_motion_stats(self) -> None:
-        if self._own_previous_speed is None:
-            self._own_previous_speed = self.speed
-            self._own_previous_direction = self.direction
-            self._last_own_direction_change_turn = self.turn_number
-            self._last_own_decel_turn = self.turn_number
-            return
-
-        speed_delta = self.speed - self._own_previous_speed
-        self._own_accel = speed_delta
-        previous_direction = self._own_previous_direction if self._own_previous_direction is not None else self.direction
-        direction_delta = abs(((self.direction - previous_direction + 180) % 360) - 180)
-        if direction_delta > 4.0 or abs(speed_delta) > 0.55:
-            self._last_own_direction_change_turn = self.turn_number
-        if abs(self.speed) + 0.35 < abs(self._own_previous_speed):
-            self._last_own_decel_turn = self.turn_number
-
-        self._own_previous_speed = self.speed
-        self._own_previous_direction = self.direction
+        self._own_motion.update(self)
 
     def _log_wave_visits(self, target: TargetSnapshot) -> None:
         for visit in self._gun.update_waves(self, target):
@@ -948,11 +924,7 @@ class AdaptivePrime(Bot):
             self._enemy_gun_heat.clear_round_state()
             self._target_accel.clear()
             self._last_velocity_change_turn.clear()
-            self._own_previous_speed = None
-            self._own_previous_direction = None
-            self._own_accel = 0.0
-            self._last_own_direction_change_turn = self.turn_number
-            self._last_own_decel_turn = self.turn_number
+            self._own_motion.reset(self.turn_number)
             self._melee_round = False
             self._log(
                 "round.reset",
