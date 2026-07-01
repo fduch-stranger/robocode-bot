@@ -1,0 +1,44 @@
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class MovementFlatteningConfig:
+    min_distance: float = 150.0
+    max_distance: float = 700.0
+    near_distance: float = 280.0
+    mid_distance: float = 480.0
+    bin_count: int = 31
+    switch_margin: float = 1.5
+    switch_cooldown: int = 12
+    lookahead_ticks: int = 14
+    surf_max_ticks: int = 80
+    surf_intercept_margin: float = 18.0
+    wall_stick: float = 140.0
+    wall_smoothing_degrees: float = 12.0
+    wall_smoothing_attempts: int = 18
+    unvisited_bin_danger: float = 0.08
+    profile_decay_after: float = 220.0
+    bullet_hit_visit_weight: float = 3.0
+    bullet_hit_wave_tolerance: float = 55.0
+    bullet_shadow_enabled: bool = False
+    bullet_shadow_danger_multiplier: float = 0.45
+    bullet_shadow_radius_margin: float = 14.0
+    bullet_shadow_bin_radius: int = 0
+    bullet_shadow_max_ticks: int = 80
+    goto_candidate_distances: tuple[float, ...] = (120.0, 180.0, 260.0)
+    goto_candidate_angle_offsets: tuple[float, ...] = (-110.0, -80.0, -50.0, -20.0, 20.0, 50.0, 80.0, 110.0)
+    goto_min_target_distance: float = 340.0
+    goto_max_target_distance: float = 720.0
+    goto_preferred_target_distance: float = 560.0
+    goto_wall_weight: float = 2.2
+    goto_target_distance_weight: float = 0.000035
+    goto_close_enemy_weight: float = 1.4
+    goto_travel_weight: float = 0.0008
+    goto_wave_kind_expected_multiplier: float = 0.85
+    goto_use_expected_waves: bool = False
+    goto_expected_wave_min_confidence: float = 0.58
+    stats_buffer_enabled: bool = True
+    stats_buffer_weight: float = 0.28
+    stats_buffer_decay: float = 0.99
+    stats_buffer_min_samples: float = 6.0
+    stats_buffer_max_effective_samples: float = 48.0
