@@ -197,6 +197,119 @@ class MinimumRiskMovementTest(unittest.TestCase):
 
         self.assertEqual(unshadowed, shadowed)
 
+    def test_go_to_surf_returns_none_without_wave(self) -> None:
+        movement = MovementFlattener()
+        bot = SimpleNamespace(
+            x=500.0,
+            y=500.0,
+            direction=90.0,
+            speed=0.0,
+            arena_width=1000.0,
+            arena_height=1000.0,
+            turn_number=20,
+        )
+        target = TargetSnapshot(1, 100.0, 500.0, 100.0, 0.0, 0.0, 20)
+
+        decision = movement.choose_go_to_surf_destination(bot, target, max_speed=8.0, field_margin=80.0)
+
+        self.assertIsNone(decision)
+
+    def test_go_to_surf_destination_stays_inside_field(self) -> None:
+        movement = MovementFlattener()
+        bot = SimpleNamespace(
+            x=500.0,
+            y=500.0,
+            direction=90.0,
+            speed=0.0,
+            arena_width=1000.0,
+            arena_height=1000.0,
+            turn_number=20,
+        )
+        target = TargetSnapshot(1, 100.0, 500.0, 100.0, 0.0, 0.0, 20)
+        movement._waves.append(self._incoming_wave(target_id=1))
+
+        decision = movement.choose_go_to_surf_destination(bot, target, max_speed=8.0, field_margin=80.0)
+
+        self.assertIsNotNone(decision)
+        assert decision is not None
+        self.assertGreater(decision.candidates, 0)
+        self.assertGreaterEqual(decision.x, 80.0)
+        self.assertLessEqual(decision.x, 920.0)
+        self.assertGreaterEqual(decision.y, 80.0)
+        self.assertLessEqual(decision.y, 920.0)
+        self.assertGreater(decision.hit_turn, 0)
+        self.assertGreaterEqual(decision.hit_bin, 0)
+        self.assertLess(decision.hit_bin, movement.config.bin_count)
+
+    def test_go_to_surf_ignores_expected_waves_by_default(self) -> None:
+        movement = MovementFlattener()
+        bot = SimpleNamespace(
+            x=500.0,
+            y=500.0,
+            direction=90.0,
+            speed=0.0,
+            arena_width=1000.0,
+            arena_height=1000.0,
+            turn_number=20,
+        )
+        target = TargetSnapshot(1, 100.0, 500.0, 100.0, 0.0, 0.0, 20)
+        wave = self._incoming_wave(target_id=1)
+        wave.kind = "expected"
+        movement._waves.append(wave)
+
+        decision = movement.choose_go_to_surf_destination(bot, target, max_speed=8.0, field_margin=80.0)
+
+        self.assertIsNone(decision)
+
+    def test_go_to_surf_scoring_uses_simulated_hit_bin_danger(self) -> None:
+        movement = MovementFlattener()
+        bot = SimpleNamespace(
+            x=500.0,
+            y=500.0,
+            direction=90.0,
+            speed=0.0,
+            arena_width=1000.0,
+            arena_height=1000.0,
+            turn_number=20,
+        )
+        target = TargetSnapshot(1, 100.0, 500.0, 100.0, 0.0, 0.0, 20)
+        wave = self._incoming_wave(target_id=1)
+        candidates = movement._go_to_candidate_points(bot, target, field_margin=80.0)
+        scored = [
+            movement._score_go_to_candidate(bot, target, wave, x, y, max_speed=8.0, field_margin=80.0)
+            for x, y in candidates
+        ]
+        scored = [decision for decision in scored if decision is not None]
+        first = scored[0]
+        second = next(decision for decision in scored if decision.hit_bin != first.hit_bin)
+
+        movement._profile[(1, wave.distance_bucket, first.hit_bin)] = 12.0
+        first_with_profile = movement._score_go_to_candidate(
+            bot, target, wave, first.x, first.y, max_speed=8.0, field_margin=80.0
+        )
+        second_with_profile = movement._score_go_to_candidate(
+            bot, target, wave, second.x, second.y, max_speed=8.0, field_margin=80.0
+        )
+
+        assert first_with_profile is not None
+        assert second_with_profile is not None
+        self.assertGreater(first_with_profile.profile_danger, second_with_profile.profile_danger)
+
+    @staticmethod
+    def _incoming_wave(target_id: int) -> MovementWave:
+        return MovementWave(
+            target_id=target_id,
+            source_x=500.0,
+            source_y=100.0,
+            direct_bearing=90.0,
+            lateral_direction=1,
+            bullet_speed=11.0,
+            max_escape_angle_positive=30.0,
+            max_escape_angle_negative=30.0,
+            fired_turn=10,
+            distance_bucket=1,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

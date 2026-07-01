@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 from robocode_tank_royale.bot_api import Bot
 
-from bot_utils.physics import bullet_speed_for_power
+from bot_utils.physics import MAX_ROBOT_SPEED, RobotMovementState, bullet_speed_for_power, predict_robot_movement
 from bot_utils.tank_math import TargetSnapshot, clamp
 from bot_utils.wave_math import guess_factor_from_offset, wall_limited_escape_angle_from_state
 
@@ -32,6 +32,17 @@ class MovementFlatteningConfig:
     bullet_shadow_radius_margin: float = 14.0
     bullet_shadow_bin_radius: int = 0
     bullet_shadow_max_ticks: int = 80
+    goto_candidate_distances: tuple[float, ...] = (120.0, 180.0, 260.0)
+    goto_candidate_angle_offsets: tuple[float, ...] = (-110.0, -80.0, -50.0, -20.0, 20.0, 50.0, 80.0, 110.0)
+    goto_min_target_distance: float = 340.0
+    goto_max_target_distance: float = 720.0
+    goto_preferred_target_distance: float = 560.0
+    goto_wall_weight: float = 2.2
+    goto_target_distance_weight: float = 0.000035
+    goto_close_enemy_weight: float = 1.4
+    goto_travel_weight: float = 0.0008
+    goto_wave_kind_expected_multiplier: float = 0.85
+    goto_use_expected_waves: bool = False
 
 
 @dataclass(frozen=True)
@@ -52,6 +63,23 @@ class MovementProfileVisit:
     bucket: int
     visits: float
     wave_age: int
+
+
+@dataclass(frozen=True)
+class GoToSurfDecision:
+    x: float
+    y: float
+    danger: float
+    candidates: int
+    wave_kind: str
+    hit_guess_factor: float
+    hit_bin: int
+    hit_turn: int
+    direction: int
+    profile_danger: float
+    wall_risk: float
+    distance_risk: float
+    travel_risk: float
 
 
 @dataclass
@@ -561,6 +589,55 @@ class MovementFlattener:
             alternative_count=alternative_count,
         )
 
+    def choose_go_to_surf_destination(
+        self,
+        bot: Bot,
+        target: TargetSnapshot,
+        max_speed: float,
+        field_margin: float,
+    ) -> GoToSurfDecision | None:
+        wave = self._surf_wave(bot, target.bot_id)
+        if wave is None:
+            return None
+        if wave.kind == "expected" and not self.config.goto_use_expected_waves:
+            return None
+
+        candidates = self._go_to_candidate_points(bot, target, field_margin)
+        best: GoToSurfDecision | None = None
+        for destination_x, destination_y in candidates:
+            decision = self._score_go_to_candidate(
+                bot,
+                target,
+                wave,
+                destination_x,
+                destination_y,
+                max_speed,
+                field_margin,
+            )
+            if decision is None:
+                continue
+            if best is None or decision.danger < best.danger:
+                best = decision
+
+        if best is None:
+            return None
+
+        return GoToSurfDecision(
+            x=best.x,
+            y=best.y,
+            danger=best.danger,
+            candidates=len(candidates),
+            wave_kind=best.wave_kind,
+            hit_guess_factor=best.hit_guess_factor,
+            hit_bin=best.hit_bin,
+            hit_turn=best.hit_turn,
+            direction=best.direction,
+            profile_danger=best.profile_danger,
+            wall_risk=best.wall_risk,
+            distance_risk=best.distance_risk,
+            travel_risk=best.travel_risk,
+        )
+
     def clear_round_state(self) -> None:
         self._waves.clear()
         self._shadow_bullets.clear()
@@ -745,6 +822,144 @@ class MovementFlattener:
                 return move_bearing
             move_bearing += smoothing_step
         return move_bearing
+
+    def _go_to_candidate_points(self, bot: Bot, target: TargetSnapshot, field_margin: float) -> list[tuple[float, float]]:
+        points: list[tuple[float, float]] = []
+        source_to_self = self._absolute_bearing(target.x, target.y, bot.x, bot.y)
+        seen: set[tuple[int, int]] = set()
+        for distance in self.config.goto_candidate_distances:
+            for offset in self.config.goto_candidate_angle_offsets:
+                bearing = math.radians(source_to_self + offset)
+                x = bot.x + math.cos(bearing) * distance
+                y = bot.y + math.sin(bearing) * distance
+                if not (field_margin <= x <= bot.arena_width - field_margin):
+                    continue
+                if not (field_margin <= y <= bot.arena_height - field_margin):
+                    continue
+                key = (round(x / 8), round(y / 8))
+                if key in seen:
+                    continue
+                seen.add(key)
+                points.append((x, y))
+        return points
+
+    def _score_go_to_candidate(
+        self,
+        bot: Bot,
+        target: TargetSnapshot,
+        wave: MovementWave,
+        destination_x: float,
+        destination_y: float,
+        max_speed: float,
+        field_margin: float,
+    ) -> GoToSurfDecision | None:
+        hit_x, hit_y, hit_turn = self._simulate_go_to_wave_hit(
+            bot,
+            wave,
+            destination_x,
+            destination_y,
+            max_speed,
+            field_margin,
+        )
+        if hit_turn <= 0:
+            return None
+
+        guess_factor = self._guess_factor(wave, hit_x, hit_y)
+        bin_index = self._bin_index(guess_factor)
+        profile_danger = self._danger(wave, bin_index, bot)
+        if wave.kind == "expected":
+            profile_danger *= self.config.goto_wave_kind_expected_multiplier
+        wall_risk = self._go_to_wall_risk(bot, hit_x, hit_y, field_margin)
+        distance_risk = self._go_to_target_distance_risk(hit_x, hit_y, target)
+        travel_risk = math.hypot(destination_x - bot.x, destination_y - bot.y) * self.config.goto_travel_weight
+        danger = profile_danger + wall_risk + distance_risk + travel_risk
+        direction = self._go_to_lateral_direction(bot, target, destination_x, destination_y)
+        return GoToSurfDecision(
+            x=destination_x,
+            y=destination_y,
+            danger=danger,
+            candidates=0,
+            wave_kind=wave.kind,
+            hit_guess_factor=guess_factor,
+            hit_bin=bin_index,
+            hit_turn=hit_turn,
+            direction=direction,
+            profile_danger=profile_danger,
+            wall_risk=wall_risk,
+            distance_risk=distance_risk,
+            travel_risk=travel_risk,
+        )
+
+    def _simulate_go_to_wave_hit(
+        self,
+        bot: Bot,
+        wave: MovementWave,
+        destination_x: float,
+        destination_y: float,
+        max_speed: float,
+        field_margin: float,
+    ) -> tuple[float, float, int]:
+        state = RobotMovementState(x=bot.x, y=bot.y, direction=bot.direction, speed=bot.speed)
+        speed = min(MAX_ROBOT_SPEED, abs(max_speed))
+        for tick in range(1, self.config.surf_max_ticks + 1):
+            move_bearing = self._absolute_bearing(state.x, state.y, destination_x, destination_y)
+            distance_remaining = math.hypot(destination_x - state.x, destination_y - state.y)
+            state = predict_robot_movement(
+                state,
+                move_bearing,
+                max_speed=speed,
+                distance_remaining=distance_remaining,
+                field_margin=field_margin,
+                arena_width=bot.arena_width,
+                arena_height=bot.arena_height,
+            )
+            wave_radius = wave.bullet_speed * max(0, bot.turn_number + tick - wave.fired_turn)
+            distance_to_wave_source = math.hypot(state.x - wave.source_x, state.y - wave.source_y)
+            if wave_radius + self.config.surf_intercept_margin >= distance_to_wave_source:
+                return state.x, state.y, tick
+            if distance_remaining <= 1.0 and abs(state.speed) <= 0.2:
+                return state.x, state.y, tick
+        return state.x, state.y, self.config.surf_max_ticks
+
+    def _go_to_wall_risk(self, bot: Bot, x: float, y: float, field_margin: float) -> float:
+        margin = min(x, bot.arena_width - x, y, bot.arena_height - y)
+        if margin <= field_margin:
+            return self.config.goto_wall_weight
+        return self.config.goto_wall_weight / max(1.0, margin - field_margin + 1.0)
+
+    def _go_to_target_distance_risk(self, x: float, y: float, target: TargetSnapshot) -> float:
+        distance = math.hypot(x - target.x, y - target.y)
+        risk = 0.0
+        if distance < self.config.goto_min_target_distance:
+            close_error = self.config.goto_min_target_distance - distance
+            risk += close_error * close_error * self.config.goto_target_distance_weight
+            closeness = close_error / max(1.0, self.config.goto_min_target_distance)
+            risk += closeness * closeness * self.config.goto_close_enemy_weight
+        elif distance > self.config.goto_max_target_distance:
+            far_error = distance - self.config.goto_max_target_distance
+            risk += far_error * far_error * self.config.goto_target_distance_weight
+        else:
+            preferred_error = abs(distance - self.config.goto_preferred_target_distance)
+            risk += preferred_error * preferred_error * self.config.goto_target_distance_weight * 0.12
+        return risk
+
+    def _go_to_lateral_direction(
+        self,
+        bot: Bot,
+        target: TargetSnapshot,
+        destination_x: float,
+        destination_y: float,
+    ) -> int:
+        current_x = bot.x - target.x
+        current_y = bot.y - target.y
+        destination_vector_x = destination_x - target.x
+        destination_vector_y = destination_y - target.y
+        cross = current_x * destination_vector_y - current_y * destination_vector_x
+        if cross > 0.001:
+            return 1
+        if cross < -0.001:
+            return -1
+        return 0
 
     def _danger(self, wave: MovementWave, bin_index: int, bot: Bot | None = None) -> float:
         danger = self._smoothed_count(wave.target_id, wave.distance_bucket, bin_index) + self.config.unvisited_bin_danger

@@ -84,6 +84,7 @@ EVADE_STRAFE_OFFSET = 102
 RETREAT_STRAFE_OFFSET = 124
 EVADE_TURNS = 36
 FLATTENER_ACTIVE = True
+GOTO_SURFING_ACTIVE = True
 DUEL_POTENTIAL_STEP = 205.0
 DUEL_PREFERRED_DISTANCE = 580.0
 DUEL_MIN_DISTANCE = 430.0
@@ -502,6 +503,37 @@ class AdaptivePrime(Bot):
                 )
                 if FLATTENER_ACTIVE and flattening.current_count >= 2.0:
                     self._evade_direction = flattening.direction
+            if GOTO_SURFING_ACTIVE:
+                surf_decision = self._movement.choose_go_to_surf_destination(
+                    self,
+                    target,
+                    max_speed=8,
+                    field_margin=DUEL_WALL_MARGIN,
+                )
+                if surf_decision is not None:
+                    if surf_decision.direction:
+                        self._evade_direction = surf_decision.direction
+                    turn, speed = self._drive_to_destination(surf_decision.x, surf_decision.y, 8)
+                    self._sample_status(
+                        "movement.goto_surf",
+                        target=target.bot_id,
+                        destination_x=round(surf_decision.x, 1),
+                        destination_y=round(surf_decision.y, 1),
+                        danger=round(surf_decision.danger, 3),
+                        profile_danger=round(surf_decision.profile_danger, 3),
+                        wall_risk=round(surf_decision.wall_risk, 3),
+                        distance_risk=round(surf_decision.distance_risk, 3),
+                        travel_risk=round(surf_decision.travel_risk, 3),
+                        candidates=surf_decision.candidates,
+                        wave_kind=surf_decision.wave_kind,
+                        hit_guess_factor=round(surf_decision.hit_guess_factor, 3),
+                        hit_bin=surf_decision.hit_bin,
+                        hit_turn=surf_decision.hit_turn,
+                        evade_direction=self._evade_direction,
+                        turn=round(turn, 2),
+                        speed=speed,
+                    )
+                    return "goto_surf", 0.0, flattening
             destination_x, destination_y, force_x, force_y, movement_mode = self._duel_potential_destination(
                 target,
                 distance,
