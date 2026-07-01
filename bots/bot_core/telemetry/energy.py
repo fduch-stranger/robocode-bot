@@ -18,7 +18,7 @@ class EnergyTelemetry:
         previous_energy: float | None = None,
         energy: float | None = None,
     ) -> None:
-        self._sink.log("enemy.energy_drop_ignored", **energy_drop_ignored_fields(target_id, signal, scan_gap, distance, previous_energy, energy))
+        self._sink.log("enemy.energy_drop_ignored", **_energy_drop_ignored_fields(target_id, signal, scan_gap, distance, previous_energy, energy))
 
     def record_enemy_fire_detected(
         self,
@@ -43,7 +43,7 @@ class EnergyTelemetry:
     ) -> None:
         self._sink.log(
             "enemy.fire_detected",
-            **enemy_fire_detected_fields(
+            **_enemy_fire_detected_fields(
                 target_id,
                 signal,
                 scan_gap,
@@ -75,11 +75,11 @@ class EnergyTelemetry:
     ) -> None:
         self._sink.log(
             "enemy.gun_heat_wave",
-            **gun_heat_wave_fields(target_id, fire_power, prediction, distance, age, movement_wave_created),
+            **_gun_heat_wave_fields(target_id, fire_power, prediction, distance, age, movement_wave_created),
         )
 
 
-def energy_drop_ignored_fields(
+def _energy_drop_ignored_fields(
     target_id: int,
     signal: EnergyDropSignal,
     scan_gap: int,
@@ -103,7 +103,7 @@ def energy_drop_ignored_fields(
     return fields
 
 
-def enemy_fire_detected_fields(
+def _enemy_fire_detected_fields(
     target_id: int,
     signal: EnergyDropSignal,
     scan_gap: int,
@@ -163,7 +163,7 @@ def enemy_fire_detected_fields(
     return fields
 
 
-def gun_heat_wave_fields(
+def _gun_heat_wave_fields(
     target_id: int,
     fire_power: float,
     prediction: EnemyFirePowerPrediction,

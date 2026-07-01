@@ -8,7 +8,7 @@ class MovementTelemetry:
         self._sink = sink
 
     def sample_wall_avoid(self, x: float, y: float, center_bearing: float, move_direction: int) -> None:
-        self._sink.sample("wall.avoid", **wall_avoid_fields(x, y, center_bearing, move_direction))
+        self._sink.sample("wall.avoid", **_wall_avoid_fields(x, y, center_bearing, move_direction))
 
     def sample_minimum_risk(
         self,
@@ -21,11 +21,11 @@ class MovementTelemetry:
     ) -> None:
         self._sink.sample(
             "movement.minimum_risk",
-            **minimum_risk_fields(target_id, decision, command, known_targets, fire_threat_id, include_fire_threat),
+            **_minimum_risk_fields(target_id, decision, command, known_targets, fire_threat_id, include_fire_threat),
         )
 
     def record_profile_visit(self, visit: MovementProfileVisit) -> None:
-        self._sink.log("movement.profile_visit", **profile_visit_fields(visit))
+        self._sink.log("movement.profile_visit", **_profile_visit_fields(visit))
 
     def record_flattening(
         self,
@@ -37,7 +37,7 @@ class MovementTelemetry:
     ) -> None:
         self._sink.log(
             "movement.flatten",
-            **flattening_fields(target_id, flattening, distance, current_direction=current_direction, include_reason=include_reason),
+            **_flattening_fields(target_id, flattening, distance, current_direction=current_direction, include_reason=include_reason),
         )
 
     def record_duel_flattening(
@@ -49,7 +49,7 @@ class MovementTelemetry:
     ) -> None:
         self._sink.log(
             "movement.duel_flatten",
-            **flattening_fields(target_id, flattening, distance, current_direction=current_direction, include_reason=True),
+            **_flattening_fields(target_id, flattening, distance, current_direction=current_direction, include_reason=True),
         )
 
     def record_flattening_shadow(
@@ -61,7 +61,7 @@ class MovementTelemetry:
     ) -> None:
         self._sink.log(
             "movement.flatten_shadow",
-            **flattening_fields(target_id, flattening, distance, current_direction=current_direction),
+            **_flattening_fields(target_id, flattening, distance, current_direction=current_direction),
         )
 
     def sample_goto_surf(
@@ -71,7 +71,7 @@ class MovementTelemetry:
         command: MovementCommand,
         evade_direction: int,
     ) -> None:
-        self._sink.sample("movement.goto_surf", **goto_surf_fields(target_id, decision, command, evade_direction))
+        self._sink.sample("movement.goto_surf", **_goto_surf_fields(target_id, decision, command, evade_direction))
 
     def sample_duel_potential(
         self,
@@ -88,7 +88,7 @@ class MovementTelemetry:
     ) -> None:
         self._sink.sample(
             "movement.duel_potential",
-            **duel_potential_fields(
+            **_duel_potential_fields(
                 target_id,
                 destination_x,
                 destination_y,
@@ -103,7 +103,7 @@ class MovementTelemetry:
         )
 
 
-def minimum_risk_fields(
+def _minimum_risk_fields(
     target_id: int,
     decision: MinimumRiskDecision,
     command: MovementCommand,
@@ -130,7 +130,7 @@ def minimum_risk_fields(
     return fields
 
 
-def flattening_fields(
+def _flattening_fields(
     target_id: int,
     flattening: FlatteningDecision,
     distance: float,
@@ -152,7 +152,7 @@ def flattening_fields(
     return fields
 
 
-def wall_avoid_fields(x: float, y: float, center_bearing: float, move_direction: int) -> dict[str, object]:
+def _wall_avoid_fields(x: float, y: float, center_bearing: float, move_direction: int) -> dict[str, object]:
     return {
         "x": round(x, 1),
         "y": round(y, 1),
@@ -161,7 +161,7 @@ def wall_avoid_fields(x: float, y: float, center_bearing: float, move_direction:
     }
 
 
-def goto_surf_fields(
+def _goto_surf_fields(
     target_id: int,
     decision: GoToSurfDecision,
     command: MovementCommand,
@@ -190,7 +190,7 @@ def goto_surf_fields(
     }
 
 
-def duel_potential_fields(
+def _duel_potential_fields(
     target_id: int,
     destination_x: float,
     destination_y: float,
@@ -217,7 +217,7 @@ def duel_potential_fields(
     }
 
 
-def profile_visit_fields(visit: MovementProfileVisit) -> dict[str, object]:
+def _profile_visit_fields(visit: MovementProfileVisit) -> dict[str, object]:
     return {
         "target": visit.target_id,
         "guess_factor": round(visit.guess_factor, 3),

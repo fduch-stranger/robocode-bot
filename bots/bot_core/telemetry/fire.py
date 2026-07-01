@@ -49,16 +49,16 @@ class FireTelemetry:
         self._sink = sink
 
     def record_track(self, tick: FireTick | SimpleTrackTick) -> None:
-        self._sink.log("track", **track_fields(tick))
+        self._sink.log("track", **_track_fields(tick))
 
     def sample_track(self, tick: FireTick | SimpleTrackTick) -> None:
-        self._sink.sample("track", **track_fields(tick))
+        self._sink.sample("track", **_track_fields(tick))
 
     def record_gun_switch(self, target_id: int, aim: AimSolution, scores: dict[str, str]) -> None:
-        self._sink.log("gun.switch", **gun_switch_fields(target_id, aim, scores))
+        self._sink.log("gun.switch", **_gun_switch_fields(target_id, aim, scores))
 
     def record_wave_visit(self, visit: WaveVisit) -> None:
-        self._sink.log("gun.wave_visit", **wave_visit_fields(visit))
+        self._sink.log("gun.wave_visit", **_wave_visit_fields(visit))
 
     def record_bullet_hit_bot(
         self,
@@ -69,7 +69,7 @@ class FireTelemetry:
         energy: float,
         tracked_fields: dict[str, object],
     ) -> None:
-        self._sink.log("bullet.hit_bot", **bullet_hit_bot_fields(victim_id, bullet_id, power, damage, energy, tracked_fields))
+        self._sink.log("bullet.hit_bot", **_bullet_hit_bot_fields(victim_id, bullet_id, power, damage, energy, tracked_fields))
 
     def record_bullet_fired(
         self,
@@ -92,7 +92,7 @@ class FireTelemetry:
     ) -> None:
         self._sink.log(
             "bullet.fired",
-            **bullet_fired_fields(
+            **_bullet_fired_fields(
                 bullet_id,
                 target_id,
                 power,
@@ -112,7 +112,7 @@ class FireTelemetry:
         )
 
 
-def track_fields(tick: FireTick | SimpleTrackTick) -> dict[str, object]:
+def _track_fields(tick: FireTick | SimpleTrackTick) -> dict[str, object]:
     if isinstance(tick, SimpleTrackTick):
         return {
             **_track_base_fields(tick.target, tick.age, tick.distance, tick.aim, tick.radar, tick.gun_samples, tick.gun_scores, tick.known_targets),
@@ -163,7 +163,7 @@ def _track_base_fields(
     }
 
 
-def gun_switch_fields(target_id: int, aim: AimSolution, scores: dict[str, str]) -> dict[str, object]:
+def _gun_switch_fields(target_id: int, aim: AimSolution, scores: dict[str, str]) -> dict[str, object]:
     return {
         "target": target_id,
         "previous": aim.previous_mode,
@@ -172,7 +172,7 @@ def gun_switch_fields(target_id: int, aim: AimSolution, scores: dict[str, str]) 
     }
 
 
-def bullet_hit_bot_fields(
+def _bullet_hit_bot_fields(
     victim_id: int,
     bullet_id: int,
     power: float,
@@ -190,7 +190,7 @@ def bullet_hit_bot_fields(
     }
 
 
-def bullet_fired_fields(
+def _bullet_fired_fields(
     bullet_id: int,
     target_id: int | None,
     power: float,
@@ -233,7 +233,7 @@ def bullet_fired_fields(
     return fields
 
 
-def wave_visit_fields(visit: WaveVisit) -> dict[str, object]:
+def _wave_visit_fields(visit: WaveVisit) -> dict[str, object]:
     return {
         "target": visit.target_id,
         "guess_factor": round(visit.guess_factor, 3),

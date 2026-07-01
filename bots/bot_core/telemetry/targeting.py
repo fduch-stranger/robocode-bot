@@ -8,7 +8,7 @@ class TargetingTelemetry:
         self._sink = sink
 
     def record_scan_new(self, target_id: int, energy: float, x: float, y: float) -> None:
-        self._sink.log("scan.new", **scan_new_fields(target_id, energy, x, y))
+        self._sink.log("scan.new", **_scan_new_fields(target_id, energy, x, y))
 
     def record_scan_reacquired(
         self,
@@ -18,10 +18,10 @@ class TargetingTelemetry:
         x: float,
         y: float,
     ) -> None:
-        self._sink.log("scan.reacquired", **scan_reacquired_fields(target_id, age, previous, x, y))
+        self._sink.log("scan.reacquired", **_scan_reacquired_fields(target_id, age, previous, x, y))
 
     def record_target_selection(self, selection: TargetSelection, known_targets: int) -> None:
-        self._sink.log("target.select", **target_selection_fields(selection, known_targets))
+        self._sink.log("target.select", **_target_selection_fields(selection, known_targets))
 
     def record_candidate_selection(
         self,
@@ -35,7 +35,7 @@ class TargetingTelemetry:
     ) -> None:
         self._sink.log(
             "target.select",
-            **candidate_target_selection_fields(previous_id, selected, score, candidate, candidate_score, previous_age, known_targets),
+            **_candidate_target_selection_fields(previous_id, selected, score, candidate, candidate_score, previous_age, known_targets),
         )
 
     def record_target_drop_lost(
@@ -45,10 +45,10 @@ class TargetingTelemetry:
         distance: float,
         known_targets: int,
     ) -> None:
-        self._sink.log("target.drop_lost", **target_drop_lost_fields(target, age, distance, known_targets))
+        self._sink.log("target.drop_lost", **_target_drop_lost_fields(target, age, distance, known_targets))
 
 
-def scan_new_fields(target_id: int, energy: float, x: float, y: float) -> dict[str, object]:
+def _scan_new_fields(target_id: int, energy: float, x: float, y: float) -> dict[str, object]:
     return {
         "bot_id": target_id,
         "energy": round(energy, 1),
@@ -57,7 +57,7 @@ def scan_new_fields(target_id: int, energy: float, x: float, y: float) -> dict[s
     }
 
 
-def scan_reacquired_fields(
+def _scan_reacquired_fields(
     target_id: int,
     previous_age: int,
     previous: TargetSnapshot,
@@ -74,7 +74,7 @@ def scan_reacquired_fields(
     }
 
 
-def target_selection_fields(selection: TargetSelection, known_targets: int) -> dict[str, object]:
+def _target_selection_fields(selection: TargetSelection, known_targets: int) -> dict[str, object]:
     return {
         "previous": selection.previous_id,
         "selected": selection.target.bot_id,
@@ -84,7 +84,7 @@ def target_selection_fields(selection: TargetSelection, known_targets: int) -> d
     }
 
 
-def candidate_target_selection_fields(
+def _candidate_target_selection_fields(
     previous_id: int | None,
     selected: TargetSnapshot,
     score: float,
@@ -104,7 +104,7 @@ def candidate_target_selection_fields(
     }
 
 
-def target_drop_lost_fields(target: TargetSnapshot, age: int, distance: float, known_targets: int) -> dict[str, object]:
+def _target_drop_lost_fields(target: TargetSnapshot, age: int, distance: float, known_targets: int) -> dict[str, object]:
     return {
         "bot_id": target.bot_id,
         "age": age,
