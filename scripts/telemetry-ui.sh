@@ -213,6 +213,13 @@ list_viewers() {
   fi
 }
 
+print_gui_autostart_hint() {
+  if [[ -f "$switch_file" ]]; then
+    echo "GUI telemetry is still enabled; GUI-launched bots can start a viewer again."
+    echo "Disable GUI telemetry with: scripts/telemetry-ui.sh disable"
+  fi
+}
+
 stop_viewer() {
   local dir="$1"
   local lock_file="$dir/telemetry-viewer.lock"
@@ -278,6 +285,7 @@ case "$action" in
     if [[ "$found" -eq 0 ]]; then
       echo "No telemetry viewers discovered."
     fi
+    print_gui_autostart_hint
     ;;
   enable)
     mkdir -p "$telemetry_dir"
@@ -303,6 +311,7 @@ case "$action" in
     echo
     echo "Known telemetry viewers:"
     list_viewers
+    print_gui_autostart_hint
     ;;
   --help|-h)
     usage

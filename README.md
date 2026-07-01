@@ -211,6 +211,14 @@ Stop every discovered telemetry viewer:
 scripts/telemetry-ui.sh stop-all
 ```
 
+`stop-all` only stops viewer processes. If GUI telemetry is enabled, a bot
+launched from the Robocode GUI can start a viewer again. Disable GUI telemetry
+when you want GUI-launched bots to stop publishing telemetry:
+
+```sh
+scripts/telemetry-ui.sh disable
+```
+
 Check GUI telemetry status:
 
 ```sh
