@@ -11,7 +11,7 @@ from robocode_tank_royale.bot_api.events import (
 )
 
 from bot_utils.debug import DebugLogger
-from bot_utils.energy import EnergyDropConfig, classify_energy_drop
+from bot_utils.energy import EnergyDropConfig, GunHeatTracker, classify_energy_drop
 from bot_utils.gun import TargetMotion, VirtualGunSystem
 from bot_utils.movement import FlatteningDecision, MovementFlattener
 from bot_utils.radar import RadarLockConfig, lock_radar_to_target
@@ -47,6 +47,9 @@ ENEMY_FIRE_SCAN_GAP_TURNS = 4
 ENEMY_FIRE_CLOSE_COLLISION_DISTANCE = 75
 ENEMY_FIRE_CLOSE_COLLISION_MAX_DROP = 0.8
 ENEMY_FIRE_ACTIVE_EVASION_MIN_DISTANCE = 220
+GUN_HEAT_WAVES_ACTIVE = True
+GUN_HEAT_WAVE_MIN_DISTANCE = 220
+GUN_HEAT_WAVE_MAX_TARGET_AGE = 2
 RADAR_LOCK_RATE = 24
 RADAR_SEARCH_RATE = 18
 RADAR_REACQUIRE_RATE = 24
@@ -112,6 +115,8 @@ class ChaseLock(Bot):
         self._last_enemy_fire_power = 0.0
         self._target_accel: dict[int, float] = {}
         self._last_velocity_change_turn: dict[int, int] = {}
+        self._melee_round = False
+        self._enemy_gun_heat = GunHeatTracker()
         self._gun = VirtualGunSystem()
         self._movement = MovementFlattener()
         self._debug = DebugLogger(self, "chase-lock")
@@ -136,11 +141,17 @@ class ChaseLock(Bot):
         previous_age = self.turn_number - previous.seen_turn if previous is not None else None
         if previous is not None:
             self._update_target_motion_stats(event, previous)
-            self._detect_enemy_fire(event, previous, previous_age or 0)
+            fire_detected = self._detect_enemy_fire(event, previous, previous_age or 0)
+        else:
+            fire_detected = False
         self._targets[event.scanned_bot_id] = target_from_scan(event, self.turn_number)
+        if len(self._targets) > 1:
+            self._melee_round = True
         target = self._targets[event.scanned_bot_id]
         self._gun.observe_target(target)
         self._log_wave_visits(target)
+        if not fire_detected:
+            self._record_gun_heat_wave(target)
         if previous is None:
             self._log(
                 "scan.new",
@@ -167,10 +178,11 @@ class ChaseLock(Bot):
         if abs(speed_delta) > 0.35 or direction_delta > 7:
             self._last_velocity_change_turn[event.scanned_bot_id] = self.turn_number
 
-    def _detect_enemy_fire(self, event: ScannedBotEvent, previous: TargetSnapshot, scan_gap: int) -> None:
+    def _detect_enemy_fire(self, event: ScannedBotEvent, previous: TargetSnapshot, scan_gap: int) -> bool:
         distance = distance_to(self, event.x, event.y)
         signal = classify_energy_drop(previous.energy, event.energy, scan_gap, distance, ENERGY_DROP_CONFIG)
         if not signal.is_fire:
+            self._enemy_gun_heat.update(event.scanned_bot_id, self.turn_number, self.gun_cooling_rate)
             if signal.energy_drop > 0:
                 self._log(
                     "enemy.energy_drop_ignored",
@@ -182,12 +194,18 @@ class ChaseLock(Bot):
                     previous_energy=round(previous.energy, 1),
                     energy=round(event.energy, 1),
                 )
-            return
+            return False
 
         self._recent_threat_id = event.scanned_bot_id
         self._recent_threat_turn = self.turn_number
         self._last_enemy_fire_turn = self.turn_number
         self._last_enemy_fire_power = signal.fire_power or 0.0
+        heat_state = self._enemy_gun_heat.record_fire(
+            event.scanned_bot_id,
+            self.turn_number,
+            signal.fire_power or 1.5,
+            self.gun_cooling_rate,
+        )
         movement_wave = self._movement.record_enemy_fire(
             self,
             target_from_scan(event, self.turn_number),
@@ -210,6 +228,35 @@ class ChaseLock(Bot):
             evade_until=self._evade_until_turn,
             known_targets=len(self._targets),
             movement_wave=movement_wave is not None,
+            gun_heat=round(heat_state.heat, 2),
+        )
+        return True
+
+    def _record_gun_heat_wave(self, target: TargetSnapshot) -> None:
+        if not GUN_HEAT_WAVES_ACTIVE:
+            return
+        age = self.turn_number - target.seen_turn
+        distance = distance_to(self, target.x, target.y)
+        if len(self._targets) > 1 or age > GUN_HEAT_WAVE_MAX_TARGET_AGE or distance < GUN_HEAT_WAVE_MIN_DISTANCE:
+            self._enemy_gun_heat.update(target.bot_id, self.turn_number, self.gun_cooling_rate)
+            return
+
+        fire_power = self._enemy_gun_heat.expected_fire_power(
+            target.bot_id,
+            self.turn_number,
+            self.gun_cooling_rate,
+        )
+        if fire_power is None:
+            return
+
+        movement_wave = self._movement.record_enemy_fire(self, target, fire_power, wave_kind="expected")
+        self._log(
+            "enemy.gun_heat_wave",
+            bot_id=target.bot_id,
+            power=round(fire_power, 2),
+            distance=round(distance, 1),
+            target_age=age,
+            movement_wave=movement_wave is not None,
         )
 
     def _track_or_search(self) -> None:
@@ -226,14 +273,25 @@ class ChaseLock(Bot):
         body_bearing = bearing_to(self, target.x, target.y, self.direction)
         radar_bearing = bearing_to(self, target.x, target.y, self.radar_direction)
         firepower = self._select_firepower(target, distance)
-        aim = self._gun.aim(self, target, distance, firepower, self._target_motion(target), FIELD_MARGIN)
+        use_segmented_gun_stats = self.enemy_count <= 1
+        aim = self._gun.aim(
+            self,
+            target,
+            distance,
+            firepower,
+            self._target_motion(target),
+            FIELD_MARGIN,
+            allow_traditional_gf=use_segmented_gun_stats,
+            allow_segmented_stats=use_segmented_gun_stats,
+        )
+        score_segment = aim.segment_key if use_segmented_gun_stats else None
         if aim.mode_changed:
             self._log(
                 "gun.switch",
                 target=target.bot_id,
                 previous=aim.previous_mode,
                 selected=aim.mode,
-                scores=self._gun.score_summary(target.bot_id),
+                scores=self._gun.score_summary(target.bot_id, score_segment),
             )
         age = self.turn_number - target.seen_turn
 
@@ -303,7 +361,7 @@ class ChaseLock(Bot):
                 aim_mode=aim.mode,
                 aim_guess_factor=round(aim.guess_factor, 3) if aim.guess_factor is not None else None,
                 gun_samples=self._gun.sample_count,
-                gun_scores=self._gun.score_summary(target.bot_id),
+                gun_scores=self._gun.score_summary(target.bot_id, score_segment),
                 evade_direction=self._evade_direction,
                 evading=self.turn_number <= self._evade_until_turn,
                 movement_mode=movement_mode if "movement_mode" in locals() else "wall",
@@ -340,6 +398,7 @@ class ChaseLock(Bot):
             self._evade_direction,
             self.turn_number,
             allow_switch=len(self._targets) <= 1,
+            use_surfing=not self._melee_round,
         )
         if flattening.changed:
             self._log(
@@ -409,21 +468,31 @@ class ChaseLock(Bot):
 
         if self.energy <= 18:
             return 0.8 if distance < 260 else 0.6
-        if target.energy <= FINISH_TARGET_ENERGY and distance < 260:
-            return 2.0
-        if distance < 180:
-            return 1.4
+        if target.energy <= FINISH_TARGET_ENERGY and distance < 320:
+            return min(2.2, max(0.6, target.energy / 3.5 + 0.2))
+
+        gun_score, gun_visits = self._gun.target_confidence(target.bot_id)
+        if distance < 160:
+            return 2.2 if self.energy > 36 else 1.6
+        if distance < 280 and gun_visits >= 80 and gun_score >= 0.36 and self.energy > 30:
+            return 1.8
+        if distance < 420 and gun_visits >= 120 and gun_score >= 0.42 and self.energy > 38:
+            return 1.6
         if distance < 420:
-            return 1.0
+            return 1.1
         return 0.8
 
     def _select_melee_firepower(self, target: TargetSnapshot, distance: float) -> float:
         if self.energy <= 16:
             return 0.8 if distance < 220 else 0.6
         if target.energy <= MELEE_FINISH_TARGET_ENERGY and distance < 260:
+            return min(2.2, max(0.8, target.energy / 3.2 + 0.2))
+
+        gun_score, gun_visits = self._gun.target_confidence(target.bot_id)
+        if distance < 160:
             return 2.0
-        if distance < 180:
-            return 1.8
+        if distance < 300 and gun_visits >= 70 and gun_score >= 0.36 and self.energy > 28:
+            return 1.6
         if distance < 360:
             return 1.2
         return 0.8
@@ -494,8 +563,10 @@ class ChaseLock(Bot):
             self._last_enemy_fire_power = 0.0
             self._gun.clear_round_state()
             self._movement.clear_round_state()
+            self._enemy_gun_heat.clear_round_state()
             self._target_accel.clear()
             self._last_velocity_change_turn.clear()
+            self._melee_round = False
             self._log(
                 "round.reset",
                 previous_turn=self._last_turn_number,
@@ -506,6 +577,7 @@ class ChaseLock(Bot):
     def _drop_lost_target(self, target: TargetSnapshot, age: int, distance: float) -> None:
         self._targets.pop(target.bot_id, None)
         self._movement.remove_target(target.bot_id, clear_profile=False)
+        self._enemy_gun_heat.remove_target(target.bot_id)
         if self._target_id == target.bot_id:
             self._target_id = None
         self._search()
@@ -630,6 +702,13 @@ class ChaseLock(Bot):
         if not self._wall_risk(8):
             self._evade_direction *= -1
         self._evade_until_turn = self.turn_number + EVADE_TURNS
+        movement_visit = None
+        if not self._melee_round:
+            movement_visit = self._movement.record_bullet_hit(
+                self,
+                event.bullet.owner_id,
+                event.bullet.power,
+            )
         if event.bullet.owner_id in self._targets:
             self._recent_threat_id = event.bullet.owner_id
             self._recent_threat_turn = self.turn_number
@@ -644,6 +723,9 @@ class ChaseLock(Bot):
             wall_risk=self._wall_risk(8),
             evade_direction=self._evade_direction,
             evade_until=self._evade_until_turn,
+            movement_wave_match=movement_visit is not None,
+            movement_guess_factor=round(movement_visit.guess_factor, 3) if movement_visit is not None else None,
+            movement_bin=movement_visit.bin_index if movement_visit is not None else None,
         )
 
     def on_hit_bot(self, event: HitBotEvent) -> None:
@@ -672,6 +754,7 @@ class ChaseLock(Bot):
         self._targets.pop(event.victim_id, None)
         self._gun.remove_target(event.victim_id)
         self._movement.remove_target(event.victim_id)
+        self._enemy_gun_heat.remove_target(event.victim_id)
         if self._target_id == event.victim_id:
             self._target_id = None
         self._log("target.dead", bot_id=event.victim_id)
@@ -679,6 +762,7 @@ class ChaseLock(Bot):
     def on_bullet_fired(self, event: BulletFiredEvent) -> None:
         target = self._targets.get(self._target_id)
         target_age = self.turn_number - target.seen_turn if target is not None else None
+        gun_score, gun_visits = self._gun.target_confidence(target.bot_id) if target is not None else (0.0, 0)
         wave = self._gun.record_pending_fire()
         self._log(
             "bullet.fired",
@@ -692,6 +776,8 @@ class ChaseLock(Bot):
             energy=round(self.energy, 1),
             gun_waves=self._gun.wave_count,
             gun_samples=self._gun.sample_count,
+            gun_confidence=round(gun_score, 3),
+            gun_confidence_visits=gun_visits,
             aim_mode=wave.aim_mode if wave is not None else None,
             aim_guess_factor=round(wave.aim_guess_factor, 3)
             if wave is not None and wave.aim_guess_factor is not None

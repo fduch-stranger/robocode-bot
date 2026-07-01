@@ -16,7 +16,14 @@ class MovementFlatteningConfig:
     switch_margin: float = 1.5
     switch_cooldown: int = 28
     lookahead_ticks: int = 14
+    surf_max_ticks: int = 80
+    surf_intercept_margin: float = 18.0
+    wall_smoothing_degrees: float = 12.0
+    wall_smoothing_attempts: int = 8
+    unvisited_bin_danger: float = 0.08
     profile_decay_after: float = 220.0
+    bullet_hit_visit_weight: float = 3.0
+    bullet_hit_wave_tolerance: float = 55.0
 
 
 @dataclass(frozen=True)
@@ -49,6 +56,7 @@ class MovementWave:
     bullet_speed: float
     fired_turn: int
     distance_bucket: int
+    kind: str = "confirmed"
 
 
 class MovementFlattener:
@@ -58,10 +66,27 @@ class MovementFlattener:
         self._waves: list[MovementWave] = []
         self._last_switch_turn: dict[int, int] = {}
 
-    def record_enemy_fire(self, bot: Bot, target: TargetSnapshot, fire_power: float) -> MovementWave | None:
+    def record_enemy_fire(
+        self,
+        bot: Bot,
+        target: TargetSnapshot,
+        fire_power: float,
+        wave_kind: str = "confirmed",
+    ) -> MovementWave | None:
         distance = math.hypot(bot.x - target.x, bot.y - target.y)
         if not (self.config.min_distance <= distance <= self.config.max_distance):
             return None
+
+        if wave_kind == "confirmed":
+            self._waves = [
+                wave
+                for wave in self._waves
+                if not (
+                    wave.target_id == target.bot_id
+                    and wave.kind == "expected"
+                    and 0 <= bot.turn_number - wave.fired_turn <= 4
+                )
+            ]
 
         wave = MovementWave(
             target_id=target.bot_id,
@@ -72,6 +97,7 @@ class MovementFlattener:
             bullet_speed=max(0.1, 20 - 3 * fire_power),
             fired_turn=bot.turn_number,
             distance_bucket=self._distance_bucket(distance),
+            kind=wave_kind,
         )
         self._waves.append(wave)
         return wave
@@ -109,6 +135,44 @@ class MovementFlattener:
         self._waves = remaining_waves
         return visits
 
+    def record_bullet_hit(self, bot: Bot, target_id: int, bullet_power: float) -> MovementProfileVisit | None:
+        if not self._waves:
+            return None
+
+        bullet_speed = max(0.1, 20 - 3 * bullet_power)
+        candidates = [
+            wave
+            for wave in self._waves
+            if wave.target_id == target_id and abs(wave.bullet_speed - bullet_speed) <= 1.2
+        ]
+        if not candidates:
+            return None
+
+        def hit_error(wave: MovementWave) -> float:
+            wave_age = max(1, bot.turn_number - wave.fired_turn)
+            wave_radius = wave.bullet_speed * wave_age
+            distance = math.hypot(bot.x - wave.source_x, bot.y - wave.source_y)
+            return abs(distance - wave_radius)
+
+        wave = min(candidates, key=hit_error)
+        if hit_error(wave) > self.config.bullet_hit_wave_tolerance:
+            return None
+
+        guess_factor = self._guess_factor(wave, bot.x, bot.y)
+        bin_index = self._bin_index(guess_factor)
+        key = (wave.target_id, wave.distance_bucket, bin_index)
+        self._profile[key] = self._profile.get(key, 0.0) + self.config.bullet_hit_visit_weight
+        self._decay_if_needed(wave.target_id)
+        self._waves = [candidate for candidate in self._waves if candidate is not wave]
+        return MovementProfileVisit(
+            target_id=wave.target_id,
+            guess_factor=guess_factor,
+            bin_index=bin_index,
+            bucket=wave.distance_bucket,
+            visits=self._profile[key],
+            wave_age=max(1, bot.turn_number - wave.fired_turn),
+        )
+
     def choose_direction(
         self,
         bot: Bot,
@@ -122,6 +186,7 @@ class MovementFlattener:
         current_direction: int,
         turn_number: int,
         allow_switch: bool,
+        use_surfing: bool = True,
     ) -> FlatteningDecision:
         bucket = self._distance_bucket(distance)
         if not allow_switch:
@@ -133,7 +198,7 @@ class MovementFlattener:
         if turn_number - self._last_switch_turn.get(target_id, -1000) < self.config.switch_cooldown:
             return self._decision(current_direction, False, "cooldown", target_id, bucket, current_direction)
 
-        wave = self._best_wave(target_id)
+        wave = self._surf_wave(bot, target_id) if use_surfing else self._best_wave(target_id)
         if wave is None:
             return self._decision(current_direction, False, "no_wave", target_id, bucket, current_direction)
 
@@ -146,6 +211,7 @@ class MovementFlattener:
             move_speed,
             field_margin,
             current_direction,
+            use_surfing,
         )
         alternative_count = self._candidate_score(
             bot,
@@ -155,8 +221,12 @@ class MovementFlattener:
             move_speed,
             field_margin,
             alternative,
+            use_surfing,
         )
-        if alternative_count + self.config.switch_margin >= current_count:
+        margin = self.config.switch_margin
+        if use_surfing and min(current_count, alternative_count) < 1.0:
+            margin *= 0.35
+        if alternative_count + margin >= current_count:
             return FlatteningDecision(
                 direction=current_direction,
                 changed=False,
@@ -234,6 +304,21 @@ class MovementFlattener:
             return None
         return max(candidates, key=lambda wave: wave.fired_turn)
 
+    def _surf_wave(self, bot: Bot, target_id: int) -> MovementWave | None:
+        candidates = [wave for wave in self._waves if wave.target_id == target_id]
+        if not candidates:
+            return None
+
+        def remaining_distance(wave: MovementWave) -> float:
+            radius = wave.bullet_speed * max(0, bot.turn_number - wave.fired_turn)
+            distance = math.hypot(bot.x - wave.source_x, bot.y - wave.source_y)
+            return distance - radius
+
+        incoming = [wave for wave in candidates if remaining_distance(wave) > -self.config.surf_intercept_margin]
+        if incoming:
+            return min(incoming, key=remaining_distance)
+        return max(candidates, key=lambda wave: wave.fired_turn)
+
     def _candidate_score(
         self,
         bot: Bot,
@@ -243,17 +328,31 @@ class MovementFlattener:
         move_speed: float,
         field_margin: float,
         direction: int,
+        use_surfing: bool,
     ) -> float:
-        projected_x, projected_y = self._project_position(
-            bot,
-            body_bearing,
-            strafe_offset,
-            move_speed,
-            field_margin,
-            direction,
-        )
+        if use_surfing:
+            projected_x, projected_y = self._project_surf_position(
+                bot,
+                wave,
+                strafe_offset,
+                move_speed,
+                field_margin,
+                direction,
+            )
+        else:
+            projected_x, projected_y = self._project_position(
+                bot,
+                body_bearing,
+                strafe_offset,
+                move_speed,
+                field_margin,
+                direction,
+            )
         guess_factor = self._guess_factor(wave, projected_x, projected_y)
-        return self._smoothed_count(wave.target_id, wave.distance_bucket, self._bin_index(guess_factor))
+        bin_index = self._bin_index(guess_factor)
+        if use_surfing:
+            return self._danger(wave.target_id, wave.distance_bucket, bin_index)
+        return self._smoothed_count(wave.target_id, wave.distance_bucket, bin_index)
 
     def _project_position(
         self,
@@ -270,6 +369,70 @@ class MovementFlattener:
             clamp(bot.x + math.cos(movement_bearing) * distance, field_margin, bot.arena_width - field_margin),
             clamp(bot.y + math.sin(movement_bearing) * distance, field_margin, bot.arena_height - field_margin),
         )
+
+    def _project_surf_position(
+        self,
+        bot: Bot,
+        wave: MovementWave,
+        strafe_offset: float,
+        move_speed: float,
+        field_margin: float,
+        direction: int,
+    ) -> tuple[float, float]:
+        projected_x = bot.x
+        projected_y = bot.y
+        speed = max(0.1, abs(move_speed))
+        for tick in range(1, self.config.surf_max_ticks + 1):
+            move_bearing = self._surf_move_bearing(
+                projected_x,
+                projected_y,
+                wave,
+                strafe_offset,
+                direction,
+                field_margin,
+                bot.arena_width,
+                bot.arena_height,
+            )
+            projected_x = clamp(
+                projected_x + math.cos(math.radians(move_bearing)) * speed,
+                field_margin,
+                bot.arena_width - field_margin,
+            )
+            projected_y = clamp(
+                projected_y + math.sin(math.radians(move_bearing)) * speed,
+                field_margin,
+                bot.arena_height - field_margin,
+            )
+            wave_radius = wave.bullet_speed * max(0, bot.turn_number + tick - wave.fired_turn)
+            distance = math.hypot(projected_x - wave.source_x, projected_y - wave.source_y)
+            if wave_radius + self.config.surf_intercept_margin >= distance:
+                break
+        return projected_x, projected_y
+
+    def _surf_move_bearing(
+        self,
+        x: float,
+        y: float,
+        wave: MovementWave,
+        strafe_offset: float,
+        direction: int,
+        field_margin: float,
+        arena_width: float,
+        arena_height: float,
+    ) -> float:
+        bearing_to_source = self._absolute_bearing(x, y, wave.source_x, wave.source_y)
+        move_bearing = bearing_to_source + strafe_offset * direction
+        smoothing_step = self.config.wall_smoothing_degrees * direction
+        for _ in range(self.config.wall_smoothing_attempts):
+            next_x = x + math.cos(math.radians(move_bearing)) * 8
+            next_y = y + math.sin(math.radians(move_bearing)) * 8
+            if field_margin <= next_x <= arena_width - field_margin and field_margin <= next_y <= arena_height - field_margin:
+                return move_bearing
+            move_bearing += smoothing_step
+        return move_bearing
+
+    def _danger(self, target_id: int, bucket: int, bin_index: int) -> float:
+        return self._smoothed_count(target_id, bucket, bin_index) + self.config.unvisited_bin_danger
 
     def _smoothed_count(self, target_id: int, bucket: int, bin_index: int) -> float:
         score = 0.0

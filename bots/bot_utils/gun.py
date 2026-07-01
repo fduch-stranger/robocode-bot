@@ -17,7 +17,7 @@ class GunConfig:
     guess_factor_bins: int = 31
     guess_factor_bandwidth: float = 0.18
     default_mode: str = "linear"
-    selectable_modes: frozenset[str] = frozenset({"linear", "dynamic_cluster"})
+    selectable_modes: frozenset[str] = frozenset({"linear", "traditional_gf", "dynamic_cluster"})
     min_visits: int = 160
     switch_margin: float = 0.14
     min_switch_score: float = 0.34
@@ -27,6 +27,12 @@ class GunConfig:
     max_target_history: int = 80
     displacement_min_samples: int = 4
     displacement_time_tolerance: int = 2
+    traditional_gf_min_samples: int = 28
+    traditional_gf_smoothing_bins: float = 1.25
+    traditional_gf_min_switch_visits: int = 260
+    traditional_gf_min_switch_score: float = 0.42
+    segment_min_visits: int = 18
+    segment_full_weight_visits: int = 80
 
 
 @dataclass(frozen=True)
@@ -54,6 +60,7 @@ class GunWave:
     max_escape_angle: float
     lateral_direction: int
     features: tuple[float, ...]
+    segment_key: tuple[int, ...]
     aim_mode: str
     aim_guess_factor: float | None
     virtual_bearings: dict[str, float]
@@ -64,6 +71,12 @@ class GunStats:
     visits: int = 0
     hits: int = 0
     rolling_score: float = 0.0
+
+
+@dataclass
+class GuessFactorProfile:
+    visits: int = 0
+    bins: list[float] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -82,6 +95,7 @@ class AimSolution:
     mode: str
     guess_factor: float | None
     features: tuple[float, ...]
+    segment_key: tuple[int, ...]
     virtual_bearings: dict[str, float]
     previous_mode: str | None = None
     mode_changed: bool = False
@@ -105,8 +119,10 @@ class VirtualGunSystem:
     _samples: list[GunSample] = field(default_factory=list)
     _waves: list[GunWave] = field(default_factory=list)
     _stats: dict[tuple[int, str], GunStats] = field(default_factory=dict)
+    _segment_stats: dict[tuple[int, str, tuple[int, ...]], GunStats] = field(default_factory=dict)
     _active_modes: dict[int, str] = field(default_factory=dict)
     _target_history: dict[int, list[TargetPosition]] = field(default_factory=dict)
+    _traditional_profiles: dict[int, GuessFactorProfile] = field(default_factory=dict)
     _pending_wave: GunWave | None = None
 
     @property
@@ -134,8 +150,12 @@ class VirtualGunSystem:
         firepower: float,
         motion: TargetMotion,
         field_margin: float,
+        allow_traditional_gf: bool = True,
+        allow_segmented_stats: bool = True,
     ) -> AimSolution:
         features = self._gun_features(bot, target, distance, firepower, motion)
+        segment_key = segment_features(features)
+        scoring_segment = segment_key if allow_segmented_stats else None
         absolute_bearing = absolute_bearing_between(bot.x, bot.y, target.x, target.y)
         virtual_bearings = {
             "head_on": absolute_bearing,
@@ -144,6 +164,15 @@ class VirtualGunSystem:
         displacement_bearing = self._displacement_aim_bearing(bot, target, distance, firepower, field_margin)
         if displacement_bearing is not None:
             virtual_bearings["displacement"] = displacement_bearing
+
+        traditional_guess_factor = self._traditional_guess_factor(target.bot_id) if allow_traditional_gf else None
+        if traditional_guess_factor is not None:
+            virtual_bearings["traditional_gf"] = self._guess_factor_aim_bearing(
+                bot,
+                target,
+                firepower,
+                traditional_guess_factor,
+            )
 
         cluster_guess_factor = self._knn_guess_factor(target.bot_id, features)
         if cluster_guess_factor is not None:
@@ -154,16 +183,22 @@ class VirtualGunSystem:
                 cluster_guess_factor,
             )
 
-        mode, previous_mode, mode_changed = self._select_aim_mode(target.bot_id, virtual_bearings)
+        mode, previous_mode, mode_changed = self._select_aim_mode(target.bot_id, virtual_bearings, scoring_segment)
         aim_bearing = virtual_bearings[mode]
         predicted_x, predicted_y = point_on_bearing(bot, aim_bearing, distance, field_margin)
+        selected_guess_factor = None
+        if mode == "traditional_gf":
+            selected_guess_factor = traditional_guess_factor
+        elif mode == "dynamic_cluster":
+            selected_guess_factor = cluster_guess_factor
         return AimSolution(
             predicted_x=predicted_x,
             predicted_y=predicted_y,
             gun_bearing=relative_bearing(aim_bearing, bot.gun_direction),
             mode=mode,
-            guess_factor=cluster_guess_factor if mode == "dynamic_cluster" else None,
+            guess_factor=selected_guess_factor,
             features=features,
+            segment_key=segment_key,
             virtual_bearings=virtual_bearings,
             previous_mode=previous_mode,
             mode_changed=mode_changed,
@@ -189,6 +224,7 @@ class VirtualGunSystem:
             max_escape_angle=max_escape_angle_for_speed(bullet_speed),
             lateral_direction=lateral_direction(target, fire_bearing),
             features=aim.features,
+            segment_key=aim.segment_key,
             aim_mode=aim.mode,
             aim_guess_factor=aim.guess_factor,
             virtual_bearings=aim.virtual_bearings,
@@ -225,6 +261,7 @@ class VirtualGunSystem:
             guess_factor = clamp((bearing_offset / wave.max_escape_angle) * wave.lateral_direction, -1.0, 1.0)
             virtual_scores = self._score_virtual_guns(wave, actual_bearing, target_distance)
             self._samples.append(GunSample(wave.target_id, wave.features, guess_factor))
+            self._record_traditional_guess_factor(wave.target_id, guess_factor)
             if len(self._samples) > self.config.max_samples:
                 del self._samples[: len(self._samples) - self.config.max_samples]
             visits.append(
@@ -236,20 +273,41 @@ class VirtualGunSystem:
                     distance=target_distance,
                     selected_gun=wave.aim_mode,
                     virtual_scores=virtual_scores,
-                    gun_scores=self.score_summary(target.bot_id),
+                    gun_scores=self.score_summary(target.bot_id, wave.segment_key),
                 )
             )
 
         self._waves = remaining_waves[-self.config.max_waves :]
         return visits
 
-    def score_summary(self, target_id: int) -> dict[str, str]:
+    def score_summary(self, target_id: int, segment_key: tuple[int, ...] | None = None) -> dict[str, str]:
         summary: dict[str, str] = {}
         for (stats_target_id, mode), stats in self._stats.items():
             if stats_target_id != target_id:
                 continue
-            summary[mode] = f"{self._gun_score(target_id, mode):.3f}/{stats.visits}"
+            if segment_key is None:
+                summary[mode] = f"{self._gun_score(target_id, mode):.3f}/{stats.visits}"
+                continue
+
+            segment_stats = self._segment_stats.get((target_id, mode, segment_key))
+            segment_visits = segment_stats.visits if segment_stats is not None else 0
+            summary[mode] = (
+                f"{self._gun_score(target_id, mode, segment_key):.3f}/{stats.visits}"
+                f"/s{segment_visits}"
+            )
         return summary
+
+    def target_confidence(self, target_id: int) -> tuple[float, int]:
+        best_score = 0.0
+        best_visits = 0
+        for (stats_target_id, mode), stats in self._stats.items():
+            if stats_target_id != target_id or mode not in self.config.selectable_modes:
+                continue
+            score = self._gun_score(target_id, mode)
+            if score > best_score:
+                best_score = score
+                best_visits = stats.visits
+        return best_score, best_visits
 
     def clear_round_state(self) -> None:
         self._waves.clear()
@@ -313,20 +371,25 @@ class VirtualGunSystem:
         predicted_y = clamp(target.y + average_dy, field_margin, bot.arena_height - field_margin)
         return absolute_bearing_between(bot.x, bot.y, predicted_x, predicted_y)
 
-    def _select_aim_mode(self, target_id: int, virtual_bearings: dict[str, float]) -> tuple[str, str | None, bool]:
+    def _select_aim_mode(
+        self,
+        target_id: int,
+        virtual_bearings: dict[str, float],
+        segment_key: tuple[int, ...] | None,
+    ) -> tuple[str, str | None, bool]:
         current = self._active_modes.get(target_id, self.config.default_mode)
         if current not in self.config.selectable_modes or current not in virtual_bearings:
             current = self.config.default_mode if self.config.default_mode in virtual_bearings else next(iter(virtual_bearings))
 
         best_mode = current
-        best_score = self._gun_score(target_id, current)
+        best_score = self._gun_score(target_id, current, segment_key)
         for mode in virtual_bearings:
             if mode not in self.config.selectable_modes:
                 continue
             stats = self._stats.get((target_id, mode))
-            if stats is None or stats.visits < self.config.min_visits:
+            if stats is None or stats.visits < self._min_switch_visits(mode):
                 continue
-            score = self._gun_score(target_id, mode)
+            score = self._gun_score(target_id, mode, segment_key)
             if score < self._min_switch_score(mode):
                 continue
             if score > best_score + self.config.switch_margin:
@@ -340,7 +403,14 @@ class VirtualGunSystem:
     def _min_switch_score(self, mode: str) -> float:
         if mode == "head_on":
             return self.config.head_on_min_switch_score
+        if mode == "traditional_gf":
+            return self.config.traditional_gf_min_switch_score
         return self.config.min_switch_score
+
+    def _min_switch_visits(self, mode: str) -> int:
+        if mode == "traditional_gf":
+            return self.config.traditional_gf_min_switch_visits
+        return self.config.min_visits
 
     def _gun_features(
         self,
@@ -410,6 +480,24 @@ class VirtualGunSystem:
             guess_factor *= clamp(blend, 0.0, 1.0)
         return clamp(guess_factor, -1.0, 1.0)
 
+    def _record_traditional_guess_factor(self, target_id: int, guess_factor: float) -> None:
+        profile = self._traditional_profiles.setdefault(
+            target_id,
+            GuessFactorProfile(bins=[0.0] * self.config.guess_factor_bins),
+        )
+        profile.visits += 1
+        bin_index = guess_factor_to_bin(guess_factor, self.config.guess_factor_bins)
+        for index in range(self.config.guess_factor_bins):
+            offset = (index - bin_index) / self.config.traditional_gf_smoothing_bins
+            profile.bins[index] += math.exp(-(offset * offset))
+
+    def _traditional_guess_factor(self, target_id: int) -> float | None:
+        profile = self._traditional_profiles.get(target_id)
+        if profile is None or profile.visits < self.config.traditional_gf_min_samples:
+            return None
+        best_index = max(range(len(profile.bins)), key=lambda index: profile.bins[index])
+        return bin_to_guess_factor(best_index, self.config.guess_factor_bins)
+
     def _score_virtual_guns(
         self,
         wave: GunWave,
@@ -421,20 +509,44 @@ class VirtualGunSystem:
         for mode, aim_bearing in wave.virtual_bearings.items():
             error = abs(relative_bearing(actual_bearing, aim_bearing))
             score = max(0.0, 1.0 - error / max(hit_angle, 0.1))
-            stats = self._stats.setdefault((wave.target_id, mode), GunStats())
-            stats.visits += 1
-            if score > 0:
-                stats.hits += 1
-            stats.rolling_score = (1.0 - self.config.score_alpha) * stats.rolling_score + self.config.score_alpha * score
+            self._update_stats(self._stats.setdefault((wave.target_id, mode), GunStats()), score)
+            self._update_stats(
+                self._segment_stats.setdefault((wave.target_id, mode, wave.segment_key), GunStats()),
+                score,
+            )
             scores[mode] = round(score, 3)
         return scores
 
-    def _gun_score(self, target_id: int, mode: str) -> float:
+    def _gun_score(self, target_id: int, mode: str, segment_key: tuple[int, ...] | None = None) -> float:
         stats = self._stats.get((target_id, mode))
         if stats is None:
             return 0.0
+        global_score = self._raw_gun_score(stats)
+        if segment_key is None:
+            return global_score
+
+        segment_stats = self._segment_stats.get((target_id, mode, segment_key))
+        if segment_stats is None or segment_stats.visits < self.config.segment_min_visits:
+            return global_score
+
+        segment_score = self._raw_gun_score(segment_stats)
+        blend = clamp(
+            (segment_stats.visits - self.config.segment_min_visits)
+            / max(1, self.config.segment_full_weight_visits - self.config.segment_min_visits),
+            0.0,
+            1.0,
+        )
+        return global_score * (1.0 - blend) + segment_score * blend
+
+    def _raw_gun_score(self, stats: GunStats) -> float:
         accuracy = stats.hits / max(1, stats.visits)
         return 0.7 * stats.rolling_score + 0.3 * accuracy
+
+    def _update_stats(self, stats: GunStats, score: float) -> None:
+        stats.visits += 1
+        if score > 0:
+            stats.hits += 1
+        stats.rolling_score = (1.0 - self.config.score_alpha) * stats.rolling_score + self.config.score_alpha * score
 
 
 def bullet_speed_for_power(firepower: float) -> float:
@@ -448,6 +560,42 @@ def max_escape_angle_for_speed(bullet_speed: float) -> float:
 def feature_distance(left: tuple[float, ...], right: tuple[float, ...]) -> float:
     weights = (2.0, 1.2, 1.8, 1.3, 0.8, 0.7, 0.9)
     return math.sqrt(sum(weight * (a - b) ** 2 for weight, a, b in zip(weights, left, right)))
+
+
+def segment_features(features: tuple[float, ...]) -> tuple[int, ...]:
+    distance, firepower, lateral_speed, advancing_speed, acceleration, velocity_change_age, wall_margin = features
+    return (
+        bucket(distance, 0.30, 0.55),
+        bucket(firepower, 0.42, 0.62),
+        bucket(lateral_speed, 0.25, 0.70),
+        signed_bucket(advancing_speed, -0.25, 0.25),
+        0 if abs(acceleration) >= 0.18 or velocity_change_age <= 0.15 else 1,
+        bucket(wall_margin, 0.12, 0.25),
+    )
+
+
+def bucket(value: float, low: float, high: float) -> int:
+    if value < low:
+        return 0
+    if value < high:
+        return 1
+    return 2
+
+
+def signed_bucket(value: float, low: float, high: float) -> int:
+    if value < low:
+        return 0
+    if value > high:
+        return 2
+    return 1
+
+
+def guess_factor_to_bin(guess_factor: float, bins: int) -> int:
+    return round((clamp(guess_factor, -1.0, 1.0) + 1.0) * (bins - 1) / 2.0)
+
+
+def bin_to_guess_factor(index: int, bins: int) -> float:
+    return -1.0 + 2.0 * index / (bins - 1)
 
 
 def lateral_direction(target: TargetSnapshot, absolute_bearing: float) -> int:
