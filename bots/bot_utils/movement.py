@@ -44,6 +44,11 @@ class MovementFlatteningConfig:
     goto_wave_kind_expected_multiplier: float = 0.85
     goto_use_expected_waves: bool = False
     goto_expected_wave_min_confidence: float = 0.58
+    stats_buffer_enabled: bool = True
+    stats_buffer_weight: float = 0.28
+    stats_buffer_decay: float = 0.99
+    stats_buffer_min_samples: float = 6.0
+    stats_buffer_max_effective_samples: float = 48.0
 
 
 @dataclass(frozen=True)
@@ -64,6 +69,8 @@ class MovementProfileVisit:
     bucket: int
     visits: float
     wave_age: int
+    ensemble_danger: float = 0.0
+    ensemble_samples: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -78,9 +85,32 @@ class GoToSurfDecision:
     hit_turn: int
     direction: int
     profile_danger: float
+    ensemble_danger: float
+    ensemble_samples: float
+    ensemble_weight: float
     wall_risk: float
     distance_risk: float
     travel_risk: float
+
+
+@dataclass(frozen=True)
+class MovementWaveFeatures:
+    lateral_velocity: float = 0.0
+    advancing_velocity: float = 0.0
+    bullet_flight_time: float = 0.0
+    acceleration: float = 0.0
+    direction_change_age: int = 0
+    decel_age: int = 0
+    wall_distance: float = 0.0
+
+
+@dataclass(frozen=True)
+class MovementDangerBreakdown:
+    profile_danger: float
+    ensemble_danger: float
+    ensemble_samples: float
+    ensemble_weight: float
+    total_danger: float
 
 
 @dataclass
@@ -97,6 +127,7 @@ class MovementWave:
     distance_bucket: int
     kind: str = "confirmed"
     expected_confidence: float = 1.0
+    features: MovementWaveFeatures = MovementWaveFeatures()
 
 
 @dataclass(frozen=True)
@@ -107,6 +138,165 @@ class ShadowBullet:
     direction: float
     bullet_speed: float
     fired_turn: int
+
+
+@dataclass(frozen=True)
+class MovementStatsBufferSpec:
+    name: str
+    dimensions: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class MovementStatsBufferDanger:
+    name: str
+    danger: float
+    samples: float
+
+
+class MovementStatsBuffer:
+    def __init__(self, spec: MovementStatsBufferSpec, config: MovementFlatteningConfig) -> None:
+        self.spec = spec
+        self.config = config
+        self._visits: dict[tuple[int, tuple[int, ...], int], float] = {}
+        self._samples: dict[tuple[int, tuple[int, ...]], float] = {}
+
+    def record(self, wave: MovementWave, bin_index: int, weight: float) -> None:
+        segment = self._segment(wave)
+        self._decay_segment(wave.target_id, segment)
+        key = (wave.target_id, segment, bin_index)
+        self._visits[key] = self._visits.get(key, 0.0) + weight
+        sample_key = (wave.target_id, segment)
+        self._samples[sample_key] = self._samples.get(sample_key, 0.0) + weight
+
+    def danger(self, wave: MovementWave, bin_index: int) -> MovementStatsBufferDanger:
+        segment = self._segment(wave)
+        score = 0.0
+        for offset, smooth_weight in ((0, 1.0), (-1, 0.55), (1, 0.55), (-2, 0.25), (2, 0.25)):
+            neighbor = bin_index + offset
+            if 0 <= neighbor < self.config.bin_count:
+                score += self._visits.get((wave.target_id, segment, neighbor), 0.0) * smooth_weight
+        samples = self._samples.get((wave.target_id, segment), 0.0)
+        return MovementStatsBufferDanger(self.spec.name, score, samples)
+
+    def remove_target(self, target_id: int) -> None:
+        self._visits = {key: value for key, value in self._visits.items() if key[0] != target_id}
+        self._samples = {key: value for key, value in self._samples.items() if key[0] != target_id}
+
+    def _decay_segment(self, target_id: int, segment: tuple[int, ...]) -> None:
+        decay = self.config.stats_buffer_decay
+        sample_key = (target_id, segment)
+        total = 0.0
+        for key in list(self._visits):
+            if key[0] == target_id and key[1] == segment:
+                decayed = self._visits[key] * decay
+                if decayed < 0.001:
+                    del self._visits[key]
+                else:
+                    self._visits[key] = decayed
+                    total += decayed
+        if total > 0.0:
+            self._samples[sample_key] = total
+        else:
+            self._samples.pop(sample_key, None)
+
+    def _segment(self, wave: MovementWave) -> tuple[int, ...]:
+        return tuple(self._bucket(wave, dimension) for dimension in self.spec.dimensions)
+
+    def _bucket(self, wave: MovementWave, dimension: str) -> int:
+        features = wave.features
+        if dimension == "distance":
+            return wave.distance_bucket
+        if dimension == "lateral":
+            return round(clamp((features.lateral_velocity + 8.0) / 4.0, 0.0, 4.0))
+        if dimension == "advancing":
+            return round(clamp((features.advancing_velocity + 8.0) / 4.0, 0.0, 4.0))
+        if dimension == "flight":
+            if features.bullet_flight_time < 18:
+                return 0
+            if features.bullet_flight_time < 32:
+                return 1
+            return 2
+        if dimension == "accel":
+            if features.acceleration < -0.4:
+                return 0
+            if features.acceleration > 0.4:
+                return 2
+            return 1
+        if dimension == "dir_age":
+            if features.direction_change_age < 8:
+                return 0
+            if features.direction_change_age < 28:
+                return 1
+            return 2
+        if dimension == "decel_age":
+            if features.decel_age < 8:
+                return 0
+            if features.decel_age < 28:
+                return 1
+            return 2
+        if dimension == "wall":
+            if features.wall_distance < 90:
+                return 0
+            if features.wall_distance < 180:
+                return 1
+            return 2
+        return 0
+
+
+class MovementStatsBufferSet:
+    SPECS: tuple[MovementStatsBufferSpec, ...] = (
+        MovementStatsBufferSpec("distance", ("distance",)),
+        MovementStatsBufferSpec("lateral", ("lateral",)),
+        MovementStatsBufferSpec("advancing", ("advancing",)),
+        MovementStatsBufferSpec("accel", ("accel",)),
+        MovementStatsBufferSpec("wall", ("wall",)),
+        MovementStatsBufferSpec("flight", ("flight",)),
+        MovementStatsBufferSpec("distance_lateral", ("distance", "lateral")),
+        MovementStatsBufferSpec("distance_wall", ("distance", "wall")),
+        MovementStatsBufferSpec("distance_flight", ("distance", "flight")),
+        MovementStatsBufferSpec("lateral_accel", ("lateral", "accel")),
+        MovementStatsBufferSpec("lateral_wall", ("lateral", "wall")),
+        MovementStatsBufferSpec("distance_decel", ("distance", "decel_age")),
+    )
+
+    def __init__(self, config: MovementFlatteningConfig) -> None:
+        self.config = config
+        self._buffers = [MovementStatsBuffer(spec, config) for spec in self.SPECS]
+
+    def record(self, wave: MovementWave, bin_index: int, weight: float) -> None:
+        if not self.config.stats_buffer_enabled:
+            return
+        for buffer in self._buffers:
+            buffer.record(wave, bin_index, weight)
+
+    def danger(self, wave: MovementWave, bin_index: int) -> MovementStatsBufferDanger:
+        if not self.config.stats_buffer_enabled:
+            return MovementStatsBufferDanger("disabled", 0.0, 0.0)
+        dangers = [buffer.danger(wave, bin_index) for buffer in self._buffers]
+        if not dangers:
+            return MovementStatsBufferDanger("empty", 0.0, 0.0)
+        weighted_danger = 0.0
+        total_weight = 0.0
+        total_samples = 0.0
+        top = max(dangers, key=lambda item: item.danger)
+        for danger in dangers:
+            confidence = clamp(
+                danger.samples / max(1.0, self.config.stats_buffer_min_samples),
+                0.0,
+                1.0,
+            )
+            if confidence <= 0.0:
+                continue
+            weighted_danger += danger.danger * confidence
+            total_weight += confidence
+            total_samples += danger.samples
+        if total_weight <= 0.0:
+            return MovementStatsBufferDanger(top.name, 0.0, 0.0)
+        return MovementStatsBufferDanger(top.name, weighted_danger / total_weight, total_samples / len(dangers))
+
+    def remove_target(self, target_id: int) -> None:
+        for buffer in self._buffers:
+            buffer.remove_target(target_id)
 
 
 @dataclass(frozen=True)
@@ -356,6 +546,7 @@ class MovementFlattener:
     def __init__(self, config: MovementFlatteningConfig | None = None) -> None:
         self.config = config or MovementFlatteningConfig()
         self._profile: dict[tuple[int, int, int], float] = {}
+        self._stats_buffers = MovementStatsBufferSet(self.config)
         self._waves: list[MovementWave] = []
         self._shadow_bullets: list[ShadowBullet] = []
         self._last_switch_turn: dict[int, int] = {}
@@ -395,6 +586,9 @@ class MovementFlattener:
         fire_power: float,
         wave_kind: str = "confirmed",
         expected_confidence: float = 1.0,
+        acceleration: float = 0.0,
+        direction_change_age: int = 0,
+        decel_age: int = 0,
     ) -> MovementWave | None:
         distance = math.hypot(bot.x - target.x, bot.y - target.y)
         if not (self.config.min_distance <= distance <= self.config.max_distance):
@@ -413,6 +607,15 @@ class MovementFlattener:
 
         bullet_speed = bullet_speed_for_power(fire_power)
         wave_lateral_direction = self._lateral_direction(bot, target) or 1
+        features = self._wave_features(
+            bot,
+            target,
+            distance,
+            bullet_speed,
+            acceleration=acceleration,
+            direction_change_age=direction_change_age,
+            decel_age=decel_age,
+        )
         wave = MovementWave(
             target_id=target.bot_id,
             source_x=target.x,
@@ -444,6 +647,7 @@ class MovementFlattener:
             distance_bucket=self._distance_bucket(distance),
             kind=wave_kind,
             expected_confidence=clamp(expected_confidence, 0.0, 1.0),
+            features=features,
         )
         self._waves.append(wave)
         return wave
@@ -466,17 +670,18 @@ class MovementFlattener:
 
             guess_factor = self._guess_factor(wave, bot.x, bot.y)
             bin_index = self._bin_index(guess_factor)
-            key = (wave.target_id, wave.distance_bucket, bin_index)
-            self._profile[key] = self._profile.get(key, 0.0) + 1.0
-            self._decay_if_needed(wave.target_id)
+            profile_visits = self._record_visit(wave, bin_index, 1.0)
+            danger = self._danger_breakdown(wave, bin_index)
             visits.append(
                 MovementProfileVisit(
                     target_id=wave.target_id,
                     guess_factor=guess_factor,
                     bin_index=bin_index,
                     bucket=wave.distance_bucket,
-                    visits=self._profile[key],
+                    visits=profile_visits,
                     wave_age=wave_age,
+                    ensemble_danger=danger.ensemble_danger,
+                    ensemble_samples=danger.ensemble_samples,
                 )
             )
         self._waves = remaining_waves
@@ -507,17 +712,18 @@ class MovementFlattener:
 
         guess_factor = self._guess_factor(wave, bot.x, bot.y)
         bin_index = self._bin_index(guess_factor)
-        key = (wave.target_id, wave.distance_bucket, bin_index)
-        self._profile[key] = self._profile.get(key, 0.0) + self.config.bullet_hit_visit_weight
-        self._decay_if_needed(wave.target_id)
+        visits = self._record_visit(wave, bin_index, self.config.bullet_hit_visit_weight)
+        danger = self._danger_breakdown(wave, bin_index)
         self._waves = [candidate for candidate in self._waves if candidate is not wave]
         return MovementProfileVisit(
             target_id=wave.target_id,
             guess_factor=guess_factor,
             bin_index=bin_index,
             bucket=wave.distance_bucket,
-            visits=self._profile[key],
+            visits=visits,
             wave_age=max(1, bot.turn_number - wave.fired_turn),
+            ensemble_danger=danger.ensemble_danger,
+            ensemble_samples=danger.ensemble_samples,
         )
 
     def choose_direction(
@@ -640,6 +846,9 @@ class MovementFlattener:
             hit_turn=best.hit_turn,
             direction=best.direction,
             profile_danger=best.profile_danger,
+            ensemble_danger=best.ensemble_danger,
+            ensemble_samples=best.ensemble_samples,
+            ensemble_weight=best.ensemble_weight,
             wall_risk=best.wall_risk,
             distance_risk=best.distance_risk,
             travel_risk=best.travel_risk,
@@ -654,6 +863,7 @@ class MovementFlattener:
         self._waves = [wave for wave in self._waves if wave.target_id != target_id]
         if clear_profile:
             self._profile = {key: value for key, value in self._profile.items() if key[0] != target_id}
+            self._stats_buffers.remove_target(target_id)
         self._last_switch_turn.pop(target_id, None)
 
     def _decision(
@@ -689,6 +899,41 @@ class MovementFlattener:
         for key in list(self._profile):
             if key[0] == target_id:
                 self._profile[key] *= 0.5
+
+    def _record_visit(self, wave: MovementWave, bin_index: int, weight: float) -> float:
+        key = (wave.target_id, wave.distance_bucket, bin_index)
+        self._profile[key] = self._profile.get(key, 0.0) + weight
+        self._stats_buffers.record(wave, bin_index, weight)
+        self._decay_if_needed(wave.target_id)
+        return self._profile[key]
+
+    def _wave_features(
+        self,
+        bot: Bot,
+        target: TargetSnapshot,
+        distance: float,
+        bullet_speed: float,
+        acceleration: float,
+        direction_change_age: int,
+        decel_age: int,
+    ) -> MovementWaveFeatures:
+        target_to_bot = math.atan2(bot.y - target.y, bot.x - target.x)
+        bot_heading = math.radians(bot.direction)
+        velocity_x = math.cos(bot_heading) * bot.speed
+        velocity_y = math.sin(bot_heading) * bot.speed
+        radial_x = math.cos(target_to_bot)
+        radial_y = math.sin(target_to_bot)
+        lateral_x = -radial_y
+        lateral_y = radial_x
+        return MovementWaveFeatures(
+            lateral_velocity=velocity_x * lateral_x + velocity_y * lateral_y,
+            advancing_velocity=velocity_x * radial_x + velocity_y * radial_y,
+            bullet_flight_time=distance / max(0.1, bullet_speed),
+            acceleration=acceleration,
+            direction_change_age=max(0, direction_change_age),
+            decel_age=max(0, decel_age),
+            wall_distance=min(bot.x, bot.arena_width - bot.x, bot.y, bot.arena_height - bot.y),
+        )
 
     def _distance_bucket(self, distance: float) -> int:
         if distance < self.config.near_distance:
@@ -873,13 +1118,14 @@ class MovementFlattener:
 
         guess_factor = self._guess_factor(wave, hit_x, hit_y)
         bin_index = self._bin_index(guess_factor)
-        profile_danger = self._danger(wave, bin_index, bot)
+        danger_breakdown = self._danger_breakdown(wave, bin_index)
+        learned_danger = danger_breakdown.total_danger
         if wave.kind == "expected":
-            profile_danger *= self.config.goto_wave_kind_expected_multiplier
+            learned_danger *= self.config.goto_wave_kind_expected_multiplier
         wall_risk = self._go_to_wall_risk(bot, hit_x, hit_y, field_margin)
         distance_risk = self._go_to_target_distance_risk(hit_x, hit_y, target)
         travel_risk = math.hypot(destination_x - bot.x, destination_y - bot.y) * self.config.goto_travel_weight
-        danger = profile_danger + wall_risk + distance_risk + travel_risk
+        danger = learned_danger + wall_risk + distance_risk + travel_risk
         direction = self._go_to_lateral_direction(bot, target, destination_x, destination_y)
         return GoToSurfDecision(
             x=destination_x,
@@ -891,7 +1137,10 @@ class MovementFlattener:
             hit_bin=bin_index,
             hit_turn=hit_turn,
             direction=direction,
-            profile_danger=profile_danger,
+            profile_danger=danger_breakdown.profile_danger,
+            ensemble_danger=danger_breakdown.ensemble_danger,
+            ensemble_samples=danger_breakdown.ensemble_samples,
+            ensemble_weight=danger_breakdown.ensemble_weight,
             wall_risk=wall_risk,
             distance_risk=distance_risk,
             travel_risk=travel_risk,
@@ -969,10 +1218,29 @@ class MovementFlattener:
         return 0
 
     def _danger(self, wave: MovementWave, bin_index: int, bot: Bot | None = None) -> float:
-        danger = self._smoothed_count(wave.target_id, wave.distance_bucket, bin_index) + self.config.unvisited_bin_danger
+        danger = self._danger_breakdown(wave, bin_index).total_danger
         if bot is not None and self._has_bullet_shadow(bot, wave, bin_index):
             return danger * self.config.bullet_shadow_danger_multiplier
         return danger
+
+    def _danger_breakdown(self, wave: MovementWave, bin_index: int) -> MovementDangerBreakdown:
+        profile_danger = self._smoothed_count(wave.target_id, wave.distance_bucket, bin_index)
+        ensemble = self._stats_buffers.danger(wave, bin_index)
+        ensemble_confidence = clamp(
+            ensemble.samples / max(1.0, self.config.stats_buffer_max_effective_samples),
+            0.0,
+            1.0,
+        )
+        ensemble_weight = self.config.stats_buffer_weight * ensemble_confidence
+        ensemble_delta = max(0.0, ensemble.danger - profile_danger)
+        learned_danger = profile_danger + ensemble_delta * ensemble_weight
+        return MovementDangerBreakdown(
+            profile_danger=profile_danger,
+            ensemble_danger=ensemble.danger,
+            ensemble_samples=ensemble.samples,
+            ensemble_weight=ensemble_weight,
+            total_danger=learned_danger + self.config.unvisited_bin_danger,
+        )
 
     def _has_bullet_shadow(self, bot: Bot, wave: MovementWave, bin_index: int) -> bool:
         if not self.config.bullet_shadow_enabled or not self._shadow_bullets:

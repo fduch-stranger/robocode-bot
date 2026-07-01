@@ -8,6 +8,7 @@ from bot_utils.movement import (
     MovementFlattener,
     MovementFlatteningConfig,
     MovementWave,
+    MovementWaveFeatures,
 )
 from bot_utils.tank_math import TargetSnapshot
 
@@ -68,12 +69,14 @@ class MinimumRiskMovementTest(unittest.TestCase):
     def test_movement_profile_survives_round_clear(self) -> None:
         movement = MovementFlattener()
         movement._profile[(1, 0, 15)] = 3.0
+        movement._stats_buffers.record(self._incoming_wave(1), 15, 1.0)
         movement._waves.append(object())
         movement._last_switch_turn[1] = 42
 
         movement.clear_round_state()
 
         self.assertEqual(3.0, movement._profile[(1, 0, 15)])
+        self.assertGreater(movement._stats_buffers.danger(self._incoming_wave(1), 15).danger, 0.0)
         self.assertEqual([], movement._waves)
         self.assertEqual({}, movement._last_switch_turn)
 
@@ -326,6 +329,113 @@ class MinimumRiskMovementTest(unittest.TestCase):
         assert second_with_profile is not None
         self.assertGreater(first_with_profile.profile_danger, second_with_profile.profile_danger)
 
+    def test_movement_wave_records_segmentation_features(self) -> None:
+        movement = MovementFlattener()
+        bot = SimpleNamespace(
+            x=500.0,
+            y=500.0,
+            direction=90.0,
+            speed=8.0,
+            arena_width=1000.0,
+            arena_height=1000.0,
+            turn_number=20,
+        )
+        target = TargetSnapshot(1, 100.0, 100.0, 500.0, 0.0, 0.0, 20)
+
+        wave = movement.record_enemy_fire(
+            bot,
+            target,
+            2.0,
+            acceleration=-1.0,
+            direction_change_age=9,
+            decel_age=3,
+        )
+
+        self.assertIsNotNone(wave)
+        assert wave is not None
+        self.assertAlmostEqual(8.0, wave.features.lateral_velocity, places=2)
+        self.assertAlmostEqual(0.0, wave.features.advancing_velocity, places=2)
+        self.assertAlmostEqual(-1.0, wave.features.acceleration)
+        self.assertEqual(9, wave.features.direction_change_age)
+        self.assertEqual(3, wave.features.decel_age)
+        self.assertEqual(500.0, wave.features.wall_distance)
+
+    def test_stats_buffer_records_and_decays_segment_visits(self) -> None:
+        movement = MovementFlattener(
+            MovementFlatteningConfig(
+                stats_buffer_decay=0.5,
+                stats_buffer_min_samples=1.0,
+                stats_buffer_max_effective_samples=1.0,
+            )
+        )
+        wave = self._incoming_wave(1)
+
+        movement._stats_buffers.record(wave, 12, 1.0)
+        first = movement._stats_buffers.danger(wave, 12)
+        movement._stats_buffers.record(wave, 12, 1.0)
+        second = movement._stats_buffers.danger(wave, 12)
+
+        self.assertGreater(first.danger, 0.0)
+        self.assertGreater(second.danger, first.danger)
+        self.assertLess(second.samples, 2.1)
+
+    def test_confident_ensemble_raises_context_specific_danger(self) -> None:
+        movement = MovementFlattener(
+            MovementFlatteningConfig(
+                stats_buffer_weight=0.5,
+                stats_buffer_min_samples=1.0,
+                stats_buffer_max_effective_samples=1.0,
+                stats_buffer_decay=1.0,
+                unvisited_bin_danger=0.0,
+            )
+        )
+        wave = self._incoming_wave(1)
+        for _ in range(4):
+            movement._stats_buffers.record(wave, 12, 1.0)
+
+        profile_only = movement._smoothed_count(1, wave.distance_bucket, 12)
+        blended = movement._danger_breakdown(wave, 12)
+
+        self.assertGreater(blended.total_danger, profile_only)
+        self.assertGreater(blended.ensemble_samples, 0.0)
+        self.assertGreater(blended.ensemble_weight, 0.0)
+
+    def test_ensemble_does_not_lower_profile_danger(self) -> None:
+        movement = MovementFlattener(
+            MovementFlatteningConfig(
+                stats_buffer_weight=0.5,
+                stats_buffer_min_samples=1.0,
+                stats_buffer_max_effective_samples=1.0,
+                stats_buffer_decay=1.0,
+                unvisited_bin_danger=0.0,
+            )
+        )
+        wave = self._incoming_wave(1)
+        movement._profile[(1, wave.distance_bucket, 12)] = 10.0
+        for _ in range(4):
+            movement._stats_buffers.record(wave, 18, 1.0)
+
+        profile_only = movement._smoothed_count(1, wave.distance_bucket, 12)
+        blended = movement._danger_breakdown(wave, 12)
+
+        self.assertGreaterEqual(blended.total_danger, profile_only)
+
+    def test_low_sample_ensemble_has_low_blend_weight(self) -> None:
+        movement = MovementFlattener(
+            MovementFlatteningConfig(
+                stats_buffer_weight=0.5,
+                stats_buffer_min_samples=1.0,
+                stats_buffer_max_effective_samples=50.0,
+                stats_buffer_decay=1.0,
+            )
+        )
+        wave = self._incoming_wave(1)
+        movement._stats_buffers.record(wave, 12, 1.0)
+
+        danger = movement._danger_breakdown(wave, 12)
+
+        self.assertLess(danger.ensemble_weight, 0.05)
+
     @staticmethod
     def _incoming_wave(target_id: int) -> MovementWave:
         return MovementWave(
@@ -339,6 +449,15 @@ class MinimumRiskMovementTest(unittest.TestCase):
             max_escape_angle_negative=30.0,
             fired_turn=10,
             distance_bucket=1,
+            features=MovementWaveFeatures(
+                lateral_velocity=4.0,
+                advancing_velocity=-2.0,
+                bullet_flight_time=28.0,
+                acceleration=1.0,
+                direction_change_age=12,
+                decel_age=18,
+                wall_distance=160.0,
+            ),
         )
 
 
