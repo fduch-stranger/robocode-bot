@@ -42,6 +42,29 @@ class MinimumRiskMovementTest(unittest.TestCase):
         self.assertEqual(1, second.age)
         self.assertEqual((first.x, first.y), (second.x, second.y))
 
+    def test_fire_threat_prefers_lateral_destination(self) -> None:
+        movement = MinimumRiskMovement(
+            MinimumRiskConfig(
+                travel_weight=0.0,
+                wall_weight=0.0,
+                enemy_weight=0.0,
+                close_enemy_weight=0.0,
+                target_distance_weight=0.0,
+                radial_weight=0.0,
+                recent_destination_weight=0.0,
+                threat_lateral_weight=10.0,
+                threat_distance_weight=0.0,
+            )
+        )
+        bot = SimpleNamespace(x=500.0, y=500.0, arena_width=1000.0, arena_height=1000.0, turn_number=20)
+        threat = TargetSnapshot(1, 100.0, 500.0, 100.0, 0.0, 0.0, 20)
+        other = TargetSnapshot(2, 100.0, 850.0, 850.0, 180.0, 0.0, 20)
+
+        radial_risk, _, _ = movement._risk(bot, 500.0, 700.0, [threat, other], other, threat, 0)
+        lateral_risk, _, _ = movement._risk(bot, 700.0, 500.0, [threat, other], other, threat, 0)
+
+        self.assertLess(lateral_risk, radial_risk)
+
     def test_movement_profile_survives_round_clear(self) -> None:
         movement = MovementFlattener()
         movement._profile[(1, 0, 15)] = 3.0

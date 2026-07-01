@@ -48,6 +48,7 @@ ENEMY_FIRE_SCAN_GAP_TURNS = 4
 ENEMY_FIRE_CLOSE_COLLISION_DISTANCE = 75
 ENEMY_FIRE_CLOSE_COLLISION_MAX_DROP = 0.8
 ENEMY_FIRE_ACTIVE_EVASION_MIN_DISTANCE = 220
+MELEE_FIRE_ACTIVE_EVASION_MIN_DISTANCE = 120
 GUN_HEAT_WAVES_ACTIVE = True
 GUN_HEAT_WAVE_MIN_DISTANCE = 220
 GUN_HEAT_WAVE_MAX_TARGET_AGE = 2
@@ -64,6 +65,8 @@ RADAR_LOCK_OVERSCAN = 12
 RADAR_VISIBLE_REACQUIRE_OVERSCAN = 18
 CURRENT_TARGET_BONUS = 80
 RECENT_THREAT_BONUS = 120
+MELEE_CURRENT_TARGET_BONUS = 28
+MELEE_RECENT_THREAT_BONUS = 48
 THREAT_MEMORY_TURNS = 35
 FIELD_MARGIN = 18
 WALL_MARGIN = 90
@@ -123,17 +126,19 @@ class ChaseLock(Bot):
         self._movement = MovementFlattener()
         self._minimum_risk = MinimumRiskMovement(
             MinimumRiskConfig(
-                candidate_distances=(145.0, 215.0, 285.0, 355.0),
-                field_margin=82.0,
-                preferred_target_distance=380.0,
-                max_target_distance=650.0,
-                close_enemy_distance=220.0,
-                travel_weight=0.0012,
-                enemy_weight=23000.0,
-                close_enemy_weight=28.0,
-                target_distance_weight=0.00065,
-                destination_commit_ticks=10,
-                destination_switch_risk_ratio=0.93,
+                candidate_distances=(180.0, 260.0, 340.0, 430.0),
+                field_margin=96.0,
+                preferred_target_distance=430.0,
+                max_target_distance=720.0,
+                close_enemy_distance=270.0,
+                travel_weight=0.001,
+                enemy_weight=31000.0,
+                close_enemy_weight=42.0,
+                target_distance_weight=0.00032,
+                threat_lateral_weight=2.6,
+                threat_distance_weight=14000.0,
+                destination_commit_ticks=8,
+                destination_switch_risk_ratio=0.9,
             )
         )
         self._debug = DebugLogger(self, "chase-lock")
@@ -243,8 +248,15 @@ class ChaseLock(Bot):
             target_from_scan(event, self.turn_number),
             signal.fire_power or 1.5,
         )
-        active_evasion = len(self._targets) <= 1 and distance >= ENEMY_FIRE_ACTIVE_EVASION_MIN_DISTANCE
+        melee_active = self._melee_round or self.enemy_count > 1 or len(self._targets) > 1
+        active_evasion = (
+            distance >= ENEMY_FIRE_ACTIVE_EVASION_MIN_DISTANCE
+            if not melee_active
+            else distance >= MELEE_FIRE_ACTIVE_EVASION_MIN_DISTANCE
+        )
         if active_evasion:
+            if melee_active and not self._wall_risk(8):
+                self._evade_direction *= -1
             self._evade_until_turn = max(self._evade_until_turn, self.turn_number + signal.evade_ticks)
         self._log(
             "enemy.fire_detected",
@@ -258,7 +270,7 @@ class ChaseLock(Bot):
             bullet_travel_ticks=signal.bullet_travel_ticks,
             previous_energy=round(previous.energy, 1),
             energy=round(event.energy, 1),
-            evasion="active" if active_evasion else "threat_only",
+            evasion=("active_melee" if melee_active else "active_duel") if active_evasion else "threat_only",
             evade_direction=self._evade_direction,
             evade_until=self._evade_until_turn,
             known_targets=len(self._targets),
@@ -421,7 +433,14 @@ class ChaseLock(Bot):
             return "panic_retreat", RETREAT_STRAFE_OFFSET, None
 
         if self._melee_round and len(self._targets) > 1:
-            decision = self._minimum_risk.choose(self, list(self._targets.values()), target)
+            threat_target = self._active_fire_threat() if evading else None
+            decision = self._minimum_risk.choose(
+                self,
+                list(self._targets.values()),
+                target,
+                threat_target=threat_target,
+                dodge_direction=self._evade_direction if threat_target is not None else 0,
+            )
             if decision is not None:
                 turn, speed = self._drive_to_destination(decision.x, decision.y, 8)
                 self._sample_status(
@@ -435,6 +454,7 @@ class ChaseLock(Bot):
                     nearest_enemy_distance=round(decision.nearest_enemy_distance, 1),
                     reused_destination=decision.reused,
                     destination_age=decision.age,
+                    fire_threat=threat_target.bot_id if threat_target is not None else None,
                     turn=round(turn, 2),
                     speed=speed,
                     known_targets=len(self._targets),
@@ -690,14 +710,25 @@ class ChaseLock(Bot):
     def _target_score(self, target: TargetSnapshot) -> float:
         distance = distance_to(self, target.x, target.y)
         age = self.turn_number - target.seen_turn
-        current_bonus = CURRENT_TARGET_BONUS if target.bot_id == self._target_id else 0
-        recent_threat_bonus = (
-            RECENT_THREAT_BONUS
-            if target.bot_id == self._recent_threat_id
+        threat_is_fresh = (
+            target.bot_id == self._recent_threat_id
             and self.turn_number - self._recent_threat_turn <= THREAT_MEMORY_TURNS
-            else 0
         )
+        if self._melee_round and self.enemy_count > 1:
+            current_bonus = MELEE_CURRENT_TARGET_BONUS if target.bot_id == self._target_id else 0
+            recent_threat_bonus = MELEE_RECENT_THREAT_BONUS if threat_is_fresh else 0
+            return distance * 0.45 + target.energy * 2.0 + age * 92 - current_bonus - recent_threat_bonus
+
+        current_bonus = CURRENT_TARGET_BONUS if target.bot_id == self._target_id else 0
+        recent_threat_bonus = RECENT_THREAT_BONUS if threat_is_fresh else 0
         return distance * 0.7 + target.energy * 2.5 + age * 60 - current_bonus - recent_threat_bonus
+
+    def _active_fire_threat(self) -> TargetSnapshot | None:
+        if self._recent_threat_id is None:
+            return None
+        if self.turn_number - self._recent_threat_turn > THREAT_MEMORY_TURNS:
+            return None
+        return self._targets.get(self._recent_threat_id)
 
     def _record_enemy_energy_correction(self, target_id: int, correction: float, reason: str) -> None:
         corrections = self._enemy_energy_corrections.setdefault(target_id, [])

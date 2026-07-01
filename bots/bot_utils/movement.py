@@ -78,6 +78,8 @@ class MinimumRiskConfig:
     close_enemy_weight: float = 14.0
     target_distance_weight: float = 0.0009
     radial_weight: float = 0.35
+    threat_lateral_weight: float = 0.0
+    threat_distance_weight: float = 0.0
     recent_destination_weight: float = 2.4
     recent_destination_radius: float = 130.0
     recent_destination_count: int = 12
@@ -110,6 +112,8 @@ class MinimumRiskMovement:
         bot: Bot,
         targets: list[TargetSnapshot],
         focus_target: TargetSnapshot,
+        threat_target: TargetSnapshot | None = None,
+        dodge_direction: int = 0,
     ) -> MinimumRiskDecision | None:
         if len(targets) < 2:
             self._active_destination = None
@@ -118,7 +122,15 @@ class MinimumRiskMovement:
         candidates = self._candidate_points(bot)
         best: MinimumRiskDecision | None = None
         for x, y in candidates:
-            risk, nearest_id, nearest_distance = self._risk(bot, x, y, targets, focus_target)
+            risk, nearest_id, nearest_distance = self._risk(
+                bot,
+                x,
+                y,
+                targets,
+                focus_target,
+                threat_target,
+                dodge_direction,
+            )
             decision = MinimumRiskDecision(
                 x=x,
                 y=y,
@@ -133,7 +145,14 @@ class MinimumRiskMovement:
         if best is None:
             return None
 
-        active = self._active_decision(bot, targets, focus_target, len(candidates))
+        active = self._active_decision(
+            bot,
+            targets,
+            focus_target,
+            len(candidates),
+            threat_target,
+            dodge_direction,
+        )
         if active is not None and best.risk >= active.risk * self.config.destination_switch_risk_ratio:
             return active
 
@@ -156,6 +175,8 @@ class MinimumRiskMovement:
         targets: list[TargetSnapshot],
         focus_target: TargetSnapshot,
         candidate_count: int,
+        threat_target: TargetSnapshot | None,
+        dodge_direction: int,
     ) -> MinimumRiskDecision | None:
         if self._active_destination is None:
             return None
@@ -172,7 +193,15 @@ class MinimumRiskMovement:
         if math.hypot(x - bot.x, y - bot.y) <= self.config.destination_reached_radius:
             return None
 
-        risk, nearest_id, nearest_distance = self._risk(bot, x, y, targets, focus_target)
+        risk, nearest_id, nearest_distance = self._risk(
+            bot,
+            x,
+            y,
+            targets,
+            focus_target,
+            threat_target,
+            dodge_direction,
+        )
         return MinimumRiskDecision(
             x=x,
             y=y,
@@ -211,6 +240,8 @@ class MinimumRiskMovement:
         y: float,
         targets: list[TargetSnapshot],
         focus_target: TargetSnapshot,
+        threat_target: TargetSnapshot | None,
+        dodge_direction: int,
     ) -> tuple[float, int | None, float]:
         nearest_id: int | None = None
         nearest_distance = float("inf")
@@ -235,6 +266,14 @@ class MinimumRiskMovement:
             candidate_bearing = math.atan2(y - target.y, x - target.x)
             lateral = abs(math.sin(candidate_bearing - current_bearing))
             risk += (1.0 - lateral) * self.config.radial_weight * energy_weight
+
+            if threat_target is not None and target.bot_id == threat_target.bot_id:
+                lateral_delta = math.sin(candidate_bearing - current_bearing)
+                threat_lateral = abs(lateral_delta)
+                risk += (1.0 - threat_lateral) * self.config.threat_lateral_weight * energy_weight
+                risk += self.config.threat_distance_weight * energy_weight / (distance * distance)
+                if dodge_direction and lateral_delta * dodge_direction < 0:
+                    risk += self.config.threat_lateral_weight * 0.35 * energy_weight
 
         return risk, nearest_id, nearest_distance
 
