@@ -18,7 +18,7 @@ from bot_utils.wave_math import (
 @dataclass(frozen=True)
 class GunConfig:
     max_samples: int = 1200
-    max_samples_per_target: int = 450
+    max_samples_per_target: int = 900
     max_waves: int = 80
     knn_min_samples: int = 60
     knn_blend_samples: int = 150

@@ -311,6 +311,9 @@ if [[ "$telemetry" -eq 1 ]]; then
   else
     echo "Telemetry viewer: starting; see $telemetry_dir/telemetry-viewer.log"
   fi
+else
+  export ROBOCODE_SUPPRESS_GUI_TELEMETRY=1
+  export ROBOCODE_TELEMETRY_AUTOSTART=0
 fi
 
 mvn \

@@ -17,7 +17,7 @@ if [[ -n "${ROBOCODE_TELEMETRY_DIR:-}" && "$ROBOCODE_TELEMETRY_DIR" != /* ]]; th
   export ROBOCODE_TELEMETRY_DIR="$CONFIG_ROOT/$ROBOCODE_TELEMETRY_DIR"
 fi
 export PYTHONPATH="$PYTHONPATH_ROOT${PYTHONPATH:+:$PYTHONPATH}"
-if [[ -f "$CONFIG_ROOT/.telemetry-enabled" ]]; then
+if [[ -z "${ROBOCODE_SUPPRESS_GUI_TELEMETRY:-}" && -f "$CONFIG_ROOT/.telemetry-enabled" ]]; then
   export ROBOCODE_TELEMETRY=1
   export ROBOCODE_TELEMETRY_ROOT="$CONFIG_ROOT"
   export ROBOCODE_TELEMETRY_DIR="${ROBOCODE_TELEMETRY_DIR:-$CONFIG_ROOT/battle-results/telemetry/live}"

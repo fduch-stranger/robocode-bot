@@ -4,6 +4,12 @@ from bot_utils.gun import GunConfig, GunSample, RollingKnnBuffer, VirtualGunSyst
 
 
 class GunStatsTest(unittest.TestCase):
+    def test_default_knn_memory_keeps_previous_duel_depth(self) -> None:
+        config = GunConfig()
+
+        self.assertGreaterEqual(config.max_samples_per_target, 900)
+        self.assertGreaterEqual(config.max_samples, config.max_samples_per_target)
+
     def test_rolling_knn_buffer_keeps_targets_isolated(self) -> None:
         buffer = RollingKnnBuffer(max_samples=5, max_samples_per_target=3)
 
