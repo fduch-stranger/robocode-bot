@@ -206,6 +206,9 @@ function renderMetrics() {
   const latest = bot?.latest;
   const lastFire = lastEvent(bot, "bullet.fired");
   const lastGunSwitch = lastEvent(bot, "gun.switch");
+  const lastAim = lastMatchingEvent(bot, (event) => event.fields?.gun_bearing != null || gunModeFromEvent(event));
+  const lastTarget = lastMatchingEvent(bot, (event) => event.fields?.target != null);
+  const lastDistance = lastMatchingEvent(bot, (event) => event.fields?.distance != null);
   const lastMovement = lastMatchingEvent(bot, (event) => event.event?.startsWith("movement.") || event.fields?.movement_mode);
   const lastThreat = lastEvent(bot, "enemy.fire_detected");
 
@@ -213,14 +216,14 @@ function renderMetrics() {
     ["Turn", latest?.turn],
     ["Energy", format(numberAt(latest, "state.energy"))],
     ["Position", latest ? `${format(numberAt(latest, "state.x"))}, ${format(numberAt(latest, "state.y"))}` : "-"],
-    ["Target", latest?.fields?.target ?? "-"],
-    ["Movement", lastMovement?.fields?.mode || lastMovement?.fields?.movement_mode || lastMovement?.event || "-"],
+    ["Target", lastTarget?.fields?.target ?? "-"],
+    ["Movement", movementModeFromEvent(lastMovement) || "-"],
     ["Evasion", latest?.fields?.evading ?? lastThreat?.fields?.evasion ?? "-"],
-    ["Gun", latest?.fields?.aim_mode || lastGunSwitch?.fields?.selected || "-"],
-    ["Gun Bearing", format(latest?.fields?.gun_bearing)],
+    ["Gun", gunModeFromEvent(lastAim) || gunModeFromEvent(lastFire) || lastGunSwitch?.fields?.selected || "-"],
+    ["Gun Bearing Error", format(lastAim?.fields?.gun_bearing)],
     ["Firepower", format(lastFire?.fields?.power)],
     ["Gun Confidence", format(lastFire?.fields?.gun_confidence)],
-    ["Distance", format(latest?.fields?.distance)],
+    ["Distance", format(lastDistance?.fields?.distance)],
     ["Last Event", latest?.event || "-"],
   ];
   for (const [label, value] of cards) {
@@ -274,7 +277,11 @@ function renderPerformance() {
     performanceCard("Collision Risk", `${stats.wallHits} wall hits`, `${stats.wallRiskHits} bullet hits near wall`),
     performanceCard("Target Control", `${stats.reacquires} reacquires`, `${stats.searchSamples} search samples`),
     performanceCard("Range", `avg ${format(stats.avgDistance)}`, `latest ${format(stats.lastDistance)}`),
-    performanceCard("Mode Churn", `${stats.gunSwitches} gun switches`, `${stats.movementSwitches} movement switches`),
+    performanceCard(
+      "Mode Churn",
+      `${stats.gunSwitches} gun switches`,
+      `${stats.gunInitialSelections} initial gun selections, ${stats.movementSwitches} movement switches`,
+    ),
     performanceTable("Gun Modes", stats.gunModeRows, ["mode", "shots", "hits", "damage"]),
     performanceTable("Movement Modes", stats.movementModeRows, ["mode", "samples"]),
   ];
@@ -335,6 +342,7 @@ function buildBotStats(bot) {
     scanDrops: 0,
     searchSamples: 0,
     gunSwitches: 0,
+    gunInitialSelections: 0,
     movementSwitches: 0,
     avgDistance: null,
     lastDistance: null,
@@ -391,7 +399,11 @@ function buildBotStats(bot) {
     } else if (event.event === "search") {
       stats.searchSamples += 1;
     } else if (event.event === "gun.switch") {
-      stats.gunSwitches += 1;
+      if (fields.previous == null || fields.previous === "") {
+        stats.gunInitialSelections += 1;
+      } else if (fields.selected && fields.previous !== fields.selected) {
+        stats.gunSwitches += 1;
+      }
     }
   }
 
@@ -467,6 +479,7 @@ function colorMapForModes(modes) {
 }
 
 function gunModeFromEvent(event) {
+  if (!event) return null;
   const fields = event.fields || {};
   if (fields.aim_mode) return fields.aim_mode;
   if (fields.gun_mode) return fields.gun_mode;
@@ -475,6 +488,7 @@ function gunModeFromEvent(event) {
 }
 
 function movementModeFromEvent(event) {
+  if (!event) return null;
   const fields = event.fields || {};
   if (fields.movement_mode || fields.mode) return fields.movement_mode || fields.mode;
   if (event.event === "movement.flatten") return "flatten";
