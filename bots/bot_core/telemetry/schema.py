@@ -113,8 +113,8 @@ EVENT_SPECS: dict[str, TelemetryEventSpec] = {
     ),
     "bullet.hit_bot": TelemetryEventSpec(
         "fire",
-        required_fields=("bullet_id", "power", "damage", "energy", "aim_mode"),
-        optional_fields=("victim", "target"),
+        required_fields=("bullet_id", "power", "damage", "energy"),
+        optional_fields=("victim", "target", "aim_mode"),
         aliases={"target": ("victim",)},
     ),
     "enemy.fire_detected": TelemetryEventSpec(

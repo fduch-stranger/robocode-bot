@@ -18,6 +18,8 @@ available at [robocode.dev](https://robocode.dev/).
 - Tracked architecture docs and local championship summaries so tuning choices
   are easier to review.
 
+![Telemetry viewer showing an all-bot run](docs/assets/telemetry-viewer.png)
+
 ## Project Map
 
 | Area | Purpose |
@@ -69,6 +71,7 @@ scripts/run-battle.sh --telemetry --rounds 1 bots/adaptive-prime bots/chase-lock
 | Set up the repo, package bots, run battles, use telemetry, run A/B experiments, use legacy bots | [Tooling](docs/tooling.md) |
 | Understand common bot behavior: radar, virtual guns, movement learning, fire gates, telemetry semantics | [Shared Bot Systems](docs/bot-shared-systems.md) |
 | Understand implementation structures: KNN buffers, waves, stats buffers, prediction data | [Bot Core Data Structures](docs/bot-core-data-structures.md) |
+| Inspect the generated telemetry event contract | [Telemetry Event Schema](docs/telemetry-schema.md) |
 | Inspect or tune a specific bot | [Bot Docs](docs/README.md#bot-docs) |
 | Browse all documentation | [Documentation Index](docs/README.md) |
 
@@ -93,6 +96,10 @@ All bots share helper code from `bots/bot_core`.
 | Validate telemetry JSONL files | [Tooling: Telemetry Audit](docs/tooling.md#telemetry-audit) |
 | Compare baseline and candidate bots | [Tooling: A/B Testing](docs/tooling.md#ab-testing) |
 | Run converted legacy bots as enemies | [Tooling: Legacy Bots](docs/tooling.md#legacy-bots) |
+
+## License
+
+Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE).
 
 ## Battle Outputs
 

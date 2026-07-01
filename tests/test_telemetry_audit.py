@@ -46,6 +46,45 @@ class TelemetryAuditTest(unittest.TestCase):
             issues,
         )
 
+    def test_attributes_bullet_hit_when_fired_event_appears_later(self) -> None:
+        issues = _audit(
+            [
+                {
+                    "bot": "adaptive-prime",
+                    "event": "bullet.hit_bot",
+                    "fields": {"bullet_id": 1, "power": 1.2, "damage": 4.0, "energy": 50.0},
+                    "file": "adaptive.jsonl",
+                    "line": 1,
+                },
+                {
+                    "bot": "adaptive-prime",
+                    "event": "bullet.fired",
+                    "fields": {"bullet_id": 1, "power": 1.2, "aim_mode": "linear"},
+                    "file": "adaptive.jsonl",
+                    "line": 2,
+                },
+            ],
+            [],
+        )
+
+        self.assertEqual([], issues)
+
+    def test_reports_unattributed_bullet_hit_without_hit_or_fired_mode(self) -> None:
+        issues = _audit(
+            [
+                {
+                    "bot": "adaptive-prime",
+                    "event": "bullet.hit_bot",
+                    "fields": {"bullet_id": 1, "power": 1.2, "damage": 4.0, "energy": 50.0},
+                    "file": "adaptive.jsonl",
+                    "line": 1,
+                }
+            ],
+            [],
+        )
+
+        self.assertEqual(["adaptive.jsonl:1 adaptive-prime bullet.hit_bot cannot be attributed to a gun mode"], issues)
+
     def test_reports_invalid_enemy_fire_evasion_label(self) -> None:
         issues = _audit(
             [

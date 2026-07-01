@@ -4,6 +4,8 @@ This document describes shared structures used by the bots in `bots/bot_core`.
 It is the place for implementation-level concepts that are reused across bots:
 target snapshots, virtual guns, waves, KNN buffers, rolling statistics,
 movement danger buffers, enemy fire prediction, and telemetry records.
+The generated event contract lives in
+[Telemetry Event Schema](telemetry-schema.md).
 
 The implementation is intentionally experimental. These structures are tuned for
 fast iteration and readable telemetry rather than maximum theoretical accuracy.

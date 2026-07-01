@@ -29,6 +29,15 @@ const modePalette = [
   "#9fb26a",
 ];
 
+const {
+  displayEnergy,
+  format,
+  gunModeFromEvent,
+  movementModeFromEvent,
+  normalizeEvent,
+  summarizeEvent,
+} = window.TelemetryView;
+
 document.getElementById("onlySelected").addEventListener("change", renderEvents);
 document.getElementById("showSamples").addEventListener("change", renderEvents);
 document.getElementById("resetTelemetry").addEventListener("click", resetTelemetry);
@@ -104,7 +113,7 @@ function render() {
   renderTabs();
   renderArena();
   renderMetrics();
-  renderChart(energyCtx, state.selected, (event) => numberAt(event, "state.energy"), 0, 120, "#69d391");
+  renderChart(energyCtx, state.selected, (event) => displayEnergy(numberAt(event, "state.energy")).value, 0, 120, "#69d391");
   renderChart(distanceCtx, state.selected, (event) => event.normalized?.distance, 0, null, "#f2bf62");
   renderPerformance();
   renderModeTimeline(gunTimelineCtx, state.selected, gunModeFromEvent);
@@ -168,7 +177,7 @@ function renderArena() {
 
     arenaCtx.fillStyle = "#e9eef2";
     arenaCtx.font = "12px -apple-system, BlinkMacSystemFont, sans-serif";
-    arenaCtx.fillText(`${bot.name} ${format(numberAt(event, "state.energy"))}`, px + 12, py - 12);
+    arenaCtx.fillText(`${bot.name} ${displayEnergy(numberAt(event, "state.energy")).label}`, px + 12, py - 12);
 
     const targetX = numberAt(event, "fields.predicted_x");
     const targetY = numberAt(event, "fields.predicted_y");
@@ -215,7 +224,7 @@ function renderMetrics() {
 
   const cards = [
     ["Turn", latest?.turn],
-    ["Energy", format(numberAt(latest, "state.energy"))],
+    ["Energy", displayEnergy(numberAt(latest, "state.energy")).label],
     ["Position", latest ? `${format(numberAt(latest, "state.x"))}, ${format(numberAt(latest, "state.y"))}` : "-"],
     ["Target", lastTarget?.normalized?.target ?? "-"],
     ["Movement", movementModeFromEvent(lastMovement) || "-"],
@@ -480,58 +489,6 @@ function colorMapForModes(modes) {
   return colors;
 }
 
-function gunModeFromEvent(event) {
-  if (!event) return null;
-  return event.normalized?.gunMode || null;
-}
-
-function movementModeFromEvent(event) {
-  if (!event) return null;
-  return event.normalized?.movementMode || null;
-}
-
-function normalizeEvent(event) {
-  const fields = event.fields || {};
-  const evasion = firstValue(fields.evasion);
-  const evading = fields.evading !== undefined && fields.evading !== null
-    ? fields.evading
-    : evasion != null ? String(evasion).startsWith("active_") : null;
-  const movementMode = firstValue(fields.movement_mode, fields.mode) || movementModeFromEventName(event.event);
-  const gunMode = firstValue(
-    fields.aim_mode,
-    fields.gun_mode,
-    event.event === "gun.switch" ? fields.selected : null,
-    event.event === "gun.wave_visit" ? fields.selected_gun : null,
-  );
-  return {
-    target: firstValue(fields.target, fields.bot_id, fields.victim, event.event === "target.select" ? fields.selected : null),
-    distance: numeric(firstValue(fields.distance)),
-    power: numeric(firstValue(fields.power, fields.firepower)),
-    damage: numeric(firstValue(fields.damage)),
-    bulletId: firstValue(fields.bullet_id),
-    aimMode: firstValue(fields.aim_mode, gunMode),
-    gunMode,
-    movementMode,
-    evasion,
-    evading,
-    wallRisk: Boolean(firstValue(fields.wall_risk, fields.near_wall)),
-    reason: firstValue(fields.reason, fields.hold_reason),
-    gunBearing: numeric(firstValue(fields.gun_bearing)),
-  };
-}
-
-function movementModeFromEventName(name) {
-  if (name === "movement.flatten") return "flatten";
-  if (name === "movement.flatten_shadow") return "flatten_shadow";
-  if (name === "movement.duel_flatten") return "duel_flatten";
-  if (name === "movement.minimum_risk") return "minimum_risk";
-  if (name === "movement.goto_surf") return "goto_surf";
-  if (name === "movement.duel_potential") return "duel_potential";
-  if (name === "wall.avoid") return "wall_avoid";
-  if (name === "separate") return "separate";
-  return null;
-}
-
 function renderEvents() {
   const onlySelected = document.getElementById("onlySelected").checked;
   const showSamples = document.getElementById("showSamples").checked;
@@ -547,7 +504,7 @@ function renderEvents() {
   for (const event of events.slice(0, 220)) {
     const row = document.createElement("div");
     row.className = "event";
-    const fields = summarizeFields(event.fields || {});
+    const fields = summarizeEvent(event);
     row.innerHTML = [
       `<span class="turn">t${escapeHtml(event.turn ?? "-")}</span>`,
       `<span class="bot">${escapeHtml(event.bot || "-")}</span>`,
@@ -556,17 +513,6 @@ function renderEvents() {
     ].join("");
     root.appendChild(row);
   }
-}
-
-function summarizeFields(fields) {
-  const keys = ["target", "distance", "movement_mode", "mode", "aim_mode", "selected", "power", "gun_bearing", "radar_mode", "evasion", "reason", "energy"];
-  const parts = [];
-  for (const key of keys) {
-    if (fields[key] !== undefined && fields[key] !== null) {
-      parts.push(`${key}=${JSON.stringify(fields[key])}`);
-    }
-  }
-  return parts.length ? parts.join(" ") : JSON.stringify(fields);
 }
 
 function lastEvent(bot, name) {
@@ -595,19 +541,6 @@ function maxValue(events, path, fallback) {
   return Math.max(fallback, ...events.map((event) => numberAt(event, path)).filter((value) => value != null));
 }
 
-function numeric(value) {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-function firstValue(...values) {
-  for (const value of values) {
-    if (value !== undefined && value !== null && value !== "") {
-      return value;
-    }
-  }
-  return null;
-}
-
 function increment(map, key, amount = 1) {
   map.set(key, (map.get(key) || 0) + amount);
 }
@@ -619,12 +552,6 @@ function entriesByCount(map, limit) {
 function percent(part, whole) {
   if (!whole) return "0%";
   return `${Math.round(part / whole * 100)}%`;
-}
-
-function format(value) {
-  if (value == null) return "-";
-  if (typeof value === "number") return Number.isInteger(value) ? String(value) : value.toFixed(1);
-  return String(value);
 }
 
 function escapeHtml(value) {

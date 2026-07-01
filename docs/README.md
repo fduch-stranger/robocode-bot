@@ -9,6 +9,7 @@ This is the navigation hub for the Robocode bot workspace.
 | Set up the repo, package bots, run battles, use telemetry, run A/B experiments | [Tooling](tooling.md) |
 | Understand common bot behavior: radar, virtual guns, movement learning, fire gates, telemetry | [Shared Bot Systems](bot-shared-systems.md) |
 | Understand implementation structures: KNN buffers, waves, stats buffers, prediction data | [Bot Core Data Structures](bot-core-data-structures.md) |
+| Inspect the generated telemetry event contract | [Telemetry Event Schema](telemetry-schema.md) |
 | Review latest local championship results | [Championship Results](championship-results.md) |
 | Tune or inspect a specific bot | [Bot Docs](#bot-docs) |
 
@@ -32,6 +33,12 @@ This is the navigation hub for the Robocode bot workspace.
   - A/B testing
   - battle series
   - legacy bots
+
+- [Telemetry Event Schema](telemetry-schema.md)
+  - canonical dashboard fields
+  - event categories
+  - required and optional fields
+  - analyzer aliases
 
 - [Championship Results](championship-results.md)
   - 1v1 round-robin ranking

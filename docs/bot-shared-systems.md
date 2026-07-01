@@ -209,7 +209,8 @@ The recorder and debug log sink use bounded background writers by default so
 file I/O does not block the bot loop; overflow is summarized with lifecycle
 events instead of delaying movement, radar, or gun decisions.
 
-Shared dashboard/analyzer semantics are defined in `bot_core.telemetry.schema`.
+Shared dashboard/analyzer semantics are defined in `bot_core.telemetry.schema`
+and documented in [Telemetry Event Schema](telemetry-schema.md).
 The JSONL envelope remains stable, and bot-specific extra fields are allowed,
 but common fields should keep the same meaning across bots:
 
@@ -228,10 +229,11 @@ but common fields should keep the same meaning across bots:
 - `reason`
 
 The telemetry viewer normalizes raw event fields into these dashboard concepts
-before computing cards, charts, and performance summaries. The raw fields remain
-visible in the event list for debugging. This allows Circle/Sweep to keep their
-simpler track schema while Adaptive/Chase keep richer target and movement
-context without breaking shared analyzers.
+before computing cards, charts, and performance summaries. The decision stream
+shows compact summaries for common lifecycle and decision events; the raw JSONL
+files and event API remain the source for deeper debugging. This allows
+Circle/Sweep to keep their simpler track schema while Adaptive/Chase keep richer
+target and movement context without breaking shared analyzers.
 
 See [Tooling: Telemetry Viewer](tooling.md#telemetry-viewer) for launch,
 reset, audit, and stop commands.

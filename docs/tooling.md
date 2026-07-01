@@ -280,12 +280,22 @@ The audit validates:
 Use it after changing telemetry fields, dashboard aggregation, or bot event
 logging.
 
-The browser viewer keeps raw JSONL fields available in the event list, but its
-cards, charts, and performance summaries use normalized dashboard semantics
-derived from the raw event. This keeps the unified viewer consistent when bots
-emit different extra fields around the same concept.
+The browser viewer keeps raw JSONL fields available through the event API and
+source files. Its decision stream uses readable event summaries, while cards,
+charts, and performance summaries use normalized dashboard semantics derived
+from the raw event. This keeps the unified viewer consistent when bots emit
+different extra fields around the same concept.
 
-After a telemetry refactor, a useful end-to-end check is:
+For an end-to-end telemetry health check across all local bots, run:
+
+```sh
+scripts/verify-telemetry.sh --rounds 3
+```
+
+The script runs a telemetry battle, audits the JSONL files, and checks the
+viewer health endpoint.
+
+The equivalent manual commands are:
 
 ```sh
 scripts/run-battle.sh --telemetry --rounds 3 bots/adaptive-prime bots/chase-lock bots/circle-strafer bots/sweep-pressure
@@ -294,6 +304,14 @@ tools/telemetry_audit.py battle-results/runs/<run>/telemetry \
   --require-bot chase-lock \
   --require-bot circle-strafer \
   --require-bot sweep-pressure
+```
+
+The event contract is generated from code in
+[Telemetry Event Schema](telemetry-schema.md). Regenerate it after changing
+`bot_core.telemetry.schema`:
+
+```sh
+tools/telemetry_schema_docs.py --output docs/telemetry-schema.md
 ```
 
 ## A/B Testing

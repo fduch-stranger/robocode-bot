@@ -71,6 +71,16 @@ def _audit(events: list[dict[str, Any]], required_bots: list[str]) -> list[str]:
         raw_fields = event.get("fields") if isinstance(event.get("fields"), dict) else {}
         fields = normalize_fields(name, raw_fields)
         bot = str(event.get("bot") or "?")
+        if name == "bullet.fired" and fields.get("bullet_id") is not None:
+            aim_mode = fields.get("aim_mode")
+            if aim_mode not in (None, ""):
+                shots_by_bot[bot][str(fields["bullet_id"])] = str(aim_mode)
+
+    for event in events:
+        name = str(event.get("event") or "")
+        raw_fields = event.get("fields") if isinstance(event.get("fields"), dict) else {}
+        fields = normalize_fields(name, raw_fields)
+        bot = str(event.get("bot") or "?")
         location = f"{event.get('file')}:{event.get('line')}"
 
         if name == "telemetry.decode_error":
@@ -82,11 +92,6 @@ def _audit(events: list[dict[str, Any]], required_bots: list[str]) -> list[str]:
 
         if name and event_spec(name) is None:
             continue
-
-        if name == "bullet.fired" and fields.get("bullet_id") is not None:
-            aim_mode = fields.get("aim_mode")
-            if aim_mode not in (None, ""):
-                shots_by_bot[bot][str(fields["bullet_id"])] = str(aim_mode)
 
         if name == "bullet.hit_bot" and fields.get("bullet_id") is not None:
             hit_mode = fields.get("aim_mode")
