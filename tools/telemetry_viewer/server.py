@@ -33,6 +33,13 @@ class TelemetryHandler(SimpleHTTPRequestHandler):
             return
         super().do_GET()
 
+    def do_POST(self) -> None:
+        parsed = urlparse(self.path)
+        if parsed.path == "/api/reset":
+            self._write_json(self._reset())
+            return
+        self.send_error(404)
+
     def log_message(self, format: str, *args: object) -> None:
         return
 
@@ -66,6 +73,19 @@ class TelemetryHandler(SimpleHTTPRequestHandler):
             return sorted(path.name for path in self.telemetry_dir.glob("*.jsonl") if path.is_file())
         except OSError:
             return []
+
+    def _reset(self) -> dict[str, object]:
+        removed: list[str] = []
+        errors: list[str] = []
+        for path in self.telemetry_dir.glob("*.jsonl"):
+            if not path.is_file():
+                continue
+            try:
+                path.unlink()
+                removed.append(path.name)
+            except OSError as error:
+                errors.append(f"{path.name}: {error}")
+        return {"ok": not errors, "removed": removed, "errors": errors}
 
     def _write_json(self, payload: dict[str, object]) -> None:
         body = json.dumps(payload, separators=(",", ":")).encode("utf-8")

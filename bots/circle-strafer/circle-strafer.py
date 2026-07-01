@@ -599,7 +599,7 @@ class CircleStrafer(Bot):
             collision_escape_until=self._collision_escape_until_turn,
         )
 
-    def on_bullet_hit_bot(self, event: BulletHitBotEvent) -> None:
+    def on_bullet_hit(self, event: BulletHitBotEvent) -> None:
         self._record_enemy_energy_correction(event.victim_id, event.damage, "our_bullet_damage")
         self._log(
             "bullet.hit_bot",

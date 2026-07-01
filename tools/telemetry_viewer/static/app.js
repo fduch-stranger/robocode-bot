@@ -29,9 +29,32 @@ const modePalette = [
 
 document.getElementById("onlySelected").addEventListener("change", renderEvents);
 document.getElementById("showSamples").addEventListener("change", renderEvents);
+document.getElementById("resetTelemetry").addEventListener("click", resetTelemetry);
 
 poll();
 setInterval(poll, 1000);
+
+async function resetTelemetry() {
+  if (!window.confirm("Reset telemetry stats for this viewer? Current JSONL event files will be deleted.")) {
+    return;
+  }
+  try {
+    const response = await fetch("/api/reset", { method: "POST", cache: "no-store" });
+    const payload = await response.json();
+    if (!payload.ok) {
+      throw new Error((payload.errors || []).join("; ") || "reset failed");
+    }
+    state.events = [];
+    state.bots.clear();
+    state.selected = null;
+    document.getElementById("source").textContent = `reset ${payload.removed?.length || 0} telemetry files`;
+    document.getElementById("eventCount").textContent = "0 events";
+    render();
+    setTimeout(poll, 200);
+  } catch (error) {
+    document.getElementById("source").textContent = `telemetry reset failed: ${error}`;
+  }
+}
 
 async function poll() {
   try {
@@ -433,13 +456,17 @@ function colorMapForModes(modes) {
 
 function gunModeFromEvent(event) {
   const fields = event.fields || {};
-  return fields.aim_mode || fields.selected || fields.gun_mode || null;
+  if (fields.aim_mode) return fields.aim_mode;
+  if (fields.gun_mode) return fields.gun_mode;
+  if (event.event === "gun.switch" && fields.selected) return fields.selected;
+  return null;
 }
 
 function movementModeFromEvent(event) {
   const fields = event.fields || {};
   if (fields.movement_mode || fields.mode) return fields.movement_mode || fields.mode;
-  if (event.event?.startsWith("movement.")) return event.event.replace("movement.", "");
+  if (event.event === "movement.flatten") return "flatten";
+  if (event.event === "movement.duel_flatten") return "duel_flatten";
   return null;
 }
 
