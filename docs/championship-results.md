@@ -55,19 +55,10 @@ tooling preset.
 
 | Boss | Adaptive Score | Boss Score | Adaptive 1sts | Boss 1sts | Result |
 | --- | ---: | ---: | ---: | ---: | --- |
+| DrussGT 3.1.12 | 2618 | 917 | 15 | 9 | Adaptive win |
+| Saguaro 1.0 | 1789 | 1072 | 10 | 14 | Adaptive score win, first-place loss |
 | BasicGFSurfer 1.02 | 2360 | 1418 | 16 | 8 | Adaptive win |
 | Diamond 1.8.28 | 2225 | 1689 | 12 | 12 | Adaptive score win |
-
-## Easy Legacy Checks
-
-These converted legacy bots were tested but removed from the active boss preset
-because Adaptive Prime won too easily.
-
-| Bot | Adaptive Score | Bot Score | Adaptive 1sts | Bot 1sts | Result |
-| --- | ---: | ---: | ---: | ---: | --- |
-| DiamondStealer 5 | 4128 | 186 | 23 | 1 | Too easy |
-| Hawkwing 0.4.1 | 2840 | 352 | 24 | 0 | Too easy |
-| HawkOnFire 0.1 | 2868 | 510 | 23 | 1 | Too easy |
 
 ## Artifacts
 
@@ -75,10 +66,9 @@ Generated battle artifacts:
 
 - `battle-results/tournaments/champion-20260701-172750/summary.json`
 - `battle-results/series/local-melee-champion-20260701/summary.json`
-- `battle-results/series/adaptive-vs-diamond-stealer-20260701/summary.json`
-- `battle-results/series/adaptive-vs-hawkwing-20260701/summary.json`
+- `battle-results/series/adaptive-vs-drussgt-20260701/summary.json`
+- `battle-results/series/adaptive-vs-saguaro-20260701/summary.json`
 - `battle-results/series/adaptive-vs-basic-gf-surfer-20260701/summary.json`
-- `battle-results/series/adaptive-vs-hawk-on-fire-20260701/summary.json`
 - `battle-results/series/adaptive-vs-diamond-20260701/summary.json`
 
 `battle-results/` is ignored by git, so this document is the tracked summary of

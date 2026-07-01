@@ -55,11 +55,17 @@ legacy_bot_dir() {
   canonical="$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')"
 
   case "$canonical" in
+    drussgt|jk.mega.drussgt|jk.mega.drussgt_3.1.12)
+      candidate="$legacy_root/jk.mega.DrussGT_3.1.12"
+      ;;
     basic-gf-surfer|basicgfsurfer|wiki.basicgfsurfer|wiki.basicgfsurfer_1.02)
       candidate="$legacy_root/wiki.BasicGFSurfer_1.02"
       ;;
     diamond|voidious.diamond|voidious.diamond_1.8.28)
       candidate="$legacy_root/voidious.Diamond_1.8.28"
+      ;;
+    saguaro|oog.mega.saguaro|oog.mega.saguaro.saguaro|oog.mega.saguaro.saguaro_1.0)
+      candidate="$legacy_root/oog.mega.saguaro.Saguaro_1.0"
       ;;
     *)
       candidate="$legacy_root/$name"
@@ -82,11 +88,17 @@ list_legacy_bots() {
   while IFS= read -r bot; do
     name="$(basename "$bot")"
     case "$name" in
+      jk.mega.DrussGT_3.1.12)
+        printf '%s\t%s\n' "drussgt" "$bot"
+        ;;
       wiki.BasicGFSurfer_1.02)
         printf '%s\t%s\n' "basic-gf-surfer" "$bot"
         ;;
       voidious.Diamond_1.8.28)
         printf '%s\t%s\n' "diamond" "$bot"
+        ;;
+      oog.mega.saguaro.Saguaro_1.0)
+        printf '%s\t%s\n' "saguaro" "$bot"
         ;;
       *)
         printf '%s\t%s\n' "$name" "$bot"
