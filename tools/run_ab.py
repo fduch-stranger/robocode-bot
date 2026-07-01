@@ -88,7 +88,6 @@ PRESETS: dict[str, dict[str, Any]] = {
         "targetBot": TARGET_BOT,
         "matchups": [
             {"name": "adaptive-vs-basic-gf-surfer", "bots": ["bots/adaptive-prime", "legacy:basic-gf-surfer"]},
-            {"name": "adaptive-vs-hawk-on-fire", "bots": ["bots/adaptive-prime", "legacy:hawk-on-fire"]},
             {"name": "adaptive-vs-diamond", "bots": ["bots/adaptive-prime", "legacy:diamond"]},
         ],
     },

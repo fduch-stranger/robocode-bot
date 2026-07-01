@@ -297,7 +297,7 @@ not a true before/after comparison.
 | `circle-1v1-core` | Circle Strafer | vs Adaptive, Chase, Sweep |
 | `sweep-1v1-core` | Sweep Pressure | vs Adaptive, Chase, Circle |
 | `adaptive-melee-core` | Adaptive Prime | four local bots |
-| `adaptive-1v1-boss` | Adaptive Prime | BasicGFSurfer, HawkOnFire, Diamond |
+| `adaptive-1v1-boss` | Adaptive Prime | BasicGFSurfer, Diamond |
 
 Default preset settings are 24 rounds and 3 repeats unless overridden.
 
@@ -370,7 +370,6 @@ Configured legacy bots can be added to CLI battles:
 ```sh
 scripts/run-battle.sh --list-legacy
 scripts/run-battle.sh --rounds 10 bots/adaptive-prime --legacy basic-gf-surfer
-scripts/run-battle.sh --rounds 10 bots/adaptive-prime --legacy hawk-on-fire
 scripts/run-battle.sh --rounds 10 bots/adaptive-prime --legacy diamond
 scripts/run-battle.sh bots/adaptive-prime legacy:wiki.BasicGFSurfer_1.02
 scripts/run-battle.sh --legacy all
