@@ -2,6 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT_DIR/scripts/lib/env.sh"
+load_repo_env "$ROOT_DIR"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 
 cd "$ROOT_DIR"

@@ -2,7 +2,10 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT_DIR/scripts/lib/env.sh"
+load_repo_env "$ROOT_DIR"
 source "$ROOT_DIR/scripts/lib/bots.sh"
+RUNTIME_PYTHON_BIN="$(robocode_python_bin "$ROOT_DIR")"
 MVN_REPO="$ROOT_DIR/.m2/repository"
 run_id="$(date +%Y%m%d-%H%M%S)"
 run_dir="$ROOT_DIR/battle-results/runs/$run_id"
@@ -12,6 +15,9 @@ runner_log_file=""
 process_log_file=""
 debug=0
 debug_log_dir=""
+telemetry=0
+telemetry_dir=""
+telemetry_open=0
 record=0
 record_file=""
 intent_diagnostics=0
@@ -22,8 +28,9 @@ legacy_inputs=()
 
 cd "$ROOT_DIR"
 
-if [[ ! -x .venv/bin/python ]]; then
+if [[ ! -x .venv/bin/python && -z "${ROBOCODE_PYTHON_BIN:-}" ]]; then
   scripts/setup.sh
+  RUNTIME_PYTHON_BIN="$(robocode_python_bin "$ROOT_DIR")"
 fi
 
 while [[ $# -gt 0 ]]; do
@@ -80,6 +87,24 @@ while [[ $# -gt 0 ]]; do
       debug_log_dir="$2"
       shift 2
       ;;
+    --telemetry)
+      telemetry=1
+      shift
+      ;;
+    --telemetry-dir)
+      if [[ $# -lt 2 ]]; then
+        echo "--telemetry-dir requires a directory path." >&2
+        exit 1
+      fi
+      telemetry=1
+      telemetry_dir="$2"
+      shift 2
+      ;;
+    --telemetry-open)
+      telemetry=1
+      telemetry_open=1
+      shift
+      ;;
     --record)
       record=1
       shift
@@ -135,7 +160,7 @@ while [[ $# -gt 0 ]]; do
       exit 0
       ;;
     --help|-h)
-      echo "Usage: scripts/run-battle.sh [--rounds N] [--run-dir DIR] [--results FILE] [--runner-log FILE] [--process-log FILE] [--debug] [--debug-log-dir DIR] [--record] [--record-file DIR] [--intent-diagnostics] [--intents FILE] [--tick-sample N] [--legacy NAME|all] [--legacy-root DIR] [--list-legacy] [bot-dir...]"
+      echo "Usage: scripts/run-battle.sh [--rounds N] [--run-dir DIR] [--results FILE] [--runner-log FILE] [--process-log FILE] [--debug] [--debug-log-dir DIR] [--telemetry] [--telemetry-dir DIR] [--telemetry-open] [--record] [--record-file DIR] [--intent-diagnostics] [--intents FILE] [--tick-sample N] [--legacy NAME|all] [--legacy-root DIR] [--list-legacy] [bot-dir...]"
       exit 0
       ;;
     --)
@@ -212,6 +237,9 @@ fi
 if [[ "$debug" -eq 1 && -z "$debug_log_dir" ]]; then
   debug_log_dir="$run_dir/debug"
 fi
+if [[ "$telemetry" -eq 1 && -z "$telemetry_dir" ]]; then
+  telemetry_dir="$run_dir/telemetry"
+fi
 
 if [[ "$results_file" != /* ]]; then
   results_file="$ROOT_DIR/$results_file"
@@ -224,6 +252,9 @@ if [[ "$process_log_file" != /* ]]; then
 fi
 if [[ "$debug_log_dir" != /* ]]; then
   debug_log_dir="$ROOT_DIR/$debug_log_dir"
+fi
+if [[ -n "$telemetry_dir" && "$telemetry_dir" != /* ]]; then
+  telemetry_dir="$ROOT_DIR/$telemetry_dir"
 fi
 if [[ -n "$record_file" && "$record_file" != /* ]]; then
   record_file="$ROOT_DIR/$record_file"
@@ -250,6 +281,36 @@ if [[ "$debug" -eq 1 ]]; then
   mkdir -p "$debug_log_dir"
   export ROBOCODE_DEBUG=1
   export ROBOCODE_LOG_DIR="$debug_log_dir"
+fi
+if [[ "$telemetry" -eq 1 ]]; then
+  mkdir -p "$telemetry_dir"
+  export ROBOCODE_TELEMETRY=1
+  export ROBOCODE_TELEMETRY_ROOT="$ROOT_DIR"
+  export ROBOCODE_TELEMETRY_DIR="$telemetry_dir"
+  export ROBOCODE_TELEMETRY_AUTOSTART=0
+  export ROBOCODE_TELEMETRY_PORT="${ROBOCODE_TELEMETRY_PORT:-8765}"
+  viewer_args=(--dir "$telemetry_dir" --host "${ROBOCODE_TELEMETRY_HOST:-127.0.0.1}" --port "$ROBOCODE_TELEMETRY_PORT" --fallback-port)
+  if [[ "$telemetry_open" -eq 1 ]]; then
+    viewer_args+=(--open)
+  fi
+  echo "Telemetry dir: $telemetry_dir"
+  "$RUNTIME_PYTHON_BIN" "$ROOT_DIR/tools/telemetry_viewer/server.py" \
+    "${viewer_args[@]}" \
+    --daemon \
+    --pid-file "$telemetry_dir/telemetry-viewer.lock" \
+    --log-file "$telemetry_dir/telemetry-viewer.log"
+  for _ in {1..30}; do
+    if [[ -f "$telemetry_dir/telemetry-viewer.url" ]]; then
+      break
+    fi
+    sleep 0.1
+  done
+  if [[ -f "$telemetry_dir/telemetry-viewer.url" ]]; then
+    printf 'Telemetry viewer: '
+    cat "$telemetry_dir/telemetry-viewer.url"
+  else
+    echo "Telemetry viewer: starting; see $telemetry_dir/telemetry-viewer.log"
+  fi
 fi
 
 mvn \

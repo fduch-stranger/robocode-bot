@@ -1,10 +1,12 @@
 .venv/
+.env
 .m2/
 .cache/
 dist/
 battle-results/
 regression-investigation/
 target/
+.telemetry-enabled
 *.pyc
 __pycache__/
 *.battle.gz

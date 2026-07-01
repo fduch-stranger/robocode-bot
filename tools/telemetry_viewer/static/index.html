@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Robocode Bot Telemetry</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>Robocode Bot Telemetry</h1>
+      <p id="source">Waiting for telemetry...</p>
+    </div>
+    <div class="status">
+      <span id="eventCount">0 events</span>
+      <span id="lastUpdate">never</span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="arenaPanel">
+      <div class="panelHeader">
+        <h2>Arena</h2>
+        <div id="botTabs" class="tabs"></div>
+      </div>
+      <canvas id="arena" width="920" height="620"></canvas>
+    </section>
+
+    <section class="sidePanel">
+      <div class="panelHeader">
+        <h2>Selected Bot</h2>
+        <span id="selectedBot" class="pill">none</span>
+      </div>
+      <div id="metrics" class="metrics"></div>
+      <div class="chartBlock">
+        <h3>Energy</h3>
+        <canvas id="energyChart" width="520" height="120"></canvas>
+      </div>
+      <div class="chartBlock">
+        <h3>Target Distance</h3>
+        <canvas id="distanceChart" width="520" height="120"></canvas>
+      </div>
+    </section>
+
+    <section class="widePanel analysisPanel">
+      <div class="panelHeader">
+        <h2>Performance</h2>
+        <span class="pill">derived from events</span>
+      </div>
+      <div id="performanceGrid" class="performanceGrid"></div>
+      <div class="timelineGrid">
+        <div class="chartBlock">
+          <h3>Gun Mode Timeline</h3>
+          <canvas id="gunTimeline" width="900" height="96"></canvas>
+        </div>
+        <div class="chartBlock">
+          <h3>Movement Timeline</h3>
+          <canvas id="movementTimeline" width="900" height="96"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <section class="widePanel">
+      <div class="panelHeader">
+        <h2>Decision Stream</h2>
+        <div class="filters">
+          <label><input id="onlySelected" type="checkbox" checked> selected</label>
+          <label><input id="showSamples" type="checkbox" checked> samples</label>
+        </div>
+      </div>
+      <div id="events" class="events"></div>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

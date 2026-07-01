@@ -1,75 +1,204 @@
-# Robocode Bot Test Workspace
+# Robocode Bot Workspace
 
-This workspace contains Robocode Tank Royale Python bots:
+This repository contains Python bots for Robocode Tank Royale, plus tooling for
+packaging, running battles, logging decisions, and viewing live bot telemetry.
 
-- `bots/sweep-pressure`: aggressive sweeping pressure bot
-- `bots/circle-strafer`: evasive circle-strafer bot
-- `bots/chase-lock`: radar/gun target-locking chase bot
-- `bots/adaptive-prime`: composite adaptive bot using the strongest shared targeting and movement heuristics
+## Bots
 
-## Setup
+- `bots/adaptive-prime`: strongest composite bot with adaptive movement and virtual-gun targeting
+- `bots/chase-lock`: target-locking chase bot
+- `bots/circle-strafer`: evasive circle-strafing bot
+- `bots/sweep-pressure`: pressure bot with sweeping movement
+
+All bots share helper code from `bots/bot_utils`.
+
+## Quick Start
+
+Create your local configuration file:
+
+```sh
+cp .env.example .env
+```
+
+Edit `.env` if your Python executable, telemetry port, or legacy bot directory
+is different from the defaults. Use `PYTHON_BIN` for creating `.venv`; use
+`ROBOCODE_PYTHON_BIN` only when you want bot launchers and telemetry tooling to
+run with a specific Python instead of the repo `.venv`. The `.env` file is
+private and ignored by git.
+
+Install dependencies:
 
 ```sh
 scripts/setup.sh
 ```
 
-## Package Bots
+Package all bots:
 
 ```sh
 scripts/package.sh
 ```
 
-Archives are written to `dist/`. Each archive includes the bot directory plus
-the shared `bot_utils` helper package used by the Python bots.
-
-## Run a Battle
+Run a default battle with every local bot:
 
 ```sh
 scripts/run-battle.sh
 ```
 
-The battle runner starts an embedded Robocode Tank Royale server, boots the bot
-directories, runs three rounds, and prints the results. Two bots run as `1v1`;
-three or more bots run as `melee`.
+The packaged bot archives are written to `dist/`.
 
-With no arguments, the script runs every bot directory found under `bots/` that
-contains a bot JSON manifest. Helper packages such as `bot_utils` are ignored.
-Each run writes artifacts under `battle-results/runs/<timestamp>/`:
+## Using The Robocode GUI
+
+Package first:
+
+```sh
+scripts/package.sh
+```
+
+Then add the bots from `dist/` in the Robocode Tank Royale GUI. Each zip
+contains one bot plus the shared `bot_utils` package it needs.
+
+Packaged bots do not require this repository's `.venv`. Their launchers use
+`ROBOCODE_PYTHON_BIN` when it is set, otherwise they use `.venv/bin/python` if
+one exists next to the package, and finally fall back to `python3`.
+
+If you want live internals while using the GUI, start telemetry before launching
+the battle:
+
+```sh
+scripts/telemetry-ui.sh start
+```
+
+This opens a browser dashboard and enables telemetry for GUI-launched bots.
+When you are done:
+
+```sh
+scripts/telemetry-ui.sh disable
+```
+
+## Running Battles From The CLI
+
+Run two bots as a 1v1 battle:
+
+```sh
+scripts/run-battle.sh bots/adaptive-prime bots/chase-lock
+```
+
+Run three or more bots as a melee battle:
+
+```sh
+scripts/run-battle.sh bots/adaptive-prime bots/chase-lock bots/circle-strafer
+```
+
+Use more rounds for less noisy results:
+
+```sh
+scripts/run-battle.sh --rounds 30 bots/adaptive-prime bots/chase-lock
+```
+
+Use a fixed output directory:
+
+```sh
+scripts/run-battle.sh --run-dir battle-results/runs/manual-1 bots/adaptive-prime bots/chase-lock
+```
+
+With no bot arguments, `scripts/run-battle.sh` discovers every bot directory
+under `bots/` that contains a bot JSON manifest. Helper directories such as
+`bots/bot_utils` are ignored.
+
+## Battle Artifacts
+
+Each run writes files under `battle-results/runs/<timestamp>/`, unless you pass
+`--run-dir`.
 
 - `results.json`: structured final scores
-- `runner.log`: runner lifecycle, round, boot, and optional tick-sample events
+- `runner.log`: runner lifecycle, round, boot, and optional sampled tick events
 - `process.log`: raw Robocode runner, server, and booter output
 - `debug/`: bot decision logs when `--debug` is enabled
-- `recordings/game-*.battle.gz`: battle recording when `--record` is enabled
+- `telemetry/`: live telemetry JSONL files when `--telemetry` is enabled
+- `recordings/game-*.battle.gz`: battle recordings when `--record` is enabled
 - `intents.jsonl`: captured bot intents when `--intent-diagnostics` is enabled
 
-You can pass explicit bot directories to test a different pairing:
+## Debug Logs
+
+Enable text decision logs:
 
 ```sh
-scripts/run-battle.sh bots/chase-lock bots/circle-strafer
+scripts/run-battle.sh --debug bots/adaptive-prime bots/chase-lock
 ```
 
-Or pass three or more bot directories for a melee battle:
+Debug logs are useful when you want grep-friendly evidence about target
+selection, radar mode, gun mode, movement mode, fire decisions, and hit events.
+
+## Live Telemetry Dashboard
+
+Enable the browser dashboard during a CLI battle:
 
 ```sh
-scripts/run-battle.sh bots/chase-lock bots/sweep-pressure bots/circle-strafer
+scripts/run-battle.sh --telemetry bots/adaptive-prime bots/chase-lock
 ```
 
-Converted legacy bots can be added as external enemies. By default the tooling
-looks in `../selected-legacy-bots-copy`; override that with `--legacy-root` or
-`ROBOCODE_LEGACY_BOTS_ROOT` when needed.
+Open the viewer automatically:
 
 ```sh
-scripts/run-battle.sh --rounds 10 bots/chase-lock --legacy basic-gf-surfer
+scripts/run-battle.sh --telemetry --telemetry-open bots/adaptive-prime bots/chase-lock
 ```
 
-You can also pass a legacy bot as an explicit bot argument:
+The dashboard shows:
+
+- bot position, energy, heading, gun direction, and radar direction
+- selected target and target distance
+- movement mode and evasion state
+- active gun mode, firepower, and confidence
+- derived gun accuracy, damage trade, energy efficiency, and average range
+- enemy fire response, collision risk, target reacquisition, and mode churn
+- gun-mode and movement-mode timelines for spotting stale decisions or tunneling
+- recent hits, fires, gun switches, movement decisions, and wave visits
+
+Telemetry is optional. When it is disabled, bots keep their normal behavior.
+
+Stop a background viewer for a run directory:
 
 ```sh
-scripts/run-battle.sh bots/chase-lock legacy:wiki.BasicGFSurfer_1.02
+scripts/telemetry-ui.sh stop --dir battle-results/runs/<run>/telemetry
 ```
 
-List available converted legacy bot directories:
+List running or stale telemetry viewers:
+
+```sh
+scripts/telemetry-ui.sh list
+```
+
+Stop every discovered telemetry viewer:
+
+```sh
+scripts/telemetry-ui.sh stop-all
+```
+
+Check GUI telemetry status:
+
+```sh
+scripts/telemetry-ui.sh status
+```
+
+## Legacy Bot Enemies
+
+Converted legacy bots can be used as external enemies. By default, tooling looks
+in `../selected-legacy-bots-copy`. Override that with `--legacy-root` or
+`ROBOCODE_LEGACY_BOTS_ROOT` in `.env`.
+
+Run against BasicGFSurfer:
+
+```sh
+scripts/run-battle.sh --rounds 10 bots/adaptive-prime --legacy basic-gf-surfer
+```
+
+Use a legacy bot as an explicit bot argument:
+
+```sh
+scripts/run-battle.sh bots/adaptive-prime legacy:wiki.BasicGFSurfer_1.02
+```
+
+List available converted legacy bots:
 
 ```sh
 scripts/run-battle.sh --list-legacy
@@ -81,35 +210,22 @@ Add every converted legacy bot from the legacy root:
 scripts/run-battle.sh --legacy all
 ```
 
-Use more rounds for less noisy comparisons:
-
-```sh
-scripts/run-battle.sh --rounds 30
-```
+## Advanced Runner Options
 
 Write structured results to a specific file:
 
 ```sh
-scripts/run-battle.sh --rounds 30 --results battle-results/chase-vs-circle.json bots/chase-lock bots/circle-strafer
+scripts/run-battle.sh --rounds 30 --results battle-results/adaptive-vs-chase.json bots/adaptive-prime bots/chase-lock
 ```
 
-Use a stable run directory for all artifacts:
-
-```sh
-scripts/run-battle.sh --run-dir battle-results/runs/manual-1
-```
-
-Enable bot decision logs:
-
-```sh
-scripts/run-battle.sh --debug bots/chase-lock bots/circle-strafer
-```
-
-Debug logs are written under the run directory by default.
-All current bots write debug logs when `--debug` is enabled.
-
-Enable runner-side battle recording, intent diagnostics, and sampled tick logs:
+Enable battle recording, intent diagnostics, and sampled tick logs:
 
 ```sh
 scripts/run-battle.sh --record --intent-diagnostics --tick-sample 25
+```
+
+Use `--help` to see every option:
+
+```sh
+scripts/run-battle.sh --help
 ```
