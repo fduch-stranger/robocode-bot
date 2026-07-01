@@ -43,6 +43,7 @@ class MovementFlatteningConfig:
     goto_travel_weight: float = 0.0008
     goto_wave_kind_expected_multiplier: float = 0.85
     goto_use_expected_waves: bool = False
+    goto_expected_wave_min_confidence: float = 0.58
 
 
 @dataclass(frozen=True)
@@ -95,6 +96,7 @@ class MovementWave:
     fired_turn: int
     distance_bucket: int
     kind: str = "confirmed"
+    expected_confidence: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -392,6 +394,7 @@ class MovementFlattener:
         target: TargetSnapshot,
         fire_power: float,
         wave_kind: str = "confirmed",
+        expected_confidence: float = 1.0,
     ) -> MovementWave | None:
         distance = math.hypot(bot.x - target.x, bot.y - target.y)
         if not (self.config.min_distance <= distance <= self.config.max_distance):
@@ -440,6 +443,7 @@ class MovementFlattener:
             fired_turn=bot.turn_number,
             distance_bucket=self._distance_bucket(distance),
             kind=wave_kind,
+            expected_confidence=clamp(expected_confidence, 0.0, 1.0),
         )
         self._waves.append(wave)
         return wave
@@ -599,8 +603,11 @@ class MovementFlattener:
         wave = self._surf_wave(bot, target.bot_id)
         if wave is None:
             return None
-        if wave.kind == "expected" and not self.config.goto_use_expected_waves:
-            return None
+        if wave.kind == "expected":
+            if not self.config.goto_use_expected_waves:
+                return None
+            if wave.expected_confidence < self.config.goto_expected_wave_min_confidence:
+                return None
 
         candidates = self._go_to_candidate_points(bot, target, field_margin)
         best: GoToSurfDecision | None = None

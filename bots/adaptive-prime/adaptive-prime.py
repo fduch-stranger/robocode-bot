@@ -12,7 +12,13 @@ from robocode_tank_royale.bot_api.events import (
 )
 
 from bot_utils.debug import DebugLogger, FiredBulletTracker
-from bot_utils.energy import EnergyDropConfig, GunHeatTracker, classify_energy_drop
+from bot_utils.energy import (
+    EnemyFirePowerPrediction,
+    EnemyFirePowerPredictor,
+    EnergyDropConfig,
+    GunHeatTracker,
+    classify_energy_drop,
+)
 from bot_utils.gun import GunConfig, TargetMotion, VirtualGunSystem
 from bot_utils.movement import (
     FlatteningDecision,
@@ -143,10 +149,18 @@ class AdaptivePrime(Bot):
         self._last_velocity_change_turn: dict[int, int] = {}
         self._melee_round = False
         self._enemy_gun_heat = GunHeatTracker()
+        self._enemy_fire_power = EnemyFirePowerPredictor()
+        self._last_enemy_power_prediction: dict[int, EnemyFirePowerPrediction] = {}
         self._gun = VirtualGunSystem(
             GunConfig(selectable_modes=frozenset({"linear", "traditional_gf", "dynamic_cluster", "anti_surfer"}))
         )
-        self._movement = MovementFlattener(MovementFlatteningConfig(bullet_shadow_enabled=True))
+        self._movement = MovementFlattener(
+            MovementFlatteningConfig(
+                bullet_shadow_enabled=True,
+                goto_use_expected_waves=True,
+                goto_expected_wave_min_confidence=0.62,
+            )
+        )
         self._minimum_risk = MinimumRiskMovement(
             MinimumRiskConfig(
                 candidate_distances=(220.0, 320.0, 430.0, 560.0),
@@ -261,6 +275,15 @@ class AdaptivePrime(Bot):
         self._recent_threat_turn = self.turn_number
         self._last_enemy_fire_turn = self.turn_number
         self._last_enemy_fire_power = signal.fire_power or 0.0
+        previous_prediction = self._last_enemy_power_prediction.pop(event.scanned_bot_id, None)
+        self._enemy_fire_power.record(
+            event.scanned_bot_id,
+            enemy_energy=previous.energy,
+            our_energy=self.energy,
+            distance=distance,
+            fire_power=signal.fire_power or 1.5,
+            previous_prediction=previous_prediction,
+        )
         heat_state = self._enemy_gun_heat.record_fire(
             event.scanned_bot_id,
             self.turn_number,
@@ -300,6 +323,14 @@ class AdaptivePrime(Bot):
             known_targets=len(self._targets),
             movement_wave=movement_wave is not None,
             gun_heat=round(heat_state.heat, 2),
+            predicted_power=round(previous_prediction.fire_power, 2) if previous_prediction is not None else None,
+            prediction_error=round(abs(previous_prediction.fire_power - (signal.fire_power or 1.5)), 2)
+            if previous_prediction is not None
+            else None,
+            power_samples=self._enemy_fire_power.sample_count(event.scanned_bot_id),
+            power_mae=round(self._enemy_fire_power.mean_absolute_error(event.scanned_bot_id), 3)
+            if self._enemy_fire_power.mean_absolute_error(event.scanned_bot_id) is not None
+            else None,
         )
         return True
 
@@ -312,19 +343,39 @@ class AdaptivePrime(Bot):
             self._enemy_gun_heat.update(target.bot_id, self.turn_number, self.gun_cooling_rate)
             return
 
+        prediction = self._enemy_fire_power.predict(
+            target.bot_id,
+            enemy_energy=target.energy,
+            our_energy=self.energy,
+            distance=distance,
+        )
         fire_power = self._enemy_gun_heat.expected_fire_power(
             target.bot_id,
             self.turn_number,
             self.gun_cooling_rate,
+            predicted_fire_power=prediction.fire_power,
         )
         if fire_power is None:
             return
 
-        movement_wave = self._movement.record_enemy_fire(self, target, fire_power, wave_kind="expected")
+        self._last_enemy_power_prediction[target.bot_id] = prediction
+        movement_wave = self._movement.record_enemy_fire(
+            self,
+            target,
+            fire_power,
+            wave_kind="expected",
+            expected_confidence=prediction.confidence,
+        )
         self._log(
             "enemy.gun_heat_wave",
             bot_id=target.bot_id,
             power=round(fire_power, 2),
+            confidence=round(prediction.confidence, 3),
+            samples=prediction.samples,
+            reason=prediction.reason,
+            power_mae=round(prediction.mean_absolute_error, 3)
+            if prediction.mean_absolute_error is not None
+            else None,
             distance=round(distance, 1),
             target_age=age,
             movement_wave=movement_wave is not None,
@@ -853,6 +904,7 @@ class AdaptivePrime(Bot):
             self._last_enemy_fire_turn = -1000
             self._last_enemy_fire_power = 0.0
             self._enemy_energy_corrections.clear()
+            self._last_enemy_power_prediction.clear()
             self._gun.clear_round_state()
             self._movement.clear_round_state()
             self._minimum_risk.clear_round_state()
@@ -871,6 +923,7 @@ class AdaptivePrime(Bot):
         self._targets.pop(target.bot_id, None)
         self._movement.remove_target(target.bot_id, clear_profile=False)
         self._enemy_gun_heat.remove_target(target.bot_id)
+        self._last_enemy_power_prediction.pop(target.bot_id, None)
         if self._target_id == target.bot_id:
             self._target_id = None
         self._search()
@@ -1113,6 +1166,7 @@ class AdaptivePrime(Bot):
         self._gun.remove_target(event.victim_id)
         self._movement.remove_target(event.victim_id, clear_profile=False)
         self._enemy_gun_heat.remove_target(event.victim_id)
+        self._last_enemy_power_prediction.pop(event.victim_id, None)
         if self._target_id == event.victim_id:
             self._target_id = None
         self._log("target.dead", bot_id=event.victim_id)

@@ -261,6 +261,37 @@ class MinimumRiskMovementTest(unittest.TestCase):
 
         self.assertIsNone(decision)
 
+    def test_go_to_surf_uses_confident_expected_waves_when_enabled(self) -> None:
+        movement = MovementFlattener(
+            MovementFlatteningConfig(goto_use_expected_waves=True, goto_expected_wave_min_confidence=0.6)
+        )
+        bot = SimpleNamespace(
+            x=500.0,
+            y=500.0,
+            direction=90.0,
+            speed=0.0,
+            arena_width=1000.0,
+            arena_height=1000.0,
+            turn_number=20,
+        )
+        target = TargetSnapshot(1, 100.0, 100.0, 500.0, 100.0, 0.0, 20)
+        low_confidence = self._incoming_wave(target_id=1)
+        low_confidence.kind = "expected"
+        low_confidence.expected_confidence = 0.4
+        movement._waves.append(low_confidence)
+
+        self.assertIsNone(movement.choose_go_to_surf_destination(bot, target, max_speed=8.0, field_margin=80.0))
+
+        movement._waves.clear()
+        high_confidence = self._incoming_wave(target_id=1)
+        high_confidence.kind = "expected"
+        high_confidence.expected_confidence = 0.8
+        movement._waves.append(high_confidence)
+
+        decision = movement.choose_go_to_surf_destination(bot, target, max_speed=8.0, field_margin=80.0)
+
+        self.assertIsNotNone(decision)
+
     def test_go_to_surf_scoring_uses_simulated_hit_bin_danger(self) -> None:
         movement = MovementFlattener()
         bot = SimpleNamespace(
