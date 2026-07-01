@@ -86,6 +86,7 @@ async function poll() {
 function rebuildBots() {
   state.bots.clear();
   for (const event of state.events) {
+    event.normalized = normalizeEvent(event);
     const bot = event.bot || "unknown";
     if (!state.bots.has(bot)) {
       state.bots.set(bot, { name: bot, events: [], latest: null, color: state.palette[state.bots.size % state.palette.length] });
@@ -104,7 +105,7 @@ function render() {
   renderArena();
   renderMetrics();
   renderChart(energyCtx, state.selected, (event) => numberAt(event, "state.energy"), 0, 120, "#69d391");
-  renderChart(distanceCtx, state.selected, (event) => numberAt(event, "fields.distance"), 0, null, "#f2bf62");
+  renderChart(distanceCtx, state.selected, (event) => event.normalized?.distance, 0, null, "#f2bf62");
   renderPerformance();
   renderModeTimeline(gunTimelineCtx, state.selected, gunModeFromEvent);
   renderModeTimeline(movementTimelineCtx, state.selected, movementModeFromEvent);
@@ -206,24 +207,24 @@ function renderMetrics() {
   const latest = bot?.latest;
   const lastFire = lastEvent(bot, "bullet.fired");
   const lastGunSwitch = lastEvent(bot, "gun.switch");
-  const lastAim = lastMatchingEvent(bot, (event) => event.fields?.gun_bearing != null || gunModeFromEvent(event));
-  const lastTarget = lastMatchingEvent(bot, (event) => event.fields?.target != null);
-  const lastDistance = lastMatchingEvent(bot, (event) => event.fields?.distance != null);
-  const lastMovement = lastMatchingEvent(bot, (event) => event.event?.startsWith("movement.") || event.fields?.movement_mode);
+  const lastAim = lastMatchingEvent(bot, (event) => event.normalized?.gunBearing != null || gunModeFromEvent(event));
+  const lastTarget = lastMatchingEvent(bot, (event) => event.normalized?.target != null);
+  const lastDistance = lastMatchingEvent(bot, (event) => event.normalized?.distance != null);
+  const lastMovement = lastMatchingEvent(bot, (event) => event.normalized?.movementMode);
   const lastThreat = lastEvent(bot, "enemy.fire_detected");
 
   const cards = [
     ["Turn", latest?.turn],
     ["Energy", format(numberAt(latest, "state.energy"))],
     ["Position", latest ? `${format(numberAt(latest, "state.x"))}, ${format(numberAt(latest, "state.y"))}` : "-"],
-    ["Target", lastTarget?.fields?.target ?? "-"],
+    ["Target", lastTarget?.normalized?.target ?? "-"],
     ["Movement", movementModeFromEvent(lastMovement) || "-"],
-    ["Evasion", latest?.fields?.evading ?? lastThreat?.fields?.evasion ?? "-"],
+    ["Evasion", latest?.normalized?.evading ?? lastThreat?.normalized?.evasion ?? "-"],
     ["Gun", gunModeFromEvent(lastAim) || gunModeFromEvent(lastFire) || lastGunSwitch?.fields?.selected || "-"],
-    ["Gun Bearing Error", format(lastAim?.fields?.gun_bearing)],
-    ["Firepower", format(lastFire?.fields?.power)],
+    ["Gun Bearing Error", format(lastAim?.normalized?.gunBearing)],
+    ["Firepower", format(lastFire?.normalized?.power)],
     ["Gun Confidence", format(lastFire?.fields?.gun_confidence)],
-    ["Distance", format(lastDistance?.fields?.distance)],
+    ["Distance", format(lastDistance?.normalized?.distance)],
     ["Last Event", latest?.event || "-"],
   ];
   for (const [label, value] of cards) {
@@ -352,8 +353,9 @@ function buildBotStats(bot) {
 
   for (const event of bot.events) {
     const fields = event.fields || {};
-    const firepower = numeric(fields.power);
-    const distance = numeric(fields.distance);
+    const normalized = event.normalized || normalizeEvent(event);
+    const firepower = normalized.power;
+    const distance = normalized.distance;
     const movementMode = movementModeFromEvent(event);
 
     if (distance != null) {
@@ -371,27 +373,27 @@ function buildBotStats(bot) {
       stats.shots += 1;
       stats.firepowerSpent += firepower ?? 0;
       increment(gunModes, mode);
-      if (fields.bullet_id != null) {
-        firedBullets.set(String(fields.bullet_id), mode);
+      if (normalized.bulletId != null) {
+        firedBullets.set(String(normalized.bulletId), mode);
       }
     } else if (event.event === "bullet.hit_bot") {
-      const mode = gunModeFromEvent(event) || (fields.bullet_id != null ? firedBullets.get(String(fields.bullet_id)) : null) || "unknown";
-      const damage = numeric(fields.damage) ?? 0;
+      const mode = gunModeFromEvent(event) || (normalized.bulletId != null ? firedBullets.get(String(normalized.bulletId)) : null) || "unknown";
+      const damage = normalized.damage ?? 0;
       stats.hits += 1;
       stats.damageDealt += damage;
       increment(gunModeHits, mode);
       increment(gunModeDamage, mode, damage);
     } else if (event.event === "hit.bullet") {
       stats.bulletsTaken += 1;
-      stats.damageTaken += numeric(fields.damage) ?? 0;
-      if (fields.wall_risk) stats.wallRiskHits += 1;
+      stats.damageTaken += normalized.damage ?? 0;
+      if (normalized.wallRisk) stats.wallRiskHits += 1;
     } else if (event.event === "hit.wall") {
       stats.wallHits += 1;
     } else if (event.event === "hit.bot") {
       stats.botHits += 1;
     } else if (event.event === "enemy.fire_detected") {
       stats.enemyFireDetected += 1;
-      if (fields.evading === true || String(fields.evasion || "").startsWith("active_")) stats.activeEvasion += 1;
+      if (normalized.evading === true) stats.activeEvasion += 1;
     } else if (event.event === "target.reacquire" || event.event === "scan.reacquired") {
       stats.reacquires += 1;
     } else if (event.event === "target.drop" || event.event === "target.drop_lost" || event.event === "target.stale" || event.event === "scan.drop") {
@@ -480,25 +482,50 @@ function colorMapForModes(modes) {
 
 function gunModeFromEvent(event) {
   if (!event) return null;
-  const fields = event.fields || {};
-  if (fields.aim_mode) return fields.aim_mode;
-  if (fields.gun_mode) return fields.gun_mode;
-  if (event.event === "gun.switch" && fields.selected) return fields.selected;
-  return null;
+  return event.normalized?.gunMode || null;
 }
 
 function movementModeFromEvent(event) {
   if (!event) return null;
+  return event.normalized?.movementMode || null;
+}
+
+function normalizeEvent(event) {
   const fields = event.fields || {};
-  if (fields.movement_mode || fields.mode) return fields.movement_mode || fields.mode;
-  if (event.event === "movement.flatten") return "flatten";
-  if (event.event === "movement.flatten_shadow") return "flatten_shadow";
-  if (event.event === "movement.duel_flatten") return "duel_flatten";
-  if (event.event === "movement.minimum_risk") return "minimum_risk";
-  if (event.event === "movement.goto_surf") return "goto_surf";
-  if (event.event === "movement.duel_potential") return "duel_potential";
-  if (event.event === "wall.avoid") return "wall_avoid";
-  if (event.event === "separate") return "separate";
+  const evasion = firstValue(fields.evasion);
+  const movementMode = firstValue(fields.movement_mode, fields.mode) || movementModeFromEventName(event.event);
+  const gunMode = firstValue(
+    fields.aim_mode,
+    fields.gun_mode,
+    event.event === "gun.switch" ? fields.selected : null,
+    event.event === "gun.wave_visit" ? fields.selected_gun : null,
+  );
+  return {
+    target: firstValue(fields.target, fields.bot_id, fields.victim, event.event === "target.select" ? fields.selected : null),
+    distance: numeric(firstValue(fields.distance)),
+    power: numeric(firstValue(fields.power, fields.firepower)),
+    damage: numeric(firstValue(fields.damage)),
+    bulletId: firstValue(fields.bullet_id),
+    aimMode: firstValue(fields.aim_mode, gunMode),
+    gunMode,
+    movementMode,
+    evasion,
+    evading: fields.evading === true || String(evasion || "").startsWith("active_"),
+    wallRisk: Boolean(firstValue(fields.wall_risk, fields.near_wall)),
+    reason: firstValue(fields.reason, fields.hold_reason),
+    gunBearing: numeric(firstValue(fields.gun_bearing)),
+  };
+}
+
+function movementModeFromEventName(name) {
+  if (name === "movement.flatten") return "flatten";
+  if (name === "movement.flatten_shadow") return "flatten_shadow";
+  if (name === "movement.duel_flatten") return "duel_flatten";
+  if (name === "movement.minimum_risk") return "minimum_risk";
+  if (name === "movement.goto_surf") return "goto_surf";
+  if (name === "movement.duel_potential") return "duel_potential";
+  if (name === "wall.avoid") return "wall_avoid";
+  if (name === "separate") return "separate";
   return null;
 }
 
@@ -567,6 +594,15 @@ function maxValue(events, path, fallback) {
 
 function numeric(value) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function firstValue(...values) {
+  for (const value of values) {
+    if (value !== undefined && value !== null && value !== "") {
+      return value;
+    }
+  }
+  return null;
 }
 
 function increment(map, key, amount = 1) {

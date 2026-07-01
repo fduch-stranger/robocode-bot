@@ -3,15 +3,13 @@ import argparse
 import json
 from collections import Counter, defaultdict
 from pathlib import Path
+import sys
 from typing import Any
 
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "bots"))
 
-REQUIRED_FIELDS = {
-    "bullet.fired": ("bullet_id", "power", "aim_mode"),
-    "bullet.hit_bot": ("bullet_id", "power", "damage", "energy", "aim_mode"),
-    "hit.bullet": ("owner", "power", "damage", "energy"),
-    "enemy.fire_detected": ("power", "distance", "evasion"),
-}
+from bot_core.telemetry.schema import EXPECTED_EVASION_LABELS, event_spec, missing_required_fields, normalize_fields
 
 
 def main() -> int:
@@ -70,7 +68,8 @@ def _audit(events: list[dict[str, Any]], required_bots: list[str]) -> list[str]:
 
     for event in events:
         name = str(event.get("event") or "")
-        fields = event.get("fields") if isinstance(event.get("fields"), dict) else {}
+        raw_fields = event.get("fields") if isinstance(event.get("fields"), dict) else {}
+        fields = normalize_fields(name, raw_fields)
         bot = str(event.get("bot") or "?")
         location = f"{event.get('file')}:{event.get('line')}"
 
@@ -78,9 +77,11 @@ def _audit(events: list[dict[str, Any]], required_bots: list[str]) -> list[str]:
             issues.append(f"{location} invalid json: {fields.get('error')}")
             continue
 
-        for field in REQUIRED_FIELDS.get(name, ()):
-            if fields.get(field) in (None, ""):
-                issues.append(f"{location} {bot} {name} missing {field}")
+        for field in missing_required_fields(name, raw_fields):
+            issues.append(f"{location} {bot} {name} missing {field}")
+
+        if name and event_spec(name) is None:
+            continue
 
         if name == "bullet.fired" and fields.get("bullet_id") is not None:
             aim_mode = fields.get("aim_mode")
@@ -99,7 +100,7 @@ def _audit(events: list[dict[str, Any]], required_bots: list[str]) -> list[str]:
 
         if name == "enemy.fire_detected":
             evasion = fields.get("evasion")
-            if evasion not in ("active_duel", "active_melee", "threat_only"):
+            if evasion not in EXPECTED_EVASION_LABELS:
                 issues.append(f"{location} {bot} enemy.fire_detected has unexpected evasion={evasion!r}")
 
     return issues
