@@ -1,7 +1,7 @@
 import unittest
 from types import SimpleNamespace
 
-from bot_utils.physics import (
+from bot_core.physics import (
     RobotMovementState,
     bullet_damage_for_power,
     bullet_hit_bonus_for_power,
@@ -12,7 +12,7 @@ from bot_utils.physics import (
     predict_robot_movement,
     wall_collision_damage_for_speed,
 )
-from bot_utils.tank_math import TargetSnapshot, predicted_position
+from bot_core.tank_math import TargetSnapshot, predicted_position
 
 
 class PhysicsTest(unittest.TestCase):

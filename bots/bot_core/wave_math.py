@@ -2,8 +2,8 @@ import math
 
 from robocode_tank_royale.bot_api import Bot
 
-from bot_utils.physics import bullet_speed_for_power, max_escape_angle_for_bullet_speed
-from bot_utils.tank_math import TargetSnapshot, clamp
+from bot_core.physics import bullet_speed_for_power, max_escape_angle_for_bullet_speed
+from bot_core.tank_math import TargetSnapshot, clamp
 
 
 def max_escape_angle_for_speed(bullet_speed: float) -> float:

@@ -1,10 +1,10 @@
 import unittest
 from types import SimpleNamespace
 
-from bot_utils.gun import AimSolution, VirtualGunSystem, bullet_speed_for_power, lateral_direction
-from bot_utils.movement import MovementFlattener
-from bot_utils.tank_math import TargetSnapshot
-from bot_utils.wave_math import wall_limited_escape_angle, wall_limited_escape_angle_from_state
+from bot_core.gun import AimSolution, VirtualGunSystem, bullet_speed_for_power, lateral_direction
+from bot_core.movement import MovementFlattener
+from bot_core.tank_math import TargetSnapshot
+from bot_core.wave_math import wall_limited_escape_angle, wall_limited_escape_angle_from_state
 
 
 class WaveMathTest(unittest.TestCase):

@@ -10,13 +10,13 @@ from robocode_tank_royale.bot_api.events import (
     ScannedBotEvent,
 )
 
-from bot_utils.debug import DebugLogger, FiredBulletTracker
-from bot_utils.energy import EnemyFirePowerPredictor, EnergyDropConfig, classify_energy_drop
-from bot_utils.gun import TargetMotion, VirtualGunSystem
-from bot_utils.movement import MinimumRiskMovement, MovementFlattener, MovementFlatteningConfig
-from bot_utils.motion import OwnMotionTracker
-from bot_utils.radar import RadarLockConfig, lock_priority_radar
-from bot_utils.tank_math import (
+from bot_core.debug import DebugLogger, FiredBulletTracker
+from bot_core.energy import EnemyFirePowerPredictor, EnergyDropConfig, classify_energy_drop
+from bot_core.gun import TargetMotion, VirtualGunSystem
+from bot_core.movement import MinimumRiskMovement, MovementFlattener, MovementFlatteningConfig
+from bot_core.motion import OwnMotionTracker
+from bot_core.radar import RadarLockConfig, lock_priority_radar
+from bot_core.tank_math import (
     TargetSnapshot,
     body_bearing_to,
     clamp,
@@ -79,7 +79,7 @@ class SweepPressure(Bot):
                 name="Sweep Pressure",
                 version="1.0",
                 authors=["robocode-bot"],
-                description="Basic sweeping ram-pressure bot.",
+                description="Pressure movement bot with virtual-gun aiming, learned firepower telemetry, wave-hit learning, and conservative bullet shadows.",
                 game_types={"classic", "1v1", "melee"},
                 programming_lang="Python 3",
             )

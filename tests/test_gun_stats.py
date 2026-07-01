@@ -1,6 +1,6 @@
 import unittest
 
-from bot_utils.gun import GunConfig, GunSample, RollingKnnBuffer, VirtualGunSystem
+from bot_core.gun import GunConfig, GunSample, RollingKnnBuffer, VirtualGunSystem
 
 
 class GunStatsTest(unittest.TestCase):

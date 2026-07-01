@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from robocode_tank_royale.bot_api import Bot
 from robocode_tank_royale.bot_api.events import HitBotEvent, ScannedBotEvent
 
-from bot_utils.physics import bullet_speed_for_power
+from bot_core.physics import bullet_speed_for_power
 
 
 @dataclass

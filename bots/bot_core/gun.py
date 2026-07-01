@@ -3,8 +3,8 @@ from dataclasses import dataclass, field
 
 from robocode_tank_royale.bot_api import Bot
 
-from bot_utils.tank_math import TargetSnapshot, clamp, predicted_position
-from bot_utils.wave_math import (
+from bot_core.tank_math import TargetSnapshot, clamp, predicted_position
+from bot_core.wave_math import (
     absolute_bearing_between,
     bullet_speed_for_power,
     escape_angle_for_guess_factor,

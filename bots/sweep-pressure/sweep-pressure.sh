@@ -4,14 +4,14 @@ set -euo pipefail
 BOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$BOT_DIR/../.." && pwd)"
 PACKAGE_ROOT="$(cd "$BOT_DIR/.." && pwd)"
-if [[ -d "$ROOT_DIR/bots/bot_utils" ]]; then
+if [[ -d "$ROOT_DIR/bots/bot_core" ]]; then
   CONFIG_ROOT="$ROOT_DIR"
   PYTHONPATH_ROOT="$ROOT_DIR/bots"
 else
   CONFIG_ROOT="$PACKAGE_ROOT"
   PYTHONPATH_ROOT="$PACKAGE_ROOT"
 fi
-source "$PYTHONPATH_ROOT/bot_utils/launcher_env.sh"
+source "$PYTHONPATH_ROOT/bot_core/launcher_env.sh"
 load_repo_env_if_available "$CONFIG_ROOT"
 if [[ -n "${ROBOCODE_TELEMETRY_DIR:-}" && "$ROBOCODE_TELEMETRY_DIR" != /* ]]; then
   export ROBOCODE_TELEMETRY_DIR="$CONFIG_ROOT/$ROBOCODE_TELEMETRY_DIR"

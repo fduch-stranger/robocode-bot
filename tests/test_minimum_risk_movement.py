@@ -2,7 +2,7 @@ import unittest
 import math
 from types import SimpleNamespace
 
-from bot_utils.movement import (
+from bot_core.movement import (
     MinimumRiskConfig,
     MinimumRiskMovement,
     MovementFlattener,
@@ -10,7 +10,7 @@ from bot_utils.movement import (
     MovementWave,
     MovementWaveFeatures,
 )
-from bot_utils.tank_math import TargetSnapshot
+from bot_core.tank_math import TargetSnapshot
 
 
 class MinimumRiskMovementTest(unittest.TestCase):

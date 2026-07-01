@@ -2,7 +2,7 @@
   "name": "Circle Strafer",
   "version": "1.0",
   "authors": ["robocode-bot"],
-  "description": "Basic evasive circle-strafer bot.",
+  "description": "Orbital movement bot with virtual-gun aiming, learned firepower telemetry, wave-hit learning, and conservative bullet shadows.",
   "homepage": "",
   "countryCodes": ["DK"],
   "gameTypes": ["classic", "1v1", "melee"],

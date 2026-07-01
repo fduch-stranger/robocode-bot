@@ -2,7 +2,7 @@
   "name": "Chase Lock",
   "version": "1.0",
   "authors": ["robocode-bot"],
-  "description": "Locks radar and gun to the latest scan, then chases the target.",
+  "description": "Target-lock pressure bot with virtual-gun aiming, enemy-fire prediction, expected gun-heat waves, and wave-informed evasion.",
   "homepage": "",
   "countryCodes": ["DK"],
   "gameTypes": ["classic", "1v1", "melee"],

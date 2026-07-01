@@ -11,25 +11,25 @@ from robocode_tank_royale.bot_api.events import (
     ScannedBotEvent,
 )
 
-from bot_utils.debug import DebugLogger, FiredBulletTracker
-from bot_utils.energy import (
+from bot_core.debug import DebugLogger, FiredBulletTracker
+from bot_core.energy import (
     EnemyFirePowerPrediction,
     EnemyFirePowerPredictor,
     EnergyDropConfig,
     GunHeatTracker,
     classify_energy_drop,
 )
-from bot_utils.gun import GunConfig, TargetMotion, VirtualGunSystem
-from bot_utils.movement import (
+from bot_core.gun import GunConfig, TargetMotion, VirtualGunSystem
+from bot_core.movement import (
     FlatteningDecision,
     MinimumRiskConfig,
     MinimumRiskMovement,
     MovementFlattener,
     MovementFlatteningConfig,
 )
-from bot_utils.motion import OwnMotionTracker
-from bot_utils.radar import RadarLockConfig, lock_radar_to_target
-from bot_utils.tank_math import (
+from bot_core.motion import OwnMotionTracker
+from bot_core.radar import RadarLockConfig, lock_radar_to_target
+from bot_core.tank_math import (
     TargetSnapshot,
     bearing_to,
     clamp,
@@ -130,7 +130,7 @@ class AdaptivePrime(Bot):
                 name="Adaptive Prime",
                 version="1.0",
                 authors=["robocode-bot"],
-                description="Composite adaptive bot with virtual-gun targeting and threat-aware minimum-risk movement.",
+                description="Adaptive composite bot with virtual guns, enemy-fire prediction, wave-aware movement, bullet shadows, and minimum-risk routing.",
                 game_types={"classic", "1v1", "melee"},
                 programming_lang="Python 3",
             )

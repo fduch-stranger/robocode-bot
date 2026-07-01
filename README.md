@@ -10,7 +10,7 @@ packaging, running battles, logging decisions, and viewing live bot telemetry.
 - `bots/circle-strafer`: evasive circle-strafing bot
 - `bots/sweep-pressure`: pressure bot with sweeping movement
 
-All bots share helper code from `bots/bot_utils`.
+All bots share helper code from `bots/bot_core`.
 
 ## Quick Start
 
@@ -55,7 +55,7 @@ scripts/package.sh
 ```
 
 Then add the bots from `dist/` in the Robocode Tank Royale GUI. Each zip
-contains one bot plus the shared `bot_utils` package it needs.
+contains one bot plus the shared `bot_core` package it needs.
 
 Packaged bots do not require this repository's `.venv`. Their launchers use
 `ROBOCODE_PYTHON_BIN` when it is set, otherwise they use `.venv/bin/python` if
@@ -103,7 +103,7 @@ scripts/run-battle.sh --run-dir battle-results/runs/manual-1 bots/adaptive-prime
 
 With no bot arguments, `scripts/run-battle.sh` discovers every bot directory
 under `bots/` that contains a bot JSON manifest. Helper directories such as
-`bots/bot_utils` are ignored.
+`bots/bot_core` are ignored.
 
 ## A/B Bot Experiments
 

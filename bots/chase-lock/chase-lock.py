@@ -11,24 +11,24 @@ from robocode_tank_royale.bot_api.events import (
     ScannedBotEvent,
 )
 
-from bot_utils.debug import DebugLogger, FiredBulletTracker
-from bot_utils.energy import (
+from bot_core.debug import DebugLogger, FiredBulletTracker
+from bot_core.energy import (
     EnemyFirePowerPrediction,
     EnemyFirePowerPredictor,
     EnergyDropConfig,
     GunHeatTracker,
     classify_energy_drop,
 )
-from bot_utils.gun import TargetMotion, VirtualGunSystem
-from bot_utils.movement import (
+from bot_core.gun import TargetMotion, VirtualGunSystem
+from bot_core.movement import (
     FlatteningDecision,
     MinimumRiskConfig,
     MinimumRiskMovement,
     MovementFlattener,
 )
-from bot_utils.motion import OwnMotionTracker
-from bot_utils.radar import RadarLockConfig, lock_radar_to_target
-from bot_utils.tank_math import (
+from bot_core.motion import OwnMotionTracker
+from bot_core.radar import RadarLockConfig, lock_radar_to_target
+from bot_core.tank_math import (
     TargetSnapshot,
     bearing_to,
     clamp,
@@ -114,7 +114,7 @@ class ChaseLock(Bot):
                 name="Chase Lock",
                 version="1.0",
                 authors=["robocode-bot"],
-                description="Locks radar and gun to the latest scan, then chases the target.",
+                description="Target-lock pressure bot with virtual-gun aiming, enemy-fire prediction, expected gun-heat waves, and wave-informed evasion.",
                 game_types={"classic", "1v1", "melee"},
                 programming_lang="Python 3",
             )

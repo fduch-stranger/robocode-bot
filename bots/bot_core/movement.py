@@ -3,9 +3,9 @@ from dataclasses import dataclass
 
 from robocode_tank_royale.bot_api import Bot
 
-from bot_utils.physics import MAX_ROBOT_SPEED, RobotMovementState, bullet_speed_for_power, predict_robot_movement
-from bot_utils.tank_math import TargetSnapshot, clamp
-from bot_utils.wave_math import guess_factor_from_offset, wall_limited_escape_angle_from_state
+from bot_core.physics import MAX_ROBOT_SPEED, RobotMovementState, bullet_speed_for_power, predict_robot_movement
+from bot_core.tank_math import TargetSnapshot, clamp
+from bot_core.wave_math import guess_factor_from_offset, wall_limited_escape_angle_from_state
 
 
 @dataclass(frozen=True)

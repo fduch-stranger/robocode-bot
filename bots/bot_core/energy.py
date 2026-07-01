@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 import math
 
-from bot_utils.physics import bullet_speed_for_power, gun_heat_for_power
-from bot_utils.tank_math import clamp
+from bot_core.physics import bullet_speed_for_power, gun_heat_for_power
+from bot_core.tank_math import clamp
 
 
 @dataclass(frozen=True)

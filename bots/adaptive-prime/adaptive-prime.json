@@ -2,7 +2,7 @@
   "name": "Adaptive Prime",
   "version": "1.0",
   "authors": ["robocode-bot"],
-  "description": "Composite adaptive bot using virtual-gun targeting, threat-aware minimum-risk movement, and conservative target switching.",
+  "description": "Adaptive composite bot with virtual guns, enemy-fire prediction, wave-aware movement, bullet shadows, and minimum-risk routing.",
   "homepage": "",
   "countryCodes": ["DK"],
   "gameTypes": ["classic", "1v1", "melee"],

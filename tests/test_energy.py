@@ -1,7 +1,7 @@
 import unittest
 
-from bot_utils.energy import EnemyFirePowerPredictor, EnemyFirePowerPredictorConfig, GunHeatTracker
-from bot_utils.physics import gun_heat_for_power
+from bot_core.energy import EnemyFirePowerPredictor, EnemyFirePowerPredictorConfig, GunHeatTracker
+from bot_core.physics import gun_heat_for_power
 
 
 class EnergyTest(unittest.TestCase):

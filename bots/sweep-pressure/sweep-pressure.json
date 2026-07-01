@@ -2,7 +2,7 @@
   "name": "Sweep Pressure",
   "version": "1.0",
   "authors": ["robocode-bot"],
-  "description": "Basic sweeping ram-pressure bot.",
+  "description": "Pressure movement bot with virtual-gun aiming, learned firepower telemetry, wave-hit learning, and conservative bullet shadows.",
   "homepage": "",
   "countryCodes": ["DK"],
   "gameTypes": ["classic", "1v1", "melee"],

@@ -1,7 +1,7 @@
 import unittest
 from types import SimpleNamespace
 
-from bot_utils.motion import OwnMotionTracker
+from bot_core.motion import OwnMotionTracker
 
 
 class OwnMotionTrackerTest(unittest.TestCase):
