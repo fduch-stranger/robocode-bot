@@ -11,9 +11,9 @@ from robocode_tank_royale.bot_api.events import (
 )
 
 from bot_utils.debug import DebugLogger, FiredBulletTracker
-from bot_utils.energy import EnergyDropConfig, classify_energy_drop
+from bot_utils.energy import EnemyFirePowerPredictor, EnergyDropConfig, classify_energy_drop
 from bot_utils.gun import TargetMotion, VirtualGunSystem
-from bot_utils.movement import MinimumRiskMovement, MovementFlattener
+from bot_utils.movement import MinimumRiskMovement, MovementFlattener, MovementFlatteningConfig
 from bot_utils.motion import OwnMotionTracker
 from bot_utils.radar import RadarLockConfig, lock_priority_radar
 from bot_utils.tank_math import (
@@ -100,11 +100,18 @@ class CircleStrafer(Bot):
         self._last_wall_hit_turn = -1000
         self._last_turn_number = -1
         self._enemy_energy_corrections: dict[int, list[tuple[int, float, str]]] = {}
+        self._enemy_fire_power = EnemyFirePowerPredictor()
         self._evade_until_turn = -1
         self._target_accel: dict[int, float] = {}
         self._last_velocity_change_turn: dict[int, int] = {}
         self._gun = VirtualGunSystem()
-        self._movement = MovementFlattener()
+        self._movement = MovementFlattener(
+            MovementFlatteningConfig(
+                bullet_hit_visit_weight=1.0,
+                bullet_shadow_enabled=True,
+                bullet_shadow_danger_multiplier=0.65,
+            )
+        )
         self._own_motion = OwnMotionTracker()
         self._minimum_risk = MinimumRiskMovement()
         self._debug = DebugLogger(self, "circle-strafer")
@@ -257,10 +264,25 @@ class CircleStrafer(Bot):
                 )
             return False
 
+        actual_fire_power = signal.fire_power or 1.5
+        prediction = self._enemy_fire_power.predict(
+            event.scanned_bot_id,
+            enemy_energy=previous.energy,
+            our_energy=self.energy,
+            distance=distance,
+        )
+        self._enemy_fire_power.record(
+            event.scanned_bot_id,
+            enemy_energy=previous.energy,
+            our_energy=self.energy,
+            distance=distance,
+            fire_power=actual_fire_power,
+            previous_prediction=prediction,
+        )
         movement_wave = self._movement.record_enemy_fire(
             self,
             target_from_scan(event, self.turn_number),
-            signal.fire_power or 1.5,
+            actual_fire_power,
             **self._own_motion.movement_wave_kwargs(self.turn_number),
         )
         active_evasion = not self._near_wall()
@@ -282,6 +304,14 @@ class CircleStrafer(Bot):
             move_direction=self._move_direction,
             evade_until=self._evade_until_turn,
             movement_wave=movement_wave is not None,
+            predicted_power=round(prediction.fire_power, 2),
+            prediction_confidence=round(prediction.confidence, 3),
+            prediction_reason=prediction.reason,
+            prediction_error=round(abs(prediction.fire_power - actual_fire_power), 2),
+            power_samples=self._enemy_fire_power.sample_count(event.scanned_bot_id),
+            power_mae=round(self._enemy_fire_power.mean_absolute_error(event.scanned_bot_id), 3)
+            if self._enemy_fire_power.mean_absolute_error(event.scanned_bot_id) is not None
+            else None,
         )
         return True
 
@@ -573,14 +603,25 @@ class CircleStrafer(Bot):
         if not self._near_wall():
             self._move_direction *= -1
         self.set_turn_left(45)
+        movement_visit = None
+        if self.enemy_count <= 1:
+            movement_visit = self._movement.record_bullet_hit(
+                self,
+                event.bullet.owner_id,
+                event.bullet.power,
+            )
         self._log(
             "hit.bullet",
             owner=event.bullet.owner_id,
             power=round(event.bullet.power, 2),
+            bullet_direction=round(event.bullet.direction, 1),
             damage=round(event.damage, 2),
             energy=round(event.energy, 1),
             near_wall=self._near_wall(),
             move_direction=self._move_direction,
+            movement_wave_match=movement_visit is not None,
+            movement_guess_factor=round(movement_visit.guess_factor, 3) if movement_visit is not None else None,
+            movement_bin=movement_visit.bin_index if movement_visit is not None else None,
         )
 
     def on_hit_wall(self, event: HitWallEvent) -> None:
@@ -612,6 +653,7 @@ class CircleStrafer(Bot):
 
     def on_bullet_hit(self, event: BulletHitBotEvent) -> None:
         self._record_enemy_energy_correction(event.victim_id, event.damage, "our_bullet_damage")
+        self._movement.remove_shadow_bullet(event.bullet.bullet_id)
         bullet_fields = self._fired_bullets.fields_for(event.bullet.bullet_id)
         self._log(
             "bullet.hit_bot",
@@ -627,6 +669,12 @@ class CircleStrafer(Bot):
         target = self._targets.get(self._target_id)
         gun_score, gun_visits = self._gun.target_confidence(target.bot_id) if target is not None else (0.0, 0)
         wave = self._gun.record_pending_fire()
+        self._movement.record_shadow_bullet(
+            self,
+            event.bullet.bullet_id,
+            event.bullet.power,
+            event.bullet.direction,
+        )
         bullet_fields = self._fired_bullets.record(
             event.bullet.bullet_id,
             aim_mode=wave.aim_mode if wave is not None else None,
@@ -643,6 +691,7 @@ class CircleStrafer(Bot):
             energy=round(self.energy, 1),
             wave=wave is not None,
             gun_waves=self._gun.wave_count,
+            shadow_bullets=self._movement.shadow_bullet_count,
             gun_samples=self._gun.sample_count,
             gun_confidence=round(gun_score, 3),
             gun_confidence_visits=gun_visits,
