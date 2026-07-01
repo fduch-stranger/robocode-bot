@@ -6,6 +6,7 @@
 dist/
 battle-results/
 regression-investigation/
+legacy-bots/
 target/
 .telemetry-enabled
 *.pyc

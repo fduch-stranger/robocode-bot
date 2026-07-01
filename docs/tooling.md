@@ -29,6 +29,7 @@ Important variables:
 - `ROBOCODE_PYTHON_BIN`: Python used by bot launchers and telemetry tooling
   when you do not want the repo `.venv`.
 - `ROBOCODE_LEGACY_BOTS_ROOT`: directory containing converted legacy bots.
+  Leave empty to use the repo-local ignored `legacy-bots/` directory.
 - `ROBOCODE_TELEMETRY_DIR`: default GUI telemetry JSONL directory.
 - `ROBOCODE_TELEMETRY_HOST` / `ROBOCODE_TELEMETRY_PORT`: telemetry viewer bind
   address.
@@ -306,8 +307,8 @@ Examples:
 scripts/run-ab.sh \
   --name adaptive-gun-change \
   --preset adaptive-1v1-core \
-  --baseline /path/to/baseline-worktree \
-  --candidate /path/to/candidate-worktree
+  --baseline <baseline-worktree> \
+  --candidate <candidate-worktree>
 
 scripts/run-ab.sh --name smoke --preset adaptive-1v1-core --rounds 1 --repeats 1
 ```
@@ -373,9 +374,10 @@ scripts/run-battle.sh bots/adaptive-prime legacy:wiki.BasicGFSurfer_1.02
 scripts/run-battle.sh --legacy all
 ```
 
-Legacy bots are resolved from `ROBOCODE_LEGACY_BOTS_ROOT`. For headless CLI
-battles, the runner creates a small shim so converted legacy bots can run in the
-headless process environment.
+Legacy bots are resolved from `ROBOCODE_LEGACY_BOTS_ROOT`, or from the
+repo-local ignored `legacy-bots/` directory when the variable is empty. For
+headless CLI battles, the runner creates a small shim so converted legacy bots
+can run in the headless process environment.
 
 ## Recommended Workflows
 
@@ -395,7 +397,7 @@ tools/telemetry_audit.py battle-results/runs/<run>/telemetry --require-bot adapt
 ### Validate A Change
 
 ```sh
-scripts/run-ab.sh --name candidate-check --preset adaptive-1v1-core --baseline /path/to/base --candidate /path/to/candidate
+scripts/run-ab.sh --name candidate-check --preset adaptive-1v1-core --baseline <baseline-worktree> --candidate <candidate-worktree>
 ```
 
 ### Clean Up Viewers

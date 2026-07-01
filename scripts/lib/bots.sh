@@ -16,7 +16,7 @@ legacy_bots_root() {
   if [[ -n "${ROBOCODE_LEGACY_BOTS_ROOT:-}" ]]; then
     legacy_root="$ROBOCODE_LEGACY_BOTS_ROOT"
   else
-    legacy_root="$root_dir/../selected-legacy-bots-copy"
+    legacy_root="$root_dir/legacy-bots"
   fi
 
   if [[ -d "$legacy_root" ]]; then
