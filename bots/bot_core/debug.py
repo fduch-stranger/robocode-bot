@@ -68,7 +68,7 @@ class DebugLogger:
         return AsyncItemWriter(
             stream,
             DebugLogger._encode_log_line,
-            queue_size=DebugLogger._int_env("ROBOCODE_DEBUG_QUEUE_SIZE", 1024),
+            queue_size=DebugLogger._int_env("ROBOCODE_DEBUG_QUEUE_SIZE", 8192),
             thread_name="robocode-debug-log-writer",
         )
 

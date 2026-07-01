@@ -1,4 +1,5 @@
 import json
+import os
 import time
 import unittest
 from io import StringIO
@@ -31,6 +32,13 @@ def _records(stream: StringIO) -> list[dict[str, object]]:
 
 
 class TelemetryRecorderTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self._previous_env = os.environ.copy()
+
+    def tearDown(self) -> None:
+        os.environ.clear()
+        os.environ.update(self._previous_env)
+
     def test_async_recorder_flushes_records_on_close(self) -> None:
         stream = StringIO()
         recorder = TelemetryRecorder(_DummyBot(), "test-bot", stream, sync=False, queue_size=8)
@@ -82,6 +90,11 @@ class TelemetryRecorderTest(unittest.TestCase):
         time.sleep(0.01)
 
         self.assertEqual(before, stream.getvalue())
+
+    def test_default_queue_size_is_large_burst_buffer(self) -> None:
+        os.environ.pop("ROBOCODE_TELEMETRY_QUEUE_SIZE", None)
+
+        self.assertEqual(16384, TelemetryRecorder._int_env("ROBOCODE_TELEMETRY_QUEUE_SIZE", 16384))
 
 
 if __name__ == "__main__":

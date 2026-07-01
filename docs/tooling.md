@@ -34,11 +34,11 @@ Important variables:
 - `ROBOCODE_TELEMETRY_HOST` / `ROBOCODE_TELEMETRY_PORT`: telemetry viewer bind
   address.
 - `ROBOCODE_TELEMETRY_QUEUE_SIZE`: bounded async telemetry queue size, default
-  `4096`.
+  `16384`.
 - `ROBOCODE_TELEMETRY_SYNC=1`: force legacy synchronous telemetry writes for
   debugging recorder behavior.
 - `ROBOCODE_DEBUG_QUEUE_SIZE`: bounded async debug-log queue size, default
-  `1024`.
+  `8192`.
 - `ROBOCODE_DEBUG_SYNC=1`: force legacy synchronous debug-log writes.
 
 The `.env` file is intentionally ignored by git.

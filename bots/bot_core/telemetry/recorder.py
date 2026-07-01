@@ -86,7 +86,7 @@ class TelemetryRecorder:
         if sync:
             return SyncItemWriter(stream, TelemetryRecorder._encode_record)
         if queue_size is None:
-            queue_size = TelemetryRecorder._int_env("ROBOCODE_TELEMETRY_QUEUE_SIZE", 4096)
+            queue_size = TelemetryRecorder._int_env("ROBOCODE_TELEMETRY_QUEUE_SIZE", 16384)
         return AsyncItemWriter(
             stream,
             TelemetryRecorder._encode_record,

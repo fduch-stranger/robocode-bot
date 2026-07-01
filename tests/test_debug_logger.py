@@ -69,6 +69,11 @@ class DebugLoggerTest(unittest.TestCase):
         self.assertGreater(dropped_count, 0)
         self.assertIn("event=debug.dropped", stream.getvalue())
 
+    def test_default_queue_size_is_large_burst_buffer(self) -> None:
+        os.environ.pop("ROBOCODE_DEBUG_QUEUE_SIZE", None)
+
+        self.assertEqual(8192, DebugLogger._int_env("ROBOCODE_DEBUG_QUEUE_SIZE", 8192))
+
 
 if __name__ == "__main__":
     unittest.main()
