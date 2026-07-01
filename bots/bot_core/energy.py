@@ -30,6 +30,25 @@ class EnergyDropSignal:
 
 
 @dataclass(frozen=True)
+class FireGateConfig:
+    fire_memory_turns: int
+    alignment_degrees: float
+    energy_margin: float
+    critical_energy_hold: float | None = None
+    low_energy_hold: float | None = None
+    low_energy_max_distance: float | None = None
+    far_alignment_distance: float | None = None
+    far_alignment_degrees: float | None = None
+
+
+@dataclass(frozen=True)
+class FireDecision:
+    can_fire: bool
+    reason: str
+    alignment_limit: float
+
+
+@dataclass(frozen=True)
 class GunHeatConfig:
     default_fire_power: float = 1.5
     min_fire_power: float = 0.1
@@ -65,6 +84,80 @@ class EnemyFirePowerPredictorConfig:
     distance_scale: float = 650.0
     energy_scale: float = 100.0
     low_confidence_cap: float = 0.45
+
+
+class EnemyEnergyCorrectionLedger:
+    def __init__(self, max_entries_per_target: int = 8) -> None:
+        self.max_entries_per_target = max_entries_per_target
+        self._corrections: dict[int, list[tuple[int, float, str]]] = {}
+
+    def record(self, target_id: int, turn_number: int, correction: float, reason: str) -> None:
+        corrections = self._corrections.setdefault(target_id, [])
+        corrections.append((turn_number, correction, reason))
+        if len(corrections) > self.max_entries_per_target:
+            del corrections[: len(corrections) - self.max_entries_per_target]
+
+    def consume(self, target_id: int, current_turn: int, after_turn: int) -> float:
+        corrections = self._corrections.get(target_id)
+        if not corrections:
+            return 0.0
+
+        correction = 0.0
+        remaining: list[tuple[int, float, str]] = []
+        for turn, value, reason in corrections:
+            if turn > current_turn:
+                remaining.append((turn, value, reason))
+            elif turn > after_turn:
+                correction += value
+
+        if remaining:
+            self._corrections[target_id] = remaining
+        else:
+            self._corrections.pop(target_id, None)
+        return correction
+
+    def clear(self) -> None:
+        self._corrections.clear()
+
+
+class FireGate:
+    def __init__(self, config: FireGateConfig) -> None:
+        self.config = config
+
+    def decide(
+        self,
+        age: int,
+        distance: float,
+        gun_bearing: float,
+        firepower: float,
+        energy: float,
+    ) -> FireDecision:
+        alignment_limit = self.alignment_limit(distance)
+        if age > self.config.fire_memory_turns:
+            return FireDecision(False, "stale", alignment_limit)
+        if self.config.critical_energy_hold is not None and energy <= self.config.critical_energy_hold:
+            return FireDecision(False, "critical_energy", alignment_limit)
+        if (
+            self.config.low_energy_hold is not None
+            and self.config.low_energy_max_distance is not None
+            and energy <= self.config.low_energy_hold
+            and distance > self.config.low_energy_max_distance
+        ):
+            return FireDecision(False, "low_energy_range", alignment_limit)
+        if abs(gun_bearing) > alignment_limit:
+            return FireDecision(False, "gun_alignment", alignment_limit)
+        if energy <= firepower + self.config.energy_margin:
+            return FireDecision(False, "energy_margin", alignment_limit)
+        return FireDecision(True, "ready", alignment_limit)
+
+    def alignment_limit(self, distance: float) -> float:
+        if (
+            self.config.far_alignment_distance is not None
+            and self.config.far_alignment_degrees is not None
+            and distance > self.config.far_alignment_distance
+        ):
+            return self.config.far_alignment_degrees
+        return self.config.alignment_degrees
 
 
 class EnemyFirePowerPredictor:

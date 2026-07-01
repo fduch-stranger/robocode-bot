@@ -92,6 +92,8 @@ The exact formulas and guess-factor details are in
 
 ## Fire Gate
 
+Shared fire-gate helpers live in `bot_core.energy`.
+
 Bots generally fire only when:
 
 ```text
@@ -103,6 +105,7 @@ own_energy > firepower + safety_margin
 
 The telemetry field `gun_bearing` is a bearing error, not an absolute heading.
 `0` means the gun is aligned with the desired aim.
+`FireDecision.reason` is used as the hold reason when a bot does not fire.
 
 ## Enemy Fire Detection
 

@@ -13,9 +13,12 @@ from robocode_tank_royale.bot_api.events import (
 
 from bot_core.debug import DebugLogger, FiredBulletTracker
 from bot_core.energy import (
+    EnemyEnergyCorrectionLedger,
     EnemyFirePowerPrediction,
     EnemyFirePowerPredictor,
     EnergyDropConfig,
+    FireGate,
+    FireGateConfig,
     GunHeatTracker,
     classify_energy_drop,
 )
@@ -34,6 +37,7 @@ from bot_core.tank_math import (
     bearing_to,
     clamp,
     distance_to,
+    drive_to_destination,
     target_from_hit_bot,
     target_from_scan,
 )
@@ -121,6 +125,13 @@ ENERGY_DROP_CONFIG = EnergyDropConfig(
     close_collision_distance=ENEMY_FIRE_CLOSE_COLLISION_DISTANCE,
     close_collision_max_drop=ENEMY_FIRE_CLOSE_COLLISION_MAX_DROP,
 )
+FIRE_GATE = FireGate(
+    FireGateConfig(
+        fire_memory_turns=FIRE_MEMORY_TURNS,
+        alignment_degrees=FIRE_ALIGNMENT_DEGREES,
+        energy_margin=5,
+    )
+)
 
 
 class AdaptivePrime(Bot):
@@ -145,7 +156,7 @@ class AdaptivePrime(Bot):
         self._last_turn_number = -1
         self._last_enemy_fire_turn = -1000
         self._last_enemy_fire_power = 0.0
-        self._enemy_energy_corrections: dict[int, list[tuple[int, float, str]]] = {}
+        self._enemy_energy_corrections = EnemyEnergyCorrectionLedger()
         self._target_accel: dict[int, float] = {}
         self._last_velocity_change_turn: dict[int, int] = {}
         self._own_motion = OwnMotionTracker()
@@ -453,11 +464,8 @@ class AdaptivePrime(Bot):
 
         movement_mode, strafe_offset, flattening = self._set_adaptive_movement(target, distance, body_bearing)
 
-        if (
-            age <= FIRE_MEMORY_TURNS
-            and abs(aim.gun_bearing) <= FIRE_ALIGNMENT_DEGREES
-            and self.energy > firepower + 5
-        ):
+        fire_decision = FIRE_GATE.decide(age, distance, aim.gun_bearing, firepower, self.energy)
+        if fire_decision.can_fire:
             self._gun.set_pending_wave(self._gun.make_wave(self, target, firepower, aim))
             self.set_fire(firepower)
         else:
@@ -477,6 +485,8 @@ class AdaptivePrime(Bot):
                 aim_guess_factor=round(aim.guess_factor, 3) if aim.guess_factor is not None else None,
                 gun_samples=self._gun.sample_count,
                 gun_scores=self._gun.score_summary(target.bot_id, score_segment),
+                fire_alignment_limit=fire_decision.alignment_limit,
+                hold_reason=fire_decision.reason,
                 evade_direction=self._evade_direction,
                 evading=self.turn_number <= self._evade_until_turn,
                 movement_mode=movement_mode if "movement_mode" in locals() else "wall",
@@ -1013,29 +1023,10 @@ class AdaptivePrime(Bot):
         return self._targets.get(self._recent_threat_id)
 
     def _record_enemy_energy_correction(self, target_id: int, correction: float, reason: str) -> None:
-        corrections = self._enemy_energy_corrections.setdefault(target_id, [])
-        corrections.append((self.turn_number, correction, reason))
-        if len(corrections) > 8:
-            del corrections[: len(corrections) - 8]
+        self._enemy_energy_corrections.record(target_id, self.turn_number, correction, reason)
 
     def _consume_enemy_energy_correction(self, target_id: int, current_turn: int, after_turn: int) -> float:
-        corrections = self._enemy_energy_corrections.get(target_id)
-        if not corrections:
-            return 0.0
-
-        correction = 0.0
-        remaining: list[tuple[int, float, str]] = []
-        for turn, value, _reason in corrections:
-            if turn > current_turn:
-                remaining.append((turn, value, _reason))
-            elif turn > after_turn:
-                correction += value
-
-        if remaining:
-            self._enemy_energy_corrections[target_id] = remaining
-        else:
-            self._enemy_energy_corrections.pop(target_id, None)
-        return correction
+        return self._enemy_energy_corrections.consume(target_id, current_turn, after_turn)
 
     def _search(self) -> None:
         self._set_search_movement()
@@ -1043,18 +1034,7 @@ class AdaptivePrime(Bot):
         self.radar_turn_rate = RADAR_SEARCH_RATE
 
     def _drive_to_destination(self, x: float, y: float, speed: float) -> tuple[float, float]:
-        absolute_bearing = math.degrees(math.atan2(y - self.y, x - self.x))
-        turn = ((absolute_bearing - self.direction + 180) % 360) - 180
-        target_speed = speed
-        if turn > 90:
-            turn -= 180
-            target_speed = -speed
-        elif turn < -90:
-            turn += 180
-            target_speed = -speed
-        self.target_speed = target_speed
-        self.set_turn_left(turn)
-        return turn, target_speed
+        return drive_to_destination(self, x, y, speed)
 
     def _set_gun_for_search(self) -> None:
         gun_to_radar = ((self.radar_direction - self.gun_direction + 180) % 360) - 180

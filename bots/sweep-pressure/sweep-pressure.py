@@ -11,7 +11,14 @@ from robocode_tank_royale.bot_api.events import (
 )
 
 from bot_core.debug import DebugLogger, FiredBulletTracker
-from bot_core.energy import EnemyFirePowerPredictor, EnergyDropConfig, classify_energy_drop
+from bot_core.energy import (
+    EnemyEnergyCorrectionLedger,
+    EnemyFirePowerPredictor,
+    EnergyDropConfig,
+    FireGate,
+    FireGateConfig,
+    classify_energy_drop,
+)
 from bot_core.gun import TargetMotion, VirtualGunSystem
 from bot_core.movement import MinimumRiskMovement, MovementFlattener, MovementFlatteningConfig
 from bot_core.motion import OwnMotionTracker
@@ -21,6 +28,7 @@ from bot_core.tank_math import (
     body_bearing_to,
     clamp,
     distance_to,
+    drive_to_destination,
     target_from_scan,
 )
 
@@ -70,6 +78,18 @@ ENERGY_DROP_CONFIG = EnergyDropConfig(
     close_collision_distance=ENEMY_FIRE_CLOSE_COLLISION_DISTANCE,
     close_collision_max_drop=ENEMY_FIRE_CLOSE_COLLISION_MAX_DROP,
 )
+FIRE_GATE = FireGate(
+    FireGateConfig(
+        fire_memory_turns=FIRE_MEMORY_TURNS,
+        alignment_degrees=FIRE_ALIGNMENT_DEGREES,
+        energy_margin=6,
+        critical_energy_hold=CRITICAL_ENERGY_HOLD,
+        low_energy_hold=LOW_ENERGY_HOLD,
+        low_energy_max_distance=220,
+        far_alignment_distance=360,
+        far_alignment_degrees=5,
+    )
+)
 
 
 class SweepPressure(Bot):
@@ -88,7 +108,7 @@ class SweepPressure(Bot):
         self._targets: dict[int, TargetSnapshot] = {}
         self._target_id: int | None = None
         self._last_turn_number = -1
-        self._enemy_energy_corrections: dict[int, list[tuple[int, float, str]]] = {}
+        self._enemy_energy_corrections = EnemyEnergyCorrectionLedger()
         self._enemy_fire_power = EnemyFirePowerPredictor()
         self._evade_until_turn = -1
         self._target_accel: dict[int, float] = {}
@@ -428,18 +448,8 @@ class SweepPressure(Bot):
         return 0.8
 
     def _can_fire(self, age: int, distance: float, gun_bearing: float, firepower: float) -> tuple[bool, str]:
-        if age > FIRE_MEMORY_TURNS:
-            return False, "stale"
-        if self.energy <= CRITICAL_ENERGY_HOLD:
-            return False, "critical_energy"
-        if self.energy <= LOW_ENERGY_HOLD and distance > 220:
-            return False, "low_energy_range"
-        alignment_limit = 5 if distance > 360 else FIRE_ALIGNMENT_DEGREES
-        if abs(gun_bearing) > alignment_limit:
-            return False, "gun_alignment"
-        if self.energy <= firepower + 6:
-            return False, "energy_margin"
-        return True, "ready"
+        decision = FIRE_GATE.decide(age, distance, gun_bearing, firepower, self.energy)
+        return decision.can_fire, decision.reason
 
     def _forget_stale_targets(self) -> None:
         stale_ids = [
@@ -511,18 +521,7 @@ class SweepPressure(Bot):
         return min(self._targets.values(), key=lambda target: distance_to(self, target.x, target.y))
 
     def _drive_to_destination(self, x: float, y: float, speed: float) -> tuple[float, float]:
-        absolute_bearing = math.degrees(math.atan2(y - self.y, x - self.x))
-        turn = ((absolute_bearing - self.direction + 180) % 360) - 180
-        target_speed = speed
-        if turn > 90:
-            turn -= 180
-            target_speed = -speed
-        elif turn < -90:
-            turn += 180
-            target_speed = -speed
-        self.target_speed = target_speed
-        self.set_turn_left(turn)
-        return turn, target_speed
+        return drive_to_destination(self, x, y, speed)
 
     def _target_score(self, target: TargetSnapshot) -> float:
         distance = distance_to(self, target.x, target.y)
@@ -531,29 +530,10 @@ class SweepPressure(Bot):
         return distance * 0.45 + target.energy * 2.0 + age * 80 - current_bonus
 
     def _record_enemy_energy_correction(self, target_id: int, correction: float, reason: str) -> None:
-        corrections = self._enemy_energy_corrections.setdefault(target_id, [])
-        corrections.append((self.turn_number, correction, reason))
-        if len(corrections) > 8:
-            del corrections[: len(corrections) - 8]
+        self._enemy_energy_corrections.record(target_id, self.turn_number, correction, reason)
 
     def _consume_enemy_energy_correction(self, target_id: int, current_turn: int, after_turn: int) -> float:
-        corrections = self._enemy_energy_corrections.get(target_id)
-        if not corrections:
-            return 0.0
-
-        correction = 0.0
-        remaining: list[tuple[int, float, str]] = []
-        for turn, value, reason in corrections:
-            if turn > current_turn:
-                remaining.append((turn, value, reason))
-            elif turn > after_turn:
-                correction += value
-
-        if remaining:
-            self._enemy_energy_corrections[target_id] = remaining
-        else:
-            self._enemy_energy_corrections.pop(target_id, None)
-        return correction
+        return self._enemy_energy_corrections.consume(target_id, current_turn, after_turn)
 
     def on_hit_wall(self, event: HitWallEvent) -> None:
         self._move_direction *= -1

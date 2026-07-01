@@ -402,6 +402,29 @@ risk = enemy_proximity
 The active destination is sticky for a few ticks unless a new destination is
 meaningfully lower risk.
 
+## Fire Gate Data
+
+Location: `bot_core.energy`
+
+`FireGate` evaluates common firing constraints and returns:
+
+```text
+FireDecision(can_fire, reason, alignment_limit)
+```
+
+Each bot supplies its own `FireGateConfig`, so strategy-specific thresholds stay
+local while the decision ordering and hold reasons are shared. Current hold
+reasons are:
+
+```text
+stale
+critical_energy
+low_energy_range
+gun_alignment
+energy_margin
+ready
+```
+
 ## Enemy Fire Prediction
 
 Location: `bot_core.energy`
@@ -413,6 +436,13 @@ Energy drops are classified as fire with:
 ```text
 raw_drop = previous_energy - current_energy
 corrected_drop = previous_energy - (current_energy + energy_correction)
+```
+
+`EnemyEnergyCorrectionLedger` stores short-lived per-target corrections for our
+own bullet damage. Corrections are consumed for turns in this window:
+
+```text
+after_turn < correction_turn <= current_turn
 ```
 
 The drop is accepted when:
