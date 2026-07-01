@@ -13,7 +13,7 @@ from robocode_tank_royale.bot_api.events import (
 
 from bot_utils.debug import DebugLogger
 from bot_utils.energy import EnergyDropConfig, GunHeatTracker, classify_energy_drop
-from bot_utils.gun import TargetMotion, VirtualGunSystem
+from bot_utils.gun import GunConfig, TargetMotion, VirtualGunSystem
 from bot_utils.movement import FlatteningDecision, MinimumRiskConfig, MinimumRiskMovement, MovementFlattener
 from bot_utils.radar import RadarLockConfig, lock_radar_to_target
 from bot_utils.tank_math import (
@@ -136,7 +136,9 @@ class AdaptivePrime(Bot):
         self._last_velocity_change_turn: dict[int, int] = {}
         self._melee_round = False
         self._enemy_gun_heat = GunHeatTracker()
-        self._gun = VirtualGunSystem()
+        self._gun = VirtualGunSystem(
+            GunConfig(selectable_modes=frozenset({"linear", "traditional_gf", "dynamic_cluster", "anti_surfer"}))
+        )
         self._movement = MovementFlattener()
         self._minimum_risk = MinimumRiskMovement(
             MinimumRiskConfig(

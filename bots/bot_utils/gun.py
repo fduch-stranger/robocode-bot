@@ -41,6 +41,11 @@ class GunConfig:
     traditional_gf_decay: float = 0.985
     traditional_gf_min_switch_visits: int = 260
     traditional_gf_min_switch_score: float = 0.42
+    anti_surfer_min_samples: int = 7
+    anti_surfer_smoothing_bins: float = 0.9
+    anti_surfer_decay: float = 0.92
+    anti_surfer_min_switch_visits: int = 80
+    anti_surfer_min_switch_score: float = 0.32
     segment_min_visits: int = 18
     segment_full_weight_visits: int = 80
 
@@ -136,6 +141,7 @@ class VirtualGunSystem:
     _active_modes: dict[int, str] = field(default_factory=dict)
     _target_history: dict[int, list[TargetPosition]] = field(default_factory=dict)
     _traditional_profiles: dict[int, GuessFactorProfile] = field(default_factory=dict)
+    _anti_surfer_profiles: dict[int, GuessFactorProfile] = field(default_factory=dict)
     _pending_wave: GunWave | None = None
 
     @property
@@ -187,6 +193,15 @@ class VirtualGunSystem:
                 traditional_guess_factor,
             )
 
+        anti_surfer_guess_factor = self._anti_surfer_guess_factor(target.bot_id)
+        if anti_surfer_guess_factor is not None:
+            virtual_bearings["anti_surfer"] = self._guess_factor_aim_bearing(
+                bot,
+                target,
+                firepower,
+                anti_surfer_guess_factor,
+            )
+
         cluster_guess_factor = self._knn_guess_factor(target.bot_id, features)
         if cluster_guess_factor is not None:
             virtual_bearings["dynamic_cluster"] = self._guess_factor_aim_bearing(
@@ -202,6 +217,8 @@ class VirtualGunSystem:
         selected_guess_factor = None
         if mode == "traditional_gf":
             selected_guess_factor = traditional_guess_factor
+        elif mode == "anti_surfer":
+            selected_guess_factor = anti_surfer_guess_factor
         elif mode == "dynamic_cluster":
             selected_guess_factor = cluster_guess_factor
         return AimSolution(
@@ -293,6 +310,7 @@ class VirtualGunSystem:
             virtual_scores = self._score_virtual_guns(wave, actual_bearing, target_distance)
             self._samples.append(GunSample(wave.target_id, wave.features, guess_factor))
             self._record_traditional_guess_factor(wave.target_id, guess_factor)
+            self._record_anti_surfer_guess_factor(wave.target_id, guess_factor)
             if len(self._samples) > self.config.max_samples:
                 del self._samples[: len(self._samples) - self.config.max_samples]
             visits.append(
@@ -437,11 +455,15 @@ class VirtualGunSystem:
             return self.config.head_on_min_switch_score
         if mode == "traditional_gf":
             return self.config.traditional_gf_min_switch_score
+        if mode == "anti_surfer":
+            return self.config.anti_surfer_min_switch_score
         return self.config.min_switch_score
 
     def _min_switch_visits(self, mode: str) -> int:
         if mode == "traditional_gf":
             return self.config.traditional_gf_min_switch_visits
+        if mode == "anti_surfer":
+            return self.config.anti_surfer_min_switch_visits
         return self.config.min_visits
 
     def _gun_features(
@@ -531,6 +553,35 @@ class VirtualGunSystem:
             return None
         best_index = max(range(len(profile.bins)), key=lambda index: profile.bins[index])
         return bin_to_guess_factor(best_index, self.config.guess_factor_bins)
+
+    def _record_anti_surfer_guess_factor(self, target_id: int, guess_factor: float) -> None:
+        profile = self._anti_surfer_profiles.setdefault(
+            target_id,
+            GuessFactorProfile(bins=[0.0] * self.config.guess_factor_bins),
+        )
+        profile.visits += 1
+        profile.effective_weight = profile.effective_weight * self.config.anti_surfer_decay + 1.0
+        bin_index = guess_factor_to_bin(guess_factor, self.config.guess_factor_bins)
+        for index in range(self.config.guess_factor_bins):
+            profile.bins[index] *= self.config.anti_surfer_decay
+            offset = (index - bin_index) / self.config.anti_surfer_smoothing_bins
+            profile.bins[index] += math.exp(-(offset * offset))
+
+    def _anti_surfer_guess_factor(self, target_id: int) -> float | None:
+        profile = self._anti_surfer_profiles.get(target_id)
+        if profile is None or profile.effective_weight < self.config.anti_surfer_min_samples:
+            return None
+
+        center = (self.config.guess_factor_bins - 1) / 2.0
+        candidates = range(1, self.config.guess_factor_bins - 1)
+        safest_index = min(
+            candidates,
+            key=lambda index: (
+                profile.bins[index],
+                abs(index - center),
+            ),
+        )
+        return bin_to_guess_factor(safest_index, self.config.guess_factor_bins)
 
     def _score_virtual_guns(
         self,
