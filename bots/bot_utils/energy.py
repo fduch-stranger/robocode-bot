@@ -19,7 +19,9 @@ class EnergyDropConfig:
 class EnergyDropSignal:
     is_fire: bool
     reason: str
+    raw_energy_drop: float
     energy_drop: float
+    energy_correction: float
     fire_power: float | None
     bullet_travel_ticks: int | None
     evade_ticks: int
@@ -88,19 +90,39 @@ def classify_energy_drop(
     scan_gap: int,
     distance: float,
     config: EnergyDropConfig,
+    energy_correction: float = 0.0,
 ) -> EnergyDropSignal:
-    energy_drop = previous_energy - current_energy
+    raw_energy_drop = previous_energy - current_energy
+    energy_drop = previous_energy - (current_energy + energy_correction)
     if energy_drop <= 0:
-        return EnergyDropSignal(False, "no_drop", energy_drop, None, None, 0)
+        return EnergyDropSignal(False, "no_drop", raw_energy_drop, energy_drop, energy_correction, None, None, 0)
 
     if scan_gap > config.max_scan_gap:
-        return EnergyDropSignal(False, "stale_scan", energy_drop, None, None, 0)
+        return EnergyDropSignal(False, "stale_scan", raw_energy_drop, energy_drop, energy_correction, None, None, 0)
 
     if not (config.min_fire_power <= energy_drop <= config.max_fire_power):
-        return EnergyDropSignal(False, "outside_fire_power", energy_drop, None, None, 0)
+        return EnergyDropSignal(
+            False,
+            "outside_fire_power",
+            raw_energy_drop,
+            energy_drop,
+            energy_correction,
+            None,
+            None,
+            0,
+        )
 
     if distance <= config.close_collision_distance and energy_drop <= config.close_collision_max_drop:
-        return EnergyDropSignal(False, "close_collision_noise", energy_drop, None, None, 0)
+        return EnergyDropSignal(
+            False,
+            "close_collision_noise",
+            raw_energy_drop,
+            energy_drop,
+            energy_correction,
+            None,
+            None,
+            0,
+        )
 
     bullet_speed = max(0.1, 20 - 3 * energy_drop)
     bullet_travel_ticks = max(1, round(distance / bullet_speed))
@@ -111,4 +133,13 @@ def classify_energy_drop(
             config.max_evade_ticks,
         )
     )
-    return EnergyDropSignal(True, "fire", energy_drop, energy_drop, bullet_travel_ticks, evade_ticks)
+    return EnergyDropSignal(
+        True,
+        "fire",
+        raw_energy_drop,
+        energy_drop,
+        energy_correction,
+        energy_drop,
+        bullet_travel_ticks,
+        evade_ticks,
+    )

@@ -115,9 +115,19 @@ public final class RunBattle {
                 log(log, "game.started", "participants", event.getParticipants().size()));
         handle.getOnRoundStarted().on(RunBattle.class, event ->
                 log(log, "round.started", "round", event.getRoundNumber()));
-        handle.getOnRoundEnded().on(RunBattle.class, event ->
-                log(log, "round.ended", "round", event.getRoundNumber(), "turn", event.getTurnNumber(),
-                        "results", event.getResults().size()));
+        handle.getOnRoundEnded().on(RunBattle.class, event -> {
+            log(log, "round.ended", "round", event.getRoundNumber(), "turn", event.getTurnNumber(),
+                    "results", event.getResults().size());
+            event.getResults().forEach(result -> log(log, "round.result",
+                    "round", event.getRoundNumber(),
+                    "rank", result.getRank(),
+                    "name", token(result.getName()),
+                    "score", result.getTotalScore(),
+                    "survival", result.getSurvival(),
+                    "bulletDamage", result.getBulletDamage(),
+                    "ramDamage", result.getRamDamage(),
+                    "firstPlaces", result.getFirstPlaces()));
+        });
         handle.getOnGameEnded().on(RunBattle.class, event ->
                 log(log, "game.ended", "rounds", event.getNumberOfRounds(), "results", event.getResults().size()));
         handle.getOnGameAborted().on(RunBattle.class, event ->

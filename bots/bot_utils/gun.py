@@ -4,6 +4,15 @@ from dataclasses import dataclass, field
 from robocode_tank_royale.bot_api import Bot
 
 from bot_utils.tank_math import TargetSnapshot, clamp, predicted_position
+from bot_utils.wave_math import (
+    absolute_bearing_between,
+    bullet_speed_for_power,
+    escape_angle_for_guess_factor,
+    guess_factor_from_offset,
+    max_escape_angle_for_speed,
+    relative_bearing,
+    wall_limited_escape_angle,
+)
 
 
 @dataclass(frozen=True)
@@ -58,6 +67,8 @@ class GunWave:
     bullet_power: float
     bullet_speed: float
     max_escape_angle: float
+    max_escape_angle_positive: float
+    max_escape_angle_negative: float
     lateral_direction: int
     features: tuple[float, ...]
     segment_key: tuple[int, ...]
@@ -213,6 +224,7 @@ class VirtualGunSystem:
     ) -> GunWave:
         bullet_speed = bullet_speed_for_power(firepower)
         fire_bearing = absolute_bearing_between(bot.x, bot.y, target.x, target.y)
+        wave_lateral_direction = lateral_direction(target, fire_bearing)
         return GunWave(
             source_x=bot.x,
             source_y=bot.y,
@@ -222,7 +234,19 @@ class VirtualGunSystem:
             bullet_power=firepower,
             bullet_speed=bullet_speed,
             max_escape_angle=max_escape_angle_for_speed(bullet_speed),
-            lateral_direction=lateral_direction(target, fire_bearing),
+            max_escape_angle_positive=wall_limited_escape_angle(
+                bot,
+                target,
+                bullet_speed,
+                wave_lateral_direction,
+            ),
+            max_escape_angle_negative=wall_limited_escape_angle(
+                bot,
+                target,
+                bullet_speed,
+                -wave_lateral_direction,
+            ),
+            lateral_direction=wave_lateral_direction,
             features=aim.features,
             segment_key=aim.segment_key,
             aim_mode=aim.mode,
@@ -258,7 +282,12 @@ class VirtualGunSystem:
 
             actual_bearing = absolute_bearing_between(wave.source_x, wave.source_y, target.x, target.y)
             bearing_offset = relative_bearing(actual_bearing, wave.fire_bearing)
-            guess_factor = clamp((bearing_offset / wave.max_escape_angle) * wave.lateral_direction, -1.0, 1.0)
+            guess_factor = guess_factor_from_offset(
+                bearing_offset,
+                wave.lateral_direction,
+                wave.max_escape_angle_positive,
+                wave.max_escape_angle_negative,
+            )
             virtual_scores = self._score_virtual_guns(wave, actual_bearing, target_distance)
             self._samples.append(GunSample(wave.target_id, wave.features, guess_factor))
             self._record_traditional_guess_factor(wave.target_id, guess_factor)
@@ -338,8 +367,9 @@ class VirtualGunSystem:
     ) -> float:
         absolute_bearing = absolute_bearing_between(bot.x, bot.y, target.x, target.y)
         bullet_speed = bullet_speed_for_power(firepower)
-        max_escape_angle = max_escape_angle_for_speed(bullet_speed)
-        return absolute_bearing + guess_factor * lateral_direction(target, absolute_bearing) * max_escape_angle
+        lateral = lateral_direction(target, absolute_bearing)
+        escape_angle = escape_angle_for_guess_factor(bot, target, bullet_speed, lateral, guess_factor)
+        return absolute_bearing + guess_factor * lateral * escape_angle
 
     def _displacement_aim_bearing(
         self,
@@ -549,14 +579,6 @@ class VirtualGunSystem:
         stats.rolling_score = (1.0 - self.config.score_alpha) * stats.rolling_score + self.config.score_alpha * score
 
 
-def bullet_speed_for_power(firepower: float) -> float:
-    return 20 - 3 * firepower
-
-
-def max_escape_angle_for_speed(bullet_speed: float) -> float:
-    return math.degrees(math.asin(min(1, 8 / bullet_speed)))
-
-
 def feature_distance(left: tuple[float, ...], right: tuple[float, ...]) -> float:
     weights = (2.0, 1.2, 1.8, 1.3, 0.8, 0.7, 0.9)
     return math.sqrt(sum(weight * (a - b) ** 2 for weight, a, b in zip(weights, left, right)))
@@ -615,11 +637,3 @@ def point_on_bearing(bot: Bot, aim_bearing: float, distance: float, field_margin
         clamp(predicted_x, field_margin, bot.arena_width - field_margin),
         clamp(predicted_y, field_margin, bot.arena_height - field_margin),
     )
-
-
-def absolute_bearing_between(source_x: float, source_y: float, target_x: float, target_y: float) -> float:
-    return math.degrees(math.atan2(target_y - source_y, target_x - source_x))
-
-
-def relative_bearing(angle: float, reference: float) -> float:
-    return ((angle - reference + 180) % 360) - 180
