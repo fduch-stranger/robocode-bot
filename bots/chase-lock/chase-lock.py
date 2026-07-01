@@ -11,13 +11,13 @@ from robocode_tank_royale.bot_api.events import (
 )
 
 from bot_utils.debug import DebugLogger
+from bot_utils.gun import TargetMotion, VirtualGunSystem
 from bot_utils.radar import RadarLockConfig, lock_radar_to_target
 from bot_utils.tank_math import (
     TargetSnapshot,
     bearing_to,
     clamp,
     distance_to,
-    predicted_position,
     target_from_hit_bot,
     target_from_scan,
 )
@@ -86,6 +86,9 @@ class ChaseLock(Bot):
         self._last_turn_number = -1
         self._last_enemy_fire_turn = -1000
         self._last_enemy_fire_power = 0.0
+        self._target_accel: dict[int, float] = {}
+        self._last_velocity_change_turn: dict[int, int] = {}
+        self._gun = VirtualGunSystem()
         self._debug = DebugLogger(self, "chase-lock")
 
     def run(self) -> None:
@@ -107,8 +110,10 @@ class ChaseLock(Bot):
         previous = self._targets.get(event.scanned_bot_id)
         previous_age = self.turn_number - previous.seen_turn if previous is not None else None
         if previous is not None:
+            self._update_target_motion_stats(event, previous)
             self._detect_enemy_fire(event, previous)
         self._targets[event.scanned_bot_id] = target_from_scan(event, self.turn_number)
+        self._log_wave_visits(self._targets[event.scanned_bot_id])
         if previous is None:
             self._log(
                 "scan.new",
@@ -127,6 +132,13 @@ class ChaseLock(Bot):
                 x=round(event.x, 1),
                 y=round(event.y, 1),
             )
+
+    def _update_target_motion_stats(self, event: ScannedBotEvent, previous: TargetSnapshot) -> None:
+        speed_delta = event.speed - previous.speed
+        self._target_accel[event.scanned_bot_id] = speed_delta
+        direction_delta = abs(((event.direction - previous.direction + 180) % 360) - 180)
+        if abs(speed_delta) > 0.35 or direction_delta > 7:
+            self._last_velocity_change_turn[event.scanned_bot_id] = self.turn_number
 
     def _detect_enemy_fire(self, event: ScannedBotEvent, previous: TargetSnapshot) -> None:
         energy_drop = previous.energy - event.energy
@@ -158,10 +170,16 @@ class ChaseLock(Bot):
         distance = distance_to(self, target.x, target.y)
         body_bearing = bearing_to(self, target.x, target.y, self.direction)
         radar_bearing = bearing_to(self, target.x, target.y, self.radar_direction)
-        firepower = 2.0 if distance < 220 else 1.2
-        predicted_x, predicted_y = predicted_position(self, target, firepower, FIELD_MARGIN)
-        aim_mode = "linear"
-        gun_bearing = bearing_to(self, predicted_x, predicted_y, self.gun_direction)
+        firepower = self._select_firepower(target, distance)
+        aim = self._gun.aim(self, target, distance, firepower, self._target_motion(target), FIELD_MARGIN)
+        if aim.mode_changed:
+            self._log(
+                "gun.switch",
+                target=target.bot_id,
+                previous=aim.previous_mode,
+                selected=aim.mode,
+                scores=self._gun.score_summary(target.bot_id),
+            )
         age = self.turn_number - target.seen_turn
 
         if age > REACQUIRE_TARGET_TURNS:
@@ -191,7 +209,7 @@ class ChaseLock(Bot):
         radar_command = lock_radar_to_target(self, target, RADAR_CONFIG)
         if abs(radar_command.turn) >= 1:
             self._radar_sweep_direction = 1 if radar_command.turn > 0 else -1
-        self.set_turn_gun_left(gun_bearing)
+        self.set_turn_gun_left(aim.gun_bearing)
 
         if self._wall_risk(8):
             center_bearing = bearing_to(self, self.arena_width / 2, self.arena_height / 2, self.direction)
@@ -209,9 +227,10 @@ class ChaseLock(Bot):
 
         if (
             age <= FIRE_MEMORY_TURNS
-            and abs(gun_bearing) <= FIRE_ALIGNMENT_DEGREES
+            and abs(aim.gun_bearing) <= FIRE_ALIGNMENT_DEGREES
             and self.energy > firepower + 5
         ):
+            self._gun.set_pending_wave(self._gun.make_wave(self, target, firepower, aim))
             self.set_fire(firepower)
         else:
             self._sample_status(
@@ -219,14 +238,17 @@ class ChaseLock(Bot):
                 target=target.bot_id,
                 age=age,
                 distance=round(distance, 1),
-                gun_bearing=round(gun_bearing, 2),
+                gun_bearing=round(aim.gun_bearing, 2),
                 radar_bearing=round(radar_command.bearing, 2),
                 radar_turn=round(radar_command.turn, 2),
                 radar_mode=radar_command.mode,
                 radar_age=radar_command.age,
-                predicted_x=round(predicted_x, 1),
-                predicted_y=round(predicted_y, 1),
-                aim_mode=aim_mode,
+                predicted_x=round(aim.predicted_x, 1),
+                predicted_y=round(aim.predicted_y, 1),
+                aim_mode=aim.mode,
+                aim_guess_factor=round(aim.guess_factor, 3) if aim.guess_factor is not None else None,
+                gun_samples=self._gun.sample_count,
+                gun_scores=self._gun.score_summary(target.bot_id),
                 evade_direction=self._evade_direction,
                 evading=self.turn_number <= self._evade_until_turn,
                 movement_mode=movement_mode if "movement_mode" in locals() else "wall",
@@ -255,6 +277,29 @@ class ChaseLock(Bot):
         self.target_speed = 6 if evading else 5
         self.set_turn_left(body_bearing + strafe_offset * self._evade_direction)
         return "chase_orbit", strafe_offset
+
+    def _select_firepower(self, target: TargetSnapshot, distance: float) -> float:
+        return 2.0 if distance < 220 else 1.2
+
+    def _target_motion(self, target: TargetSnapshot) -> TargetMotion:
+        return TargetMotion(
+            acceleration=self._target_accel.get(target.bot_id, 0.0),
+            velocity_change_age=self.turn_number - self._last_velocity_change_turn.get(target.bot_id, self.turn_number),
+        )
+
+    def _log_wave_visits(self, target: TargetSnapshot) -> None:
+        for visit in self._gun.update_waves(self, target):
+            self._log(
+                "gun.wave_visit",
+                target=visit.target_id,
+                guess_factor=round(visit.guess_factor, 3),
+                samples=visit.samples,
+                traveled=round(visit.traveled, 1),
+                distance=round(visit.distance, 1),
+                selected_gun=visit.selected_gun,
+                virtual_scores=visit.virtual_scores,
+                gun_scores=visit.gun_scores,
+            )
 
     def _set_lost_target_radar(self, radar_bearing: float, age: int) -> tuple[float, str]:
         if abs(radar_bearing) > RADAR_REACQUIRE_MIN_ERROR:
@@ -288,6 +333,9 @@ class ChaseLock(Bot):
             self._evade_until_turn = -1
             self._last_enemy_fire_turn = -1000
             self._last_enemy_fire_power = 0.0
+            self._gun.clear_round_state()
+            self._target_accel.clear()
+            self._last_velocity_change_turn.clear()
             self._log(
                 "round.reset",
                 previous_turn=self._last_turn_number,
@@ -450,6 +498,7 @@ class ChaseLock(Bot):
 
     def on_bot_death(self, event: BotDeathEvent) -> None:
         self._targets.pop(event.victim_id, None)
+        self._gun.remove_target(event.victim_id)
         if self._target_id == event.victim_id:
             self._target_id = None
         self._log("target.dead", bot_id=event.victim_id)
@@ -457,6 +506,7 @@ class ChaseLock(Bot):
     def on_bullet_fired(self, event: BulletFiredEvent) -> None:
         target = self._targets.get(self._target_id)
         target_age = self.turn_number - target.seen_turn if target is not None else None
+        wave = self._gun.record_pending_fire()
         self._log(
             "bullet.fired",
             bullet_id=event.bullet.bullet_id,
@@ -467,6 +517,12 @@ class ChaseLock(Bot):
             power=event.bullet.power,
             direction=round(event.bullet.direction, 1),
             energy=round(self.energy, 1),
+            gun_waves=self._gun.wave_count,
+            gun_samples=self._gun.sample_count,
+            aim_mode=wave.aim_mode if wave is not None else None,
+            aim_guess_factor=round(wave.aim_guess_factor, 3)
+            if wave is not None and wave.aim_guess_factor is not None
+            else None,
         )
 
     def _log(self, event: str, **fields: object) -> None:

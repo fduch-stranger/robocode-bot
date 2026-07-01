@@ -156,17 +156,19 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-for legacy in "${legacy_inputs[@]}"; do
-  legacy_matches=()
-  while IFS= read -r bot; do
-    legacy_matches+=("$bot")
-  done < <(append_legacy_bot_args "$ROOT_DIR" "$legacy")
-  if [[ ${#legacy_matches[@]} -eq 0 ]]; then
-    echo "No legacy bot matched '$legacy' under $(legacy_bots_root "$ROOT_DIR")." >&2
-    exit 1
-  fi
-  bot_inputs+=("${legacy_matches[@]}")
-done
+if [[ ${#legacy_inputs[@]} -gt 0 ]]; then
+  for legacy in "${legacy_inputs[@]}"; do
+    legacy_matches=()
+    while IFS= read -r bot; do
+      legacy_matches+=("$bot")
+    done < <(append_legacy_bot_args "$ROOT_DIR" "$legacy")
+    if [[ ${#legacy_matches[@]} -eq 0 ]]; then
+      echo "No legacy bot matched '$legacy' under $(legacy_bots_root "$ROOT_DIR")." >&2
+      exit 1
+    fi
+    bot_inputs+=("${legacy_matches[@]}")
+  done
+fi
 
 if [[ ${#bot_inputs[@]} -gt 0 ]]; then
   bot_args=()
