@@ -7,6 +7,8 @@ from bot_core.radar import RadarCommand
 from bot_core.target_snapshot import TargetSnapshot
 from bot_core.telemetry.tick import rounded
 
+_UNSET = object()
+
 
 @dataclass(frozen=True)
 class FireTick:
@@ -99,6 +101,67 @@ def gun_switch_fields(target_id: int, aim: AimSolution, scores: dict[str, str]) 
         "selected": aim.mode,
         "scores": scores,
     }
+
+
+def bullet_hit_bot_fields(
+    victim_id: int,
+    bullet_id: int,
+    power: float,
+    damage: float,
+    energy: float,
+    tracked_fields: dict[str, object],
+) -> dict[str, object]:
+    return {
+        "victim": victim_id,
+        "bullet_id": bullet_id,
+        "power": round(power, 2),
+        "damage": round(damage, 2),
+        "energy": round(energy, 1),
+        **tracked_fields,
+    }
+
+
+def bullet_fired_fields(
+    bullet_id: int,
+    target_id: int | None,
+    power: float,
+    direction: float,
+    energy: float,
+    gun_waves: int,
+    gun_samples: int,
+    gun_confidence: float,
+    gun_confidence_visits: int,
+    tracked_fields: dict[str, object],
+    *,
+    target_age: int | None | object = _UNSET,
+    target_x: float | None | object = _UNSET,
+    target_y: float | None | object = _UNSET,
+    wave_created: bool | object = _UNSET,
+    shadow_bullets: int | object = _UNSET,
+) -> dict[str, object]:
+    fields = {
+        "bullet_id": bullet_id,
+        "target": target_id,
+        "power": power,
+        "direction": round(direction, 1),
+        "energy": round(energy, 1),
+        "gun_waves": gun_waves,
+        "gun_samples": gun_samples,
+        "gun_confidence": round(gun_confidence, 3),
+        "gun_confidence_visits": gun_confidence_visits,
+    }
+    if target_age is not _UNSET:
+        fields["target_age"] = target_age
+    if target_x is not _UNSET:
+        fields["target_x"] = round(target_x, 1) if target_x is not None else None
+    if target_y is not _UNSET:
+        fields["target_y"] = round(target_y, 1) if target_y is not None else None
+    if wave_created is not _UNSET:
+        fields["wave"] = wave_created
+    if shadow_bullets is not _UNSET:
+        fields["shadow_bullets"] = shadow_bullets
+    fields.update(tracked_fields)
+    return fields
 
 
 def wave_visit_fields(visit: WaveVisit) -> dict[str, object]:

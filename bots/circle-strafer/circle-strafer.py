@@ -26,7 +26,14 @@ from bot_core.geometry.numeric import clamp
 from bot_core.geometry.position import distance_to, drive_to_destination
 from bot_core.target_snapshot import TargetSnapshot, target_from_hit_bot, target_from_scan
 from bot_core.telemetry.energy import simple_enemy_fire_detected_fields, simple_energy_drop_ignored_fields
-from bot_core.telemetry.fire import SimpleTrackTick, gun_switch_fields, simple_track_fields, wave_visit_fields
+from bot_core.telemetry.fire import (
+    SimpleTrackTick,
+    bullet_fired_fields,
+    bullet_hit_bot_fields,
+    gun_switch_fields,
+    simple_track_fields,
+    wave_visit_fields,
+)
 from bot_core.telemetry.movement import minimum_risk_fields, profile_visit_fields, simple_flattening_fields, wall_avoid_fields
 from bot_core.telemetry.targeting import candidate_target_selection_fields, scan_new_fields
 
@@ -586,12 +593,14 @@ class CircleStrafer(Bot):
         bullet_fields = self._fired_bullets.fields_for(event.bullet.bullet_id)
         self._log(
             "bullet.hit_bot",
-            victim=event.victim_id,
-            bullet_id=event.bullet.bullet_id,
-            power=round(event.bullet.power, 2),
-            damage=round(event.damage, 2),
-            energy=round(event.energy, 1),
-            **bullet_fields,
+            **bullet_hit_bot_fields(
+                event.victim_id,
+                event.bullet.bullet_id,
+                event.bullet.power,
+                event.damage,
+                event.energy,
+                bullet_fields,
+            ),
         )
 
     def on_bullet_fired(self, event: BulletFiredEvent) -> None:
@@ -613,18 +622,20 @@ class CircleStrafer(Bot):
         )
         self._log(
             "bullet.fired",
-            bullet_id=event.bullet.bullet_id,
-            target=self._target_id,
-            power=event.bullet.power,
-            direction=round(event.bullet.direction, 1),
-            energy=round(self.energy, 1),
-            wave=wave is not None,
-            gun_waves=self._gun.wave_count,
-            shadow_bullets=self._movement.shadow_bullet_count,
-            gun_samples=self._gun.sample_count,
-            gun_confidence=round(gun_score, 3),
-            gun_confidence_visits=gun_visits,
-            **bullet_fields,
+            **bullet_fired_fields(
+                event.bullet.bullet_id,
+                self._target_id,
+                event.bullet.power,
+                event.bullet.direction,
+                self.energy,
+                self._gun.wave_count,
+                self._gun.sample_count,
+                gun_score,
+                gun_visits,
+                bullet_fields,
+                wave_created=wave is not None,
+                shadow_bullets=self._movement.shadow_bullet_count,
+            ),
         )
 
     def _sample_status(self, event: str, **fields: object) -> None:

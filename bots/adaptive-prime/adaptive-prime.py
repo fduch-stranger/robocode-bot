@@ -35,7 +35,7 @@ from bot_core.geometry.position import distance_to, drive_to_destination
 from bot_core.target_snapshot import TargetSnapshot, target_from_hit_bot, target_from_scan
 from bot_core.targeting import TargetMemory, TargetSelector
 from bot_core.telemetry.energy import energy_drop_ignored_fields, enemy_fire_detected_fields, gun_heat_wave_fields
-from bot_core.telemetry.fire import FireTick, gun_switch_fields, track_fields, wave_visit_fields
+from bot_core.telemetry.fire import FireTick, bullet_fired_fields, bullet_hit_bot_fields, gun_switch_fields, track_fields, wave_visit_fields
 from bot_core.telemetry.movement import (
     duel_potential_fields,
     flattening_fields,
@@ -971,12 +971,14 @@ class AdaptivePrime(Bot):
         bullet_fields = self._fired_bullets.fields_for(event.bullet.bullet_id)
         self._log(
             "bullet.hit_bot",
-            victim=event.victim_id,
-            bullet_id=event.bullet.bullet_id,
-            power=round(event.bullet.power, 2),
-            damage=round(event.damage, 2),
-            energy=round(event.energy, 1),
-            **bullet_fields,
+            **bullet_hit_bot_fields(
+                event.victim_id,
+                event.bullet.bullet_id,
+                event.bullet.power,
+                event.damage,
+                event.energy,
+                bullet_fields,
+            ),
         )
 
     def on_hit_bot(self, event: HitBotEvent) -> None:
@@ -1032,20 +1034,22 @@ class AdaptivePrime(Bot):
         )
         self._log(
             "bullet.fired",
-            bullet_id=event.bullet.bullet_id,
-            target=self._target_id,
-            target_age=target_age,
-            target_x=round(target.x, 1) if target is not None else None,
-            target_y=round(target.y, 1) if target is not None else None,
-            power=event.bullet.power,
-            direction=round(event.bullet.direction, 1),
-            energy=round(self.energy, 1),
-            gun_waves=self._gun.wave_count,
-            shadow_bullets=self._movement.shadow_bullet_count,
-            gun_samples=self._gun.sample_count,
-            gun_confidence=round(gun_score, 3),
-            gun_confidence_visits=gun_visits,
-            **bullet_fields,
+            **bullet_fired_fields(
+                event.bullet.bullet_id,
+                self._target_id,
+                event.bullet.power,
+                event.bullet.direction,
+                self.energy,
+                self._gun.wave_count,
+                self._gun.sample_count,
+                gun_score,
+                gun_visits,
+                bullet_fields,
+                target_age=target_age,
+                target_x=target.x if target is not None else None,
+                target_y=target.y if target is not None else None,
+                shadow_bullets=self._movement.shadow_bullet_count,
+            ),
         )
 
     def _log(self, event: str, **fields: object) -> None:

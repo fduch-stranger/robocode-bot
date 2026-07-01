@@ -12,7 +12,15 @@ from bot_core.telemetry.energy import (
     simple_enemy_fire_detected_fields,
     simple_energy_drop_ignored_fields,
 )
-from bot_core.telemetry.fire import FireTick, SimpleTrackTick, simple_track_fields, track_fields, wave_visit_fields
+from bot_core.telemetry.fire import (
+    FireTick,
+    SimpleTrackTick,
+    bullet_fired_fields,
+    bullet_hit_bot_fields,
+    simple_track_fields,
+    track_fields,
+    wave_visit_fields,
+)
 from bot_core.telemetry.movement import (
     duel_potential_fields,
     flattening_fields,
@@ -268,6 +276,62 @@ class TelemetryEmitterTest(unittest.TestCase):
             },
             candidate_target_selection_fields(3, target, 12.34, TargetSnapshot(8, 70, 1, 2, 0, 0, 10), 11.11, 4, 2),
         )
+
+    def test_bullet_emitters_preserve_lifecycle_fields(self) -> None:
+        tracked = {"aim_mode": "linear", "aim_guess_factor": 0.123}
+        hit = bullet_hit_bot_fields(4, 99, 1.234, 5.678, 44.44, tracked)
+        self.assertEqual(
+            {
+                "victim": 4,
+                "bullet_id": 99,
+                "power": 1.23,
+                "damage": 5.68,
+                "energy": 44.4,
+                "aim_mode": "linear",
+                "aim_guess_factor": 0.123,
+            },
+            hit,
+        )
+
+        fired = bullet_fired_fields(
+            99,
+            4,
+            1.234,
+            88.88,
+            55.55,
+            7,
+            42,
+            0.4567,
+            12,
+            tracked,
+            target_age=None,
+            target_x=None,
+            target_y=120.04,
+            shadow_bullets=3,
+        )
+        self.assertEqual(
+            {
+                "bullet_id",
+                "target",
+                "target_age",
+                "target_x",
+                "target_y",
+                "power",
+                "direction",
+                "energy",
+                "gun_waves",
+                "shadow_bullets",
+                "gun_samples",
+                "gun_confidence",
+                "gun_confidence_visits",
+                "aim_mode",
+                "aim_guess_factor",
+            },
+            set(fired),
+        )
+        self.assertIsNone(fired["target_age"])
+        self.assertIsNone(fired["target_x"])
+        self.assertEqual(120.0, fired["target_y"])
 
     def test_movement_emitters_preserve_adaptive_fields(self) -> None:
         command = MovementCommand("goto_surf", turn=-12.345, speed=8)
