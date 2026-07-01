@@ -5,6 +5,10 @@ Royale. It contains the bots, shared bot logic, local battle tooling,
 telemetry/debugging tools, A/B benchmarks, and documentation for the algorithms
 used by the bots.
 
+The bots target [Robocode Tank Royale](https://github.com/robocode-dev/tank-royale),
+the modern Robocode engine and game server. Official project documentation is
+available at [robocode.dev](https://robocode.dev/).
+
 ## Project Map
 
 | Area | Purpose |
