@@ -96,7 +96,8 @@ When multiple targets are alive, Adaptive Prime uses shared minimum-risk
 movement. This is intentionally less aggressive than Chase because survival and
 crossfire avoidance matter more in melee.
 
-Telemetry event: `movement.minimum_risk`.
+Telemetry event: `movement.minimum_risk`. In `track` events this branch appears
+as movement mode `melee_minimum_risk`.
 
 ## Firepower Policy
 
@@ -124,7 +125,8 @@ far:
 
 - `movement.goto_surf`: selected destination and danger breakdown.
 - `movement.duel_potential`: force vector, mode, destination, and evasion flag.
-- `movement.minimum_risk`: melee destination and risk.
+- `movement.minimum_risk`: melee destination and risk. In `track` events this
+  branch appears as movement mode `melee_minimum_risk`.
 - `enemy.gun_heat_wave`: expected enemy fire wave.
 - `enemy.fire_detected`: confirmed enemy energy-drop fire.
 - `track`: selected target, aim mode, movement mode, radar mode, and fire hold

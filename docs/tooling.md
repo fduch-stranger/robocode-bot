@@ -17,6 +17,9 @@ flowchart TD
     K --> E
     K --> L["battle-results/ab/<experiment>"]
     M["tools/telemetry_audit.py"] --> N["validate JSONL telemetry"]
+    O["scripts/verify-telemetry.sh"] --> E
+    O --> M
+    P["tools/telemetry_schema_docs.py"] --> Q["docs/telemetry-schema.md"]
 ```
 
 ## Environment
@@ -152,10 +155,6 @@ That runner:
 - writes `results.json`
 - writes runner lifecycle logs
 - can capture recordings and intent diagnostics
-
-The macOS `sysctl failed` cleanup warning can appear after battles. It is a
-Robocode booter process-tree cleanup issue; if results are written and bots
-stop, it is usually not a battle failure.
 
 ## Debug Logs
 

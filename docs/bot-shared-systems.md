@@ -42,9 +42,11 @@ Bots use target age for:
 - telemetry interpretation
 
 `bot_core.targeting.TargetMemory` is the shared cache wrapper for stale-target
-queries, fresh-target iteration, and recent fire-threat lookup. Target selection
-uses `TargetSelector` with a bot-provided scoring function so bot personality
-stays local while reacquire behavior stays consistent.
+queries, fresh-target iteration, and recent fire-threat lookup. Adaptive Prime
+uses it with `TargetSelector`, which delegates scoring to bot-specific strategy
+code. Chase Lock, Circle Strafer, and Sweep Pressure still keep local target
+dictionaries and selection helpers, but they follow the same
+`TargetSnapshot`/target-age contract.
 
 ## Radar
 
@@ -138,9 +140,11 @@ Detected fire creates:
 Expected fire can also be generated from gun heat when the enemy is likely ready
 to shoot again. The exact energy-drop correction and sample fields are described
 in [Bot Core Data Structures](bot-core-data-structures.md#enemy-fire-prediction).
-`EnemyFireDetector` owns the common correction, classification, gun-heat, and
-fire-power sample update sequence; bots still own movement-wave creation and
-evasion policy.
+Adaptive Prime uses `EnemyFireDetector` for the common correction,
+classification, gun-heat, and fire-power sample update sequence. Chase Lock,
+Circle Strafer, and Sweep Pressure currently keep local detection methods while
+sharing `EnergyDropConfig`, `classify_energy_drop`,
+`EnemyEnergyCorrectionLedger`, and the telemetry emitters.
 
 ## Movement Learning
 
@@ -198,7 +202,8 @@ Telemetry is JSONL. Common event names:
 - `movement.flatten`: lateral direction flip.
 - `movement.minimum_risk`: melee destination.
 - `wall.avoid`, `separate`: sampled movement status.
-- `search`, `target.reacquire`: sampled target/radar status.
+- `search`, `scan.reacquired`, `target.drop_lost`, `target.stale`: sampled
+  target/radar status.
 - `bullet.fired`, `bullet.hit_bot`, `hit.bullet`.
 
 Structured telemetry helpers live in `bot_core.telemetry`. `DebugLogger`

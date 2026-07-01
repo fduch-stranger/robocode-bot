@@ -69,7 +69,7 @@ radar should reacquire, and when stale targets should be dropped.
 
 Location: `bot_core.targeting`
 
-`TargetMemory` wraps the per-enemy snapshot mapping and provides common queries:
+`TargetMemory` wraps a per-enemy snapshot mapping and provides common queries:
 
 ```text
 stale_ids(current_turn, max_age)
@@ -77,9 +77,10 @@ fresh_targets(current_turn, max_age)
 active_fire_threat(threat_id, threat_turn, current_turn, memory_turns)
 ```
 
-`TargetSelector` applies reacquire-age filtering and delegates scoring to the
-bot strategy. This keeps shared target lifecycle behavior out of bot event-loop
-code while preserving bot-specific target priorities.
+`TargetSelector` applies reacquire-age filtering and delegates scoring to bot
+strategy code. Adaptive Prime uses these wrappers directly. The other local bots
+still hold ordinary dictionaries of `TargetSnapshot` values and local selection
+helpers, so target lifecycle behavior is only partially centralized today.
 
 ### Own Motion Snapshots
 
@@ -474,7 +475,9 @@ ready
 `EnemyFireDetector` returns `EnemyFireDetection(signal, distance,
 previous_prediction, heat_state)` after consuming energy corrections, updating
 gun heat for ignored drops, and recording fire-power prediction samples for
-confirmed fire.
+confirmed fire. Adaptive Prime uses this full detector. Chase Lock, Circle
+Strafer, and Sweep Pressure currently keep local detection flow while using the
+shared correction ledger and energy-drop classifier.
 
 ## Enemy Fire Prediction
 

@@ -102,9 +102,11 @@ mid/far:
 ## Key Telemetry
 
 - `target.select`: target switching evidence.
-- `target.reacquire`: stale target handling.
+- `scan.reacquired`: stale cached target refreshed by a new scan.
+- `target.drop_lost`: cached target aged out before reacquisition.
 - `movement.flatten`: learned lateral direction flips.
-- `movement.minimum_risk`: melee fallback destination.
+- `movement.minimum_risk`: melee fallback destination. In `track` events this
+  branch appears as movement mode `melee_minimum_risk`.
 - `track`: current target, aim mode, movement mode, radar mode, fire hold
   reason.
 
@@ -113,7 +115,7 @@ launch, reset, audit, and stop commands.
 
 ## Tuning Checklist
 
-- Stuck on old target position: inspect `target.reacquire`,
+- Stuck on old target position: inspect `scan.reacquired`,
   `target.drop_lost`, `radar_mode`.
 - Too easy to hit while chasing: inspect `enemy.fire_detected`,
   `movement.flatten`, `movement_mode`.
