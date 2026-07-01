@@ -2,7 +2,8 @@ import math
 
 from robocode_tank_royale.bot_api import Bot
 
-from bot_core.tank_math import TargetSnapshot, clamp
+from bot_core.geometry.numeric import clamp
+from bot_core.target_snapshot import TargetSnapshot
 
 
 def feature_distance(left: tuple[float, ...], right: tuple[float, ...]) -> float:

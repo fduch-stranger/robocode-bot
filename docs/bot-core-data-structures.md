@@ -36,8 +36,7 @@ flowchart TD
 
 ### `TargetSnapshot`
 
-Location: `bot_core.target_snapshot` (`bot_core.tank_math` re-exports this
-for compatibility)
+Location: `bot_core.target_snapshot`
 
 ```text
 TargetSnapshot(
@@ -147,8 +146,7 @@ theoretical maximum, so the denominator depends on which side of the firing
 bearing the target escaped toward.
 
 Bullet physics lives in `bot_core.physics`, while angle, position, and
-guess-factor geometry lives in `bot_core.geometry`. `bot_core.tank_math` and
-`bot_core.wave_math` remain compatibility facades for existing imports.
+guess-factor geometry lives in `bot_core.geometry`.
 
 Bullet physics:
 

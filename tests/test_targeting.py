@@ -1,6 +1,6 @@
 import unittest
 
-from bot_core.tank_math import TargetSnapshot
+from bot_core.target_snapshot import TargetSnapshot
 from bot_core.targeting import TargetMemory, TargetSelector
 
 

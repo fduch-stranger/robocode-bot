@@ -1,7 +1,7 @@
 from collections.abc import Callable, Iterator, MutableMapping
 from dataclasses import dataclass
 
-from bot_core.tank_math import TargetSnapshot
+from bot_core.target_snapshot import TargetSnapshot
 
 
 class TargetMemory(MutableMapping[int, TargetSnapshot]):

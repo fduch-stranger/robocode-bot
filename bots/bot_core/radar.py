@@ -3,7 +3,9 @@ from dataclasses import dataclass
 
 from robocode_tank_royale.bot_api import Bot
 
-from bot_core.tank_math import TargetSnapshot, bearing_to, clamp, oldest_seen_target
+from bot_core.geometry.angles import bearing_to
+from bot_core.geometry.numeric import clamp
+from bot_core.target_snapshot import TargetSnapshot, oldest_seen_target
 
 
 @dataclass(frozen=True)

@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
+from bot_core.geometry.numeric import clamp
 from bot_core.physics import gun_heat_for_power
-from bot_core.tank_math import clamp
 
 
 @dataclass(frozen=True)

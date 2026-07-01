@@ -14,7 +14,7 @@ from bot_core.movement import (
     MovementWave,
     MovementWaveFeatures,
 )
-from bot_core.tank_math import TargetSnapshot
+from bot_core.target_snapshot import TargetSnapshot
 
 
 class MinimumRiskMovementTest(unittest.TestCase):

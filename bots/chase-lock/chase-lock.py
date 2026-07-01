@@ -31,15 +31,10 @@ from bot_core.movement import (
 )
 from bot_core.motion import OwnMotionTracker
 from bot_core.radar import RadarLockConfig, lock_radar_to_target
-from bot_core.tank_math import (
-    TargetSnapshot,
-    bearing_to,
-    clamp,
-    distance_to,
-    drive_to_destination,
-    target_from_hit_bot,
-    target_from_scan,
-)
+from bot_core.geometry.angles import bearing_to
+from bot_core.geometry.numeric import clamp
+from bot_core.geometry.position import distance_to, drive_to_destination
+from bot_core.target_snapshot import TargetSnapshot, target_from_hit_bot, target_from_scan
 
 
 FIRE_ALIGNMENT_DEGREES = 7

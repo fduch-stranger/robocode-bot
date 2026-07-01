@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 from robocode_tank_royale.bot_api import Bot
 
-from bot_core.tank_math import TargetSnapshot
+from bot_core.target_snapshot import TargetSnapshot
 
 
 @dataclass(frozen=True)

@@ -2,12 +2,12 @@ import unittest
 from types import SimpleNamespace
 
 from bot_core.gun import AimSolution, VirtualGunSystem, bullet_speed_for_power, lateral_direction
+from bot_core.geometry.waves import wall_limited_escape_angle, wall_limited_escape_angle_from_state
 from bot_core.movement import MovementFlattener
-from bot_core.tank_math import TargetSnapshot
-from bot_core.wave_math import wall_limited_escape_angle, wall_limited_escape_angle_from_state
+from bot_core.target_snapshot import TargetSnapshot
 
 
-class WaveMathTest(unittest.TestCase):
+class GeometryWavesTest(unittest.TestCase):
     def test_gun_wave_escape_angles_follow_positive_guessfactor_direction(self) -> None:
         bot = SimpleNamespace(x=430.0, y=300.0, arena_width=800.0, arena_height=600.0, turn_number=40)
         target = TargetSnapshot(

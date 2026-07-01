@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 
+from bot_core.geometry.numeric import clamp
 from bot_core.movement.config import MovementFlatteningConfig
 from bot_core.movement.waves import MovementWave
-from bot_core.tank_math import clamp
 
 
 @dataclass(frozen=True)

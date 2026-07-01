@@ -26,15 +26,16 @@ from bot_core.gun.utils import (
     segment_features,
 )
 from bot_core.gun.waves import GunWaveTracker
-from bot_core.tank_math import TargetSnapshot, clamp, predicted_position
-from bot_core.wave_math import (
-    absolute_bearing_between,
-    bullet_speed_for_power,
+from bot_core.geometry.angles import absolute_bearing_between, relative_bearing
+from bot_core.geometry.numeric import clamp
+from bot_core.geometry.position import predicted_position
+from bot_core.geometry.waves import (
     escape_angle_for_guess_factor,
     guess_factor_from_offset,
-    relative_bearing,
     wall_limited_escape_angle,
 )
+from bot_core.physics import bullet_speed_for_power
+from bot_core.target_snapshot import TargetSnapshot
 
 
 @dataclass

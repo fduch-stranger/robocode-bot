@@ -24,7 +24,7 @@ from bot_core.gun.utils import (
     signed_bucket,
 )
 from bot_core.gun.waves import GunWaveTracker
-from bot_core.wave_math import bullet_speed_for_power
+from bot_core.physics import bullet_speed_for_power
 
 __all__ = [
     "AimModeSelector",

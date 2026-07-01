@@ -1,8 +1,8 @@
 import math
 
+from bot_core.geometry.angles import relative_bearing
+from bot_core.geometry.numeric import clamp
 from bot_core.gun.models import GunConfig, GunStats, GunWave
-from bot_core.tank_math import clamp
-from bot_core.wave_math import relative_bearing
 
 
 class VirtualGunScorer:

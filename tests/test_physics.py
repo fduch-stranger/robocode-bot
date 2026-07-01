@@ -12,7 +12,8 @@ from bot_core.physics import (
     predict_robot_movement,
     wall_collision_damage_for_speed,
 )
-from bot_core.tank_math import TargetSnapshot, predicted_position
+from bot_core.geometry.position import predicted_position
+from bot_core.target_snapshot import TargetSnapshot
 
 
 class PhysicsTest(unittest.TestCase):
