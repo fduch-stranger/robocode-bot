@@ -35,7 +35,8 @@ PREFERRED_MAX_DISTANCE = 470
 MELEE_PRESSURE_MIN_DISTANCE = 210
 MELEE_PRESSURE_MAX_DISTANCE = 340
 MELEE_FINISH_TARGET_ENERGY = 28
-PANIC_RETREAT_DISTANCE = 115
+PANIC_RETREAT_DISTANCE = 160
+MELEE_PANIC_RETREAT_DISTANCE = 115
 CLOSE_RESET_DISTANCE = 285
 MELEE_CLOSE_RESET_DISTANCE = 165
 FINISH_TARGET_ENERGY = 18
@@ -320,7 +321,8 @@ class ChaseLock(Bot):
         body_bearing: float,
     ) -> tuple[str, float, FlatteningDecision | None]:
         evading = self.turn_number <= self._evade_until_turn
-        if distance < PANIC_RETREAT_DISTANCE:
+        panic_distance = PANIC_RETREAT_DISTANCE if len(self._targets) <= 1 else MELEE_PANIC_RETREAT_DISTANCE
+        if distance < panic_distance:
             self.target_speed = -7
             self.set_turn_left(body_bearing + RETREAT_STRAFE_OFFSET * self._evade_direction)
             return "panic_retreat", RETREAT_STRAFE_OFFSET, None
@@ -650,11 +652,19 @@ class ChaseLock(Bot):
         self._evade_direction *= -1
         self._evade_until_turn = self.turn_number + EVADE_TURNS
         self.target_speed = -4
+        contact_distance = distance_to(self, event.x, event.y)
         self._log(
             "hit.bot",
             target=event.victim_id,
             energy=round(event.energy, 1),
             rammed=event.rammed,
+            x=round(self.x, 1),
+            y=round(self.y, 1),
+            target_x=round(event.x, 1),
+            target_y=round(event.y, 1),
+            distance=round(contact_distance, 1),
+            near_wall=self._near_wall(),
+            wall_risk=self._wall_risk(8),
             evade_direction=self._evade_direction,
         )
 
