@@ -223,6 +223,11 @@ Converted legacy bots can be used as external enemies. By default, tooling looks
 in `../selected-legacy-bots-copy`. Override that with `--legacy-root` or
 `ROBOCODE_LEGACY_BOTS_ROOT` in `.env`.
 
+For headless battles, `scripts/run-battle.sh` creates a small shim under the
+run directory for each legacy bot. The shim keeps the original converted bot
+directory untouched and adds `-Djava.awt.headless=true`, which avoids macOS AWT
+startup crashes from converted legacy wrappers.
+
 Run against BasicGFSurfer:
 
 ```sh

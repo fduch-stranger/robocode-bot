@@ -86,6 +86,15 @@ list_legacy_bots() {
   done < <(discover_legacy_bot_dirs "$root_dir")
 }
 
+is_legacy_bot_dir() {
+  local root_dir="$1"
+  local bot="$2"
+  local legacy_root
+
+  legacy_root="$(legacy_bots_root "$root_dir")"
+  [[ -n "$legacy_root" && "$bot" == "$legacy_root"/* ]]
+}
+
 normalize_bot_dir() {
   local root_dir="$1"
   local bot="$2"

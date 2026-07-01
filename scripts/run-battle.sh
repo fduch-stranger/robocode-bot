@@ -37,6 +37,40 @@ cleanup() {
 }
 trap cleanup EXIT
 
+prepare_legacy_bot_shim() {
+  local source_dir="$1"
+  local shim_root="$2"
+  local bot_name
+  local shim_dir
+  local json_file
+  local script_file
+  local shim_script
+
+  bot_name="$(basename "$source_dir")"
+  shim_dir="$shim_root/$bot_name"
+  mkdir -p "$shim_dir"
+
+  json_file="$(find "$source_dir" -maxdepth 1 -name '*.json' -print -quit)"
+  script_file="$(find "$source_dir" -maxdepth 1 -name '*.sh' -print -quit)"
+  if [[ -z "$json_file" || -z "$script_file" ]]; then
+    echo "Legacy bot '$source_dir' must contain one .json and one .sh file." >&2
+    exit 1
+  fi
+
+  cp "$json_file" "$shim_dir/$(basename "$json_file")"
+  shim_script="$shim_dir/$(basename "$script_file")"
+  cat > "$shim_script" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+export JAVA_TOOL_OPTIONS="-Djava.awt.headless=true\${JAVA_TOOL_OPTIONS:+ \$JAVA_TOOL_OPTIONS}"
+cd "$source_dir"
+exec /usr/bin/env bash "$script_file"
+EOF
+  chmod +x "$shim_script"
+
+  printf '%s\n' "$shim_dir"
+}
+
 if [[ ! -x .venv/bin/python && -z "${ROBOCODE_PYTHON_BIN:-}" ]]; then
   scripts/setup.sh
   RUNTIME_PYTHON_BIN="$(robocode_python_bin "$ROOT_DIR")"
@@ -271,6 +305,16 @@ fi
 if [[ -n "$intents_file" && "$intents_file" != /* ]]; then
   intents_file="$ROOT_DIR/$intents_file"
 fi
+
+prepared_bot_args=()
+for bot in "${bot_args[@]}"; do
+  if is_legacy_bot_dir "$ROOT_DIR" "$bot"; then
+    prepared_bot_args+=("$(prepare_legacy_bot_shim "$bot" "$run_dir/legacy-bots")")
+  else
+    prepared_bot_args+=("$bot")
+  fi
+done
+bot_args=("${prepared_bot_args[@]}")
 
 mkdir -p "$(dirname "$results_file")"
 mkdir -p "$(dirname "$runner_log_file")"
