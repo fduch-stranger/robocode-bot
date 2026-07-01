@@ -8,7 +8,7 @@ General rules:
 - For docs, keep root README as navigation; put workflow details in `docs/tooling.md`, shared behavior in `docs/bot-shared-systems.md`, exact shared data/math in `docs/bot-core-data-structures.md`, and bot-specific behavior in each bot README.
 
 Verification by change type:
-- Shared Python math/helper changes: run relevant unit tests, preferably `.venv/bin/python -m pytest`.
+- Shared Python math/helper changes: run relevant unit tests, preferably `PYTHONPATH=bots .venv/bin/python -m pytest`.
 - Bot behavior changes: run at least a short CLI battle; use A/B runs for performance-sensitive changes.
 - Telemetry changes: run a telemetry battle and `tools/telemetry_audit.py`.
 - Script changes: run `bash -n` on edited shell scripts and a smoke command when practical.

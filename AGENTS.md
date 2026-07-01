@@ -46,7 +46,7 @@ scripts/run-battle.sh
 Useful checks:
 
 ```sh
-.venv/bin/python -m pytest
+PYTHONPATH=bots .venv/bin/python -m pytest
 scripts/run-battle.sh --rounds 1 bots/adaptive-prime bots/chase-lock
 scripts/run-ab.sh --name smoke --preset adaptive-1v1-core --rounds 1 --repeats 1
 tools/telemetry_audit.py battle-results/runs/<run>/telemetry --require-bot adaptive-prime
