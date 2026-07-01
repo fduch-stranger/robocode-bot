@@ -20,6 +20,9 @@ Battle/tool commands:
 - Default battle with all local bots: `scripts/run-battle.sh`.
 - Short 1v1 smoke: `scripts/run-battle.sh --rounds 1 bots/adaptive-prime bots/chase-lock`.
 - A/B smoke: `scripts/run-ab.sh --name smoke --preset adaptive-1v1-core --rounds 1 --repeats 1`.
+- Legacy discovery when configured: `scripts/run-battle.sh --list-legacy`.
+- Legacy boss smoke when configured: `scripts/run-battle.sh --rounds 1 bots/adaptive-prime --legacy basic-gf-surfer`.
+- Legacy A/B boss smoke when configured: `scripts/run-ab.sh --name boss-smoke --preset adaptive-1v1-boss --rounds 1 --repeats 1`.
 - Telemetry viewer commands: `scripts/telemetry-ui.sh start|stop|stop-all|disable|status`.
 - Telemetry audit: `tools/telemetry_audit.py battle-results/runs/<run>/telemetry --require-bot adaptive-prime`.
 

@@ -52,6 +52,15 @@ scripts/run-ab.sh --name smoke --preset adaptive-1v1-core --rounds 1 --repeats 1
 tools/telemetry_audit.py battle-results/runs/<run>/telemetry --require-bot adaptive-prime
 ```
 
+Legacy-bot checks, when `legacy-bots/` or `ROBOCODE_LEGACY_BOTS_ROOT` is
+configured:
+
+```sh
+scripts/run-battle.sh --list-legacy
+scripts/run-battle.sh --rounds 1 bots/adaptive-prime --legacy basic-gf-surfer
+scripts/run-ab.sh --name boss-smoke --preset adaptive-1v1-boss --rounds 1 --repeats 1
+```
+
 Use the telemetry viewer only when behavior inspection is needed. Keep telemetry
 off for A/B benchmarking unless the task is specifically about telemetry.
 
@@ -92,4 +101,3 @@ Choose verification based on the change:
 - Telemetry changes: run a telemetry battle and `tools/telemetry_audit.py`.
 - Documentation changes: run `git diff --check` and check local Markdown links
   when links were edited.
-
