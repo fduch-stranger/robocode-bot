@@ -135,6 +135,68 @@ class MinimumRiskMovementTest(unittest.TestCase):
 
         self.assertAlmostEqual(0.57, bearing, delta=0.1)
 
+    def test_bullet_shadow_reduces_danger_for_intersected_wave_bin(self) -> None:
+        movement = MovementFlattener(
+            MovementFlatteningConfig(
+                bullet_shadow_enabled=True,
+                bullet_shadow_danger_multiplier=0.2,
+                bullet_shadow_radius_margin=16.0,
+            )
+        )
+        bot = SimpleNamespace(x=500.0, y=100.0, arena_width=1000.0, arena_height=1000.0, turn_number=1)
+        wave = MovementWave(
+            target_id=1,
+            source_x=100.0,
+            source_y=100.0,
+            direct_bearing=0.0,
+            lateral_direction=1,
+            bullet_speed=10.0,
+            max_escape_angle_positive=30.0,
+            max_escape_angle_negative=30.0,
+            fired_turn=0,
+            distance_bucket=1,
+        )
+        center_bin = movement.config.bin_count // 2
+        movement._profile[(1, 1, center_bin)] = 5.0
+
+        unshadowed = movement._danger(wave, center_bin, bot)
+        movement.record_shadow_bullet(bot, "b1", 2.0, 180.0)
+        shadowed = movement._danger(wave, center_bin, bot)
+
+        self.assertLess(shadowed, unshadowed)
+        self.assertAlmostEqual(unshadowed * 0.2, shadowed)
+
+    def test_bullet_shadow_does_not_reduce_expected_wave_danger(self) -> None:
+        movement = MovementFlattener(
+            MovementFlatteningConfig(
+                bullet_shadow_enabled=True,
+                bullet_shadow_danger_multiplier=0.2,
+                bullet_shadow_radius_margin=16.0,
+            )
+        )
+        bot = SimpleNamespace(x=500.0, y=100.0, arena_width=1000.0, arena_height=1000.0, turn_number=1)
+        wave = MovementWave(
+            target_id=1,
+            source_x=100.0,
+            source_y=100.0,
+            direct_bearing=0.0,
+            lateral_direction=1,
+            bullet_speed=10.0,
+            max_escape_angle_positive=30.0,
+            max_escape_angle_negative=30.0,
+            fired_turn=0,
+            distance_bucket=1,
+            kind="expected",
+        )
+        center_bin = movement.config.bin_count // 2
+        movement._profile[(1, 1, center_bin)] = 5.0
+
+        unshadowed = movement._danger(wave, center_bin, bot)
+        movement.record_shadow_bullet(bot, "b1", 2.0, 180.0)
+        shadowed = movement._danger(wave, center_bin, bot)
+
+        self.assertEqual(unshadowed, shadowed)
+
 
 if __name__ == "__main__":
     unittest.main()

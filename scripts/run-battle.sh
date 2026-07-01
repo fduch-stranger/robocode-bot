@@ -7,6 +7,8 @@ load_repo_env "$ROOT_DIR"
 source "$ROOT_DIR/scripts/lib/bots.sh"
 RUNTIME_PYTHON_BIN="$(robocode_python_bin "$ROOT_DIR")"
 MVN_REPO="$ROOT_DIR/.m2/repository"
+TELEMETRY_SUPPRESSION_FILE="$ROOT_DIR/.telemetry-cli-suppressed"
+created_telemetry_suppression=0
 run_id="$(date +%Y%m%d-%H%M%S)"
 run_dir="$ROOT_DIR/battle-results/runs/$run_id"
 rounds=3
@@ -27,6 +29,13 @@ bot_inputs=()
 legacy_inputs=()
 
 cd "$ROOT_DIR"
+
+cleanup() {
+  if [[ "$created_telemetry_suppression" -eq 1 ]]; then
+    rm -f "$TELEMETRY_SUPPRESSION_FILE"
+  fi
+}
+trap cleanup EXIT
 
 if [[ ! -x .venv/bin/python && -z "${ROBOCODE_PYTHON_BIN:-}" ]]; then
   scripts/setup.sh
@@ -312,6 +321,10 @@ if [[ "$telemetry" -eq 1 ]]; then
     echo "Telemetry viewer: starting; see $telemetry_dir/telemetry-viewer.log"
   fi
 else
+  if [[ ! -f "$TELEMETRY_SUPPRESSION_FILE" ]]; then
+    : > "$TELEMETRY_SUPPRESSION_FILE"
+    created_telemetry_suppression=1
+  fi
   export ROBOCODE_SUPPRESS_GUI_TELEMETRY=1
   export ROBOCODE_TELEMETRY_AUTOSTART=0
 fi

@@ -27,6 +27,11 @@ class MovementFlatteningConfig:
     profile_decay_after: float = 220.0
     bullet_hit_visit_weight: float = 3.0
     bullet_hit_wave_tolerance: float = 55.0
+    bullet_shadow_enabled: bool = False
+    bullet_shadow_danger_multiplier: float = 0.45
+    bullet_shadow_radius_margin: float = 14.0
+    bullet_shadow_bin_radius: int = 0
+    bullet_shadow_max_ticks: int = 80
 
 
 @dataclass(frozen=True)
@@ -62,6 +67,16 @@ class MovementWave:
     fired_turn: int
     distance_bucket: int
     kind: str = "confirmed"
+
+
+@dataclass(frozen=True)
+class ShadowBullet:
+    bullet_id: str
+    source_x: float
+    source_y: float
+    direction: float
+    bullet_speed: float
+    fired_turn: int
 
 
 @dataclass(frozen=True)
@@ -312,7 +327,36 @@ class MovementFlattener:
         self.config = config or MovementFlatteningConfig()
         self._profile: dict[tuple[int, int, int], float] = {}
         self._waves: list[MovementWave] = []
+        self._shadow_bullets: list[ShadowBullet] = []
         self._last_switch_turn: dict[int, int] = {}
+
+    @property
+    def shadow_bullet_count(self) -> int:
+        return len(self._shadow_bullets)
+
+    def record_shadow_bullet(
+        self,
+        bot: Bot,
+        bullet_id: object,
+        fire_power: float,
+        direction: float,
+    ) -> None:
+        if not self.config.bullet_shadow_enabled:
+            return
+        self._shadow_bullets.append(
+            ShadowBullet(
+                bullet_id=str(bullet_id),
+                source_x=bot.x,
+                source_y=bot.y,
+                direction=direction,
+                bullet_speed=bullet_speed_for_power(fire_power),
+                fired_turn=bot.turn_number,
+            )
+        )
+
+    def remove_shadow_bullet(self, bullet_id: object) -> None:
+        key = str(bullet_id)
+        self._shadow_bullets = [bullet for bullet in self._shadow_bullets if bullet.bullet_id != key]
 
     def record_enemy_fire(
         self,
@@ -373,6 +417,7 @@ class MovementFlattener:
         return wave
 
     def update(self, bot: Bot) -> list[MovementProfileVisit]:
+        self._expire_shadow_bullets(bot)
         visits: list[MovementProfileVisit] = []
         remaining_waves: list[MovementWave] = []
         for wave in self._waves:
@@ -518,6 +563,7 @@ class MovementFlattener:
 
     def clear_round_state(self) -> None:
         self._waves.clear()
+        self._shadow_bullets.clear()
         self._last_switch_turn.clear()
 
     def remove_target(self, target_id: int, clear_profile: bool = True) -> None:
@@ -620,7 +666,7 @@ class MovementFlattener:
         guess_factor = self._guess_factor(wave, projected_x, projected_y)
         bin_index = self._bin_index(guess_factor)
         if use_surfing:
-            return self._danger(wave.target_id, wave.distance_bucket, bin_index)
+            return self._danger(wave, bin_index, bot)
         return self._smoothed_count(wave.target_id, wave.distance_bucket, bin_index)
 
     def _project_position(
@@ -700,8 +746,94 @@ class MovementFlattener:
             move_bearing += smoothing_step
         return move_bearing
 
-    def _danger(self, target_id: int, bucket: int, bin_index: int) -> float:
-        return self._smoothed_count(target_id, bucket, bin_index) + self.config.unvisited_bin_danger
+    def _danger(self, wave: MovementWave, bin_index: int, bot: Bot | None = None) -> float:
+        danger = self._smoothed_count(wave.target_id, wave.distance_bucket, bin_index) + self.config.unvisited_bin_danger
+        if bot is not None and self._has_bullet_shadow(bot, wave, bin_index):
+            return danger * self.config.bullet_shadow_danger_multiplier
+        return danger
+
+    def _has_bullet_shadow(self, bot: Bot, wave: MovementWave, bin_index: int) -> bool:
+        if not self.config.bullet_shadow_enabled or not self._shadow_bullets:
+            return False
+        if wave.kind != "confirmed":
+            return False
+        start_turn = max(bot.turn_number, wave.fired_turn + 1)
+        end_turn = min(
+            bot.turn_number + self.config.bullet_shadow_max_ticks,
+            wave.fired_turn + self.config.bullet_shadow_max_ticks,
+        )
+        for bullet in self._shadow_bullets:
+            first_turn = max(start_turn, bullet.fired_turn + 1)
+            for turn in range(first_turn, end_turn + 1):
+                previous_x, previous_y = self._shadow_bullet_position(bullet, turn - 1)
+                bullet_x, bullet_y = self._shadow_bullet_position(bullet, turn)
+                if not self._point_inside_field(bot, previous_x, previous_y) and not self._point_inside_field(
+                    bot, bullet_x, bullet_y
+                ):
+                    break
+                wave_radius = wave.bullet_speed * max(0, turn - wave.fired_turn)
+                shadow_x, shadow_y = self._closest_point_on_segment(
+                    wave.source_x,
+                    wave.source_y,
+                    previous_x,
+                    previous_y,
+                    bullet_x,
+                    bullet_y,
+                )
+                distance_to_wave_source = math.hypot(shadow_x - wave.source_x, shadow_y - wave.source_y)
+                if abs(distance_to_wave_source - wave_radius) > self.config.bullet_shadow_radius_margin:
+                    continue
+                shadow_bin = self._bin_index(self._guess_factor(wave, shadow_x, shadow_y))
+                if abs(shadow_bin - bin_index) <= self.config.bullet_shadow_bin_radius:
+                    return True
+        return False
+
+    def _expire_shadow_bullets(self, bot: Bot) -> None:
+        if not self._shadow_bullets:
+            return
+        remaining: list[ShadowBullet] = []
+        for bullet in self._shadow_bullets:
+            age = bot.turn_number - bullet.fired_turn
+            if age < 0 or age > self.config.bullet_shadow_max_ticks:
+                continue
+            bullet_x, bullet_y = self._shadow_bullet_position(bullet, bot.turn_number)
+            if self._point_inside_field(bot, bullet_x, bullet_y):
+                remaining.append(bullet)
+        self._shadow_bullets = remaining
+
+    @staticmethod
+    def _shadow_bullet_position(bullet: ShadowBullet, turn: int) -> tuple[float, float]:
+        age = max(0, turn - bullet.fired_turn)
+        bearing = math.radians(bullet.direction)
+        return (
+            bullet.source_x + math.cos(bearing) * bullet.bullet_speed * age,
+            bullet.source_y + math.sin(bearing) * bullet.bullet_speed * age,
+        )
+
+    @staticmethod
+    def _point_inside_field(bot: Bot, x: float, y: float) -> bool:
+        return 0.0 <= x <= bot.arena_width and 0.0 <= y <= bot.arena_height
+
+    @staticmethod
+    def _closest_point_on_segment(
+        point_x: float,
+        point_y: float,
+        start_x: float,
+        start_y: float,
+        end_x: float,
+        end_y: float,
+    ) -> tuple[float, float]:
+        segment_x = end_x - start_x
+        segment_y = end_y - start_y
+        length_squared = segment_x * segment_x + segment_y * segment_y
+        if length_squared <= 0.0:
+            return start_x, start_y
+        projection = ((point_x - start_x) * segment_x + (point_y - start_y) * segment_y) / length_squared
+        clamped_projection = clamp(projection, 0.0, 1.0)
+        return (
+            start_x + segment_x * clamped_projection,
+            start_y + segment_y * clamped_projection,
+        )
 
     def _smoothed_count(self, target_id: int, bucket: int, bin_index: int) -> float:
         score = 0.0

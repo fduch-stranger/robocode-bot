@@ -14,7 +14,13 @@ from robocode_tank_royale.bot_api.events import (
 from bot_utils.debug import DebugLogger, FiredBulletTracker
 from bot_utils.energy import EnergyDropConfig, GunHeatTracker, classify_energy_drop
 from bot_utils.gun import GunConfig, TargetMotion, VirtualGunSystem
-from bot_utils.movement import FlatteningDecision, MinimumRiskConfig, MinimumRiskMovement, MovementFlattener
+from bot_utils.movement import (
+    FlatteningDecision,
+    MinimumRiskConfig,
+    MinimumRiskMovement,
+    MovementFlattener,
+    MovementFlatteningConfig,
+)
 from bot_utils.radar import RadarLockConfig, lock_radar_to_target
 from bot_utils.tank_math import (
     TargetSnapshot,
@@ -139,7 +145,7 @@ class AdaptivePrime(Bot):
         self._gun = VirtualGunSystem(
             GunConfig(selectable_modes=frozenset({"linear", "traditional_gf", "dynamic_cluster", "anti_surfer"}))
         )
-        self._movement = MovementFlattener()
+        self._movement = MovementFlattener(MovementFlatteningConfig(bullet_shadow_enabled=True))
         self._minimum_risk = MinimumRiskMovement(
             MinimumRiskConfig(
                 candidate_distances=(220.0, 320.0, 430.0, 560.0),
@@ -1035,6 +1041,7 @@ class AdaptivePrime(Bot):
 
     def on_bullet_hit(self, event: BulletHitBotEvent) -> None:
         self._record_enemy_energy_correction(event.victim_id, event.damage, "our_bullet_damage")
+        self._movement.remove_shadow_bullet(event.bullet.bullet_id)
         bullet_fields = self._fired_bullets.fields_for(event.bullet.bullet_id)
         self._log(
             "bullet.hit_bot",
@@ -1083,6 +1090,12 @@ class AdaptivePrime(Bot):
         target_age = self.turn_number - target.seen_turn if target is not None else None
         gun_score, gun_visits = self._gun.target_confidence(target.bot_id) if target is not None else (0.0, 0)
         wave = self._gun.record_pending_fire()
+        self._movement.record_shadow_bullet(
+            self,
+            event.bullet.bullet_id,
+            event.bullet.power,
+            event.bullet.direction,
+        )
         bullet_fields = self._fired_bullets.record(
             event.bullet.bullet_id,
             aim_mode=wave.aim_mode if wave is not None else None,
@@ -1101,6 +1114,7 @@ class AdaptivePrime(Bot):
             direction=round(event.bullet.direction, 1),
             energy=round(self.energy, 1),
             gun_waves=self._gun.wave_count,
+            shadow_bullets=self._movement.shadow_bullet_count,
             gun_samples=self._gun.sample_count,
             gun_confidence=round(gun_score, 3),
             gun_confidence_visits=gun_visits,
