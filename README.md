@@ -1,10 +1,11 @@
 # Robocode Bot Test Workspace
 
-This workspace contains two basic Robocode Tank Royale Python bots:
+This workspace contains Robocode Tank Royale Python bots:
 
 - `bots/sweep-pressure`: aggressive sweeping pressure bot
 - `bots/circle-strafer`: evasive circle-strafer bot
 - `bots/chase-lock`: radar/gun target-locking chase bot
+- `bots/adaptive-prime`: composite adaptive bot using the strongest shared targeting and movement heuristics
 
 ## Setup
 

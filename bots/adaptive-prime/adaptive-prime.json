@@ -1,0 +1,12 @@
+{
+  "name": "Adaptive Prime",
+  "version": "1.0",
+  "authors": ["robocode-bot"],
+  "description": "Composite adaptive bot using virtual-gun targeting, threat-aware minimum-risk movement, and conservative target switching.",
+  "homepage": "",
+  "countryCodes": ["DK"],
+  "gameTypes": ["classic", "1v1", "melee"],
+  "platform": "Python 3.13",
+  "programmingLang": "Python 3",
+  "base": "adaptive-prime"
+}
