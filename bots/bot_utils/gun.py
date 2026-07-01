@@ -24,6 +24,9 @@ class GunConfig:
     head_on_min_switch_score: float = 0.45
     score_alpha: float = 0.12
     virtual_hit_radius: float = 18
+    max_target_history: int = 80
+    displacement_min_samples: int = 4
+    displacement_time_tolerance: int = 2
 
 
 @dataclass(frozen=True)
@@ -63,6 +66,14 @@ class GunStats:
     rolling_score: float = 0.0
 
 
+@dataclass(frozen=True)
+class TargetPosition:
+    turn: int
+    x: float
+    y: float
+    speed: float
+
+
 @dataclass
 class AimSolution:
     predicted_x: float
@@ -95,6 +106,7 @@ class VirtualGunSystem:
     _waves: list[GunWave] = field(default_factory=list)
     _stats: dict[tuple[int, str], GunStats] = field(default_factory=dict)
     _active_modes: dict[int, str] = field(default_factory=dict)
+    _target_history: dict[int, list[TargetPosition]] = field(default_factory=dict)
     _pending_wave: GunWave | None = None
 
     @property
@@ -104,6 +116,15 @@ class VirtualGunSystem:
     @property
     def wave_count(self) -> int:
         return len(self._waves)
+
+    def observe_target(self, target: TargetSnapshot) -> None:
+        history = self._target_history.setdefault(target.bot_id, [])
+        if history and history[-1].turn == target.seen_turn:
+            history[-1] = TargetPosition(target.seen_turn, target.x, target.y, target.speed)
+        else:
+            history.append(TargetPosition(target.seen_turn, target.x, target.y, target.speed))
+        if len(history) > self.config.max_target_history:
+            del history[: len(history) - self.config.max_target_history]
 
     def aim(
         self,
@@ -120,6 +141,9 @@ class VirtualGunSystem:
             "head_on": absolute_bearing,
             "linear": self._linear_aim_bearing(bot, target, firepower, field_margin),
         }
+        displacement_bearing = self._displacement_aim_bearing(bot, target, distance, firepower, field_margin)
+        if displacement_bearing is not None:
+            virtual_bearings["displacement"] = displacement_bearing
 
         cluster_guess_factor = self._knn_guess_factor(target.bot_id, features)
         if cluster_guess_factor is not None:
@@ -230,10 +254,12 @@ class VirtualGunSystem:
     def clear_round_state(self) -> None:
         self._waves.clear()
         self._pending_wave = None
+        self._target_history.clear()
 
     def remove_target(self, target_id: int) -> None:
         self._waves = [wave for wave in self._waves if wave.target_id != target_id]
         self._active_modes.pop(target_id, None)
+        self._target_history.pop(target_id, None)
 
     def _linear_aim_bearing(
         self,
@@ -256,6 +282,36 @@ class VirtualGunSystem:
         bullet_speed = bullet_speed_for_power(firepower)
         max_escape_angle = max_escape_angle_for_speed(bullet_speed)
         return absolute_bearing + guess_factor * lateral_direction(target, absolute_bearing) * max_escape_angle
+
+    def _displacement_aim_bearing(
+        self,
+        bot: Bot,
+        target: TargetSnapshot,
+        distance: float,
+        firepower: float,
+        field_margin: float,
+    ) -> float | None:
+        history = self._target_history.get(target.bot_id, [])
+        if len(history) < self.config.displacement_min_samples + 1:
+            return None
+
+        travel_ticks = max(1, round(distance / bullet_speed_for_power(firepower)))
+        current = history[-1]
+        samples: list[tuple[float, float]] = []
+        for past in history[:-1]:
+            elapsed = current.turn - past.turn
+            if abs(elapsed - travel_ticks) > self.config.displacement_time_tolerance:
+                continue
+            samples.append((current.x - past.x, current.y - past.y))
+
+        if len(samples) < self.config.displacement_min_samples:
+            return None
+
+        average_dx = sum(dx for dx, _ in samples) / len(samples)
+        average_dy = sum(dy for _, dy in samples) / len(samples)
+        predicted_x = clamp(target.x + average_dx, field_margin, bot.arena_width - field_margin)
+        predicted_y = clamp(target.y + average_dy, field_margin, bot.arena_height - field_margin)
+        return absolute_bearing_between(bot.x, bot.y, predicted_x, predicted_y)
 
     def _select_aim_mode(self, target_id: int, virtual_bearings: dict[str, float]) -> tuple[str, str | None, bool]:
         current = self._active_modes.get(target_id, self.config.default_mode)
