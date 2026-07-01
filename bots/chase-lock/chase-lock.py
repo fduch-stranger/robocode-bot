@@ -14,7 +14,7 @@ from robocode_tank_royale.bot_api.events import (
 from bot_utils.debug import DebugLogger
 from bot_utils.energy import EnergyDropConfig, GunHeatTracker, classify_energy_drop
 from bot_utils.gun import TargetMotion, VirtualGunSystem
-from bot_utils.movement import FlatteningDecision, MinimumRiskMovement, MovementFlattener
+from bot_utils.movement import FlatteningDecision, MinimumRiskConfig, MinimumRiskMovement, MovementFlattener
 from bot_utils.radar import RadarLockConfig, lock_radar_to_target
 from bot_utils.tank_math import (
     TargetSnapshot,
@@ -33,13 +33,13 @@ REACQUIRE_TARGET_TURNS = 4
 DROP_LOST_TARGET_TURNS = 9
 PREFERRED_MIN_DISTANCE = 320
 PREFERRED_MAX_DISTANCE = 470
-MELEE_PRESSURE_MIN_DISTANCE = 210
-MELEE_PRESSURE_MAX_DISTANCE = 340
+MELEE_PRESSURE_MIN_DISTANCE = 260
+MELEE_PRESSURE_MAX_DISTANCE = 430
 MELEE_FINISH_TARGET_ENERGY = 28
 PANIC_RETREAT_DISTANCE = 160
-MELEE_PANIC_RETREAT_DISTANCE = 115
+MELEE_PANIC_RETREAT_DISTANCE = 180
 CLOSE_RESET_DISTANCE = 285
-MELEE_CLOSE_RESET_DISTANCE = 165
+MELEE_CLOSE_RESET_DISTANCE = 240
 FINISH_TARGET_ENERGY = 18
 FINISH_DISTANCE = 240
 ENEMY_FIRE_MIN_DROP = 0.1
@@ -48,7 +48,7 @@ ENEMY_FIRE_SCAN_GAP_TURNS = 4
 ENEMY_FIRE_CLOSE_COLLISION_DISTANCE = 75
 ENEMY_FIRE_CLOSE_COLLISION_MAX_DROP = 0.8
 ENEMY_FIRE_ACTIVE_EVASION_MIN_DISTANCE = 220
-GUN_HEAT_WAVES_ACTIVE = False
+GUN_HEAT_WAVES_ACTIVE = True
 GUN_HEAT_WAVE_MIN_DISTANCE = 220
 GUN_HEAT_WAVE_MAX_TARGET_AGE = 2
 RADAR_LOCK_RATE = 24
@@ -121,7 +121,21 @@ class ChaseLock(Bot):
         self._enemy_gun_heat = GunHeatTracker()
         self._gun = VirtualGunSystem()
         self._movement = MovementFlattener()
-        self._minimum_risk = MinimumRiskMovement()
+        self._minimum_risk = MinimumRiskMovement(
+            MinimumRiskConfig(
+                candidate_distances=(145.0, 215.0, 285.0, 355.0),
+                field_margin=82.0,
+                preferred_target_distance=380.0,
+                max_target_distance=650.0,
+                close_enemy_distance=220.0,
+                travel_weight=0.0012,
+                enemy_weight=23000.0,
+                close_enemy_weight=28.0,
+                target_distance_weight=0.00065,
+                destination_commit_ticks=10,
+                destination_switch_risk_ratio=0.93,
+            )
+        )
         self._debug = DebugLogger(self, "chase-lock")
 
     def run(self) -> None:
@@ -461,7 +475,7 @@ class ChaseLock(Bot):
         return movement_mode, strafe_offset, flattening
 
     def _movement_command(self, target: TargetSnapshot, distance: float, evading: bool) -> tuple[str, float, float]:
-        if len(self._targets) > 1:
+        if self._melee_round and self.enemy_count > 1:
             return self._melee_movement_command(target, distance, evading)
 
         if target.energy <= FINISH_TARGET_ENERGY and distance > FINISH_DISTANCE:
@@ -505,7 +519,7 @@ class ChaseLock(Bot):
         return "melee_pressure_orbit", APPROACH_STRAFE_OFFSET, 8
 
     def _select_firepower(self, target: TargetSnapshot, distance: float) -> float:
-        if len(self._targets) > 1:
+        if self._melee_round and self.enemy_count > 1:
             return self._select_melee_firepower(target, distance)
 
         if self.energy <= 18:
@@ -644,7 +658,7 @@ class ChaseLock(Bot):
         for bot_id in stale_ids:
             self._log("target.stale", bot_id=bot_id)
             del self._targets[bot_id]
-            self._movement.remove_target(bot_id)
+            self._movement.remove_target(bot_id, clear_profile=False)
         if self._target_id not in self._targets:
             self._target_id = None
 
@@ -847,7 +861,7 @@ class ChaseLock(Bot):
     def on_bot_death(self, event: BotDeathEvent) -> None:
         self._targets.pop(event.victim_id, None)
         self._gun.remove_target(event.victim_id)
-        self._movement.remove_target(event.victim_id)
+        self._movement.remove_target(event.victim_id, clear_profile=False)
         self._enemy_gun_heat.remove_target(event.victim_id)
         if self._target_id == event.victim_id:
             self._target_id = None

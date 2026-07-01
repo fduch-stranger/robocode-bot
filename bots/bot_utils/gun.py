@@ -19,17 +19,17 @@ from bot_utils.wave_math import (
 class GunConfig:
     max_samples: int = 900
     max_waves: int = 80
-    knn_min_samples: int = 90
-    knn_blend_samples: int = 220
+    knn_min_samples: int = 60
+    knn_blend_samples: int = 150
     knn_neighbors: int = 17
     wave_visit_margin: float = 18
     guess_factor_bins: int = 31
     guess_factor_bandwidth: float = 0.18
     default_mode: str = "linear"
     selectable_modes: frozenset[str] = frozenset({"linear", "traditional_gf", "dynamic_cluster"})
-    min_visits: int = 160
-    switch_margin: float = 0.14
-    min_switch_score: float = 0.34
+    min_visits: int = 90
+    switch_margin: float = 0.08
+    min_switch_score: float = 0.30
     head_on_min_switch_score: float = 0.45
     score_alpha: float = 0.12
     virtual_hit_radius: float = 18
@@ -38,6 +38,7 @@ class GunConfig:
     displacement_time_tolerance: int = 2
     traditional_gf_min_samples: int = 28
     traditional_gf_smoothing_bins: float = 1.25
+    traditional_gf_decay: float = 0.985
     traditional_gf_min_switch_visits: int = 260
     traditional_gf_min_switch_score: float = 0.42
     segment_min_visits: int = 18
@@ -87,6 +88,7 @@ class GunStats:
 @dataclass
 class GuessFactorProfile:
     visits: int = 0
+    effective_weight: float = 0.0
     bins: list[float] = field(default_factory=list)
 
 
@@ -516,14 +518,16 @@ class VirtualGunSystem:
             GuessFactorProfile(bins=[0.0] * self.config.guess_factor_bins),
         )
         profile.visits += 1
+        profile.effective_weight = profile.effective_weight * self.config.traditional_gf_decay + 1.0
         bin_index = guess_factor_to_bin(guess_factor, self.config.guess_factor_bins)
         for index in range(self.config.guess_factor_bins):
+            profile.bins[index] *= self.config.traditional_gf_decay
             offset = (index - bin_index) / self.config.traditional_gf_smoothing_bins
             profile.bins[index] += math.exp(-(offset * offset))
 
     def _traditional_guess_factor(self, target_id: int) -> float | None:
         profile = self._traditional_profiles.get(target_id)
-        if profile is None or profile.visits < self.config.traditional_gf_min_samples:
+        if profile is None or profile.effective_weight < self.config.traditional_gf_min_samples:
             return None
         best_index = max(range(len(profile.bins)), key=lambda index: profile.bins[index])
         return bin_to_guess_factor(best_index, self.config.guess_factor_bins)

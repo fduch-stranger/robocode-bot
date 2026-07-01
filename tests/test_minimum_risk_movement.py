@@ -1,7 +1,14 @@
 import unittest
+import math
 from types import SimpleNamespace
 
-from bot_utils.movement import MinimumRiskConfig, MinimumRiskMovement
+from bot_utils.movement import (
+    MinimumRiskConfig,
+    MinimumRiskMovement,
+    MovementFlattener,
+    MovementFlatteningConfig,
+    MovementWave,
+)
 from bot_utils.tank_math import TargetSnapshot
 
 
@@ -34,6 +41,76 @@ class MinimumRiskMovementTest(unittest.TestCase):
         self.assertTrue(second.reused)
         self.assertEqual(1, second.age)
         self.assertEqual((first.x, first.y), (second.x, second.y))
+
+    def test_movement_profile_survives_round_clear(self) -> None:
+        movement = MovementFlattener()
+        movement._profile[(1, 0, 15)] = 3.0
+        movement._waves.append(object())
+        movement._last_switch_turn[1] = 42
+
+        movement.clear_round_state()
+
+        self.assertEqual(3.0, movement._profile[(1, 0, 15)])
+        self.assertEqual([], movement._waves)
+        self.assertEqual({}, movement._last_switch_turn)
+
+    def test_surf_wall_smoothing_uses_wall_stick_before_next_step_hits_wall(self) -> None:
+        movement = MovementFlattener(MovementFlatteningConfig(wall_stick=140.0))
+        wave = MovementWave(
+            target_id=1,
+            source_x=735.0,
+            source_y=100.0,
+            direct_bearing=0.0,
+            lateral_direction=1,
+            bullet_speed=14.0,
+            max_escape_angle_positive=30.0,
+            max_escape_angle_negative=30.0,
+            fired_turn=0,
+            distance_bucket=1,
+        )
+
+        bearing = movement._surf_move_bearing(
+            x=740.0,
+            y=300.0,
+            wave=wave,
+            strafe_offset=92.0,
+            direction=1,
+            field_margin=18.0,
+            arena_width=800.0,
+            arena_height=600.0,
+        )
+
+        stick_x = 740.0 + math.cos(math.radians(bearing)) * movement.config.wall_stick
+        self.assertLess(bearing, -20.0)
+        self.assertLessEqual(stick_x, 782.0)
+
+    def test_surf_wall_smoothing_keeps_clear_orbit_bearing(self) -> None:
+        movement = MovementFlattener(MovementFlatteningConfig(wall_stick=140.0))
+        wave = MovementWave(
+            target_id=1,
+            source_x=395.0,
+            source_y=100.0,
+            direct_bearing=0.0,
+            lateral_direction=1,
+            bullet_speed=14.0,
+            max_escape_angle_positive=30.0,
+            max_escape_angle_negative=30.0,
+            fired_turn=0,
+            distance_bucket=1,
+        )
+
+        bearing = movement._surf_move_bearing(
+            x=400.0,
+            y=300.0,
+            wave=wave,
+            strafe_offset=92.0,
+            direction=1,
+            field_margin=18.0,
+            arena_width=800.0,
+            arena_height=600.0,
+        )
+
+        self.assertAlmostEqual(0.57, bearing, delta=0.1)
 
 
 if __name__ == "__main__":

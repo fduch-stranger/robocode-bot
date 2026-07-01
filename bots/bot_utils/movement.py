@@ -3,6 +3,7 @@ from dataclasses import dataclass
 
 from robocode_tank_royale.bot_api import Bot
 
+from bot_utils.physics import bullet_speed_for_power
 from bot_utils.tank_math import TargetSnapshot, clamp
 from bot_utils.wave_math import guess_factor_from_offset, wall_limited_escape_angle_from_state
 
@@ -15,12 +16,13 @@ class MovementFlatteningConfig:
     mid_distance: float = 480.0
     bin_count: int = 31
     switch_margin: float = 1.5
-    switch_cooldown: int = 28
+    switch_cooldown: int = 12
     lookahead_ticks: int = 14
     surf_max_ticks: int = 80
     surf_intercept_margin: float = 18.0
+    wall_stick: float = 140.0
     wall_smoothing_degrees: float = 12.0
-    wall_smoothing_attempts: int = 8
+    wall_smoothing_attempts: int = 18
     unvisited_bin_danger: float = 0.08
     profile_decay_after: float = 220.0
     bullet_hit_visit_weight: float = 3.0
@@ -295,7 +297,7 @@ class MovementFlattener:
                 )
             ]
 
-        bullet_speed = max(0.1, 20 - 3 * fire_power)
+        bullet_speed = bullet_speed_for_power(fire_power)
         wave_lateral_direction = self._lateral_direction(bot, target) or 1
         wave = MovementWave(
             target_id=target.bot_id,
@@ -368,7 +370,7 @@ class MovementFlattener:
         if not self._waves:
             return None
 
-        bullet_speed = max(0.1, 20 - 3 * bullet_power)
+        bullet_speed = bullet_speed_for_power(bullet_power)
         candidates = [
             wave
             for wave in self._waves
@@ -476,7 +478,6 @@ class MovementFlattener:
         )
 
     def clear_round_state(self) -> None:
-        self._profile.clear()
         self._waves.clear()
         self._last_switch_turn.clear()
 
@@ -651,11 +652,11 @@ class MovementFlattener:
     ) -> float:
         bearing_to_source = self._absolute_bearing(x, y, wave.source_x, wave.source_y)
         move_bearing = bearing_to_source + strafe_offset * direction
-        smoothing_step = self.config.wall_smoothing_degrees * direction
+        smoothing_step = -self.config.wall_smoothing_degrees * direction
         for _ in range(self.config.wall_smoothing_attempts):
-            next_x = x + math.cos(math.radians(move_bearing)) * 8
-            next_y = y + math.sin(math.radians(move_bearing)) * 8
-            if field_margin <= next_x <= arena_width - field_margin and field_margin <= next_y <= arena_height - field_margin:
+            stick_x = x + math.cos(math.radians(move_bearing)) * self.config.wall_stick
+            stick_y = y + math.sin(math.radians(move_bearing)) * self.config.wall_stick
+            if field_margin <= stick_x <= arena_width - field_margin and field_margin <= stick_y <= arena_height - field_margin:
                 return move_bearing
             move_bearing += smoothing_step
         return move_bearing

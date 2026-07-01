@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+from bot_utils.physics import bullet_speed_for_power, gun_heat_for_power
 from bot_utils.tank_math import clamp
 
 
@@ -59,7 +60,7 @@ class GunHeatTracker:
 
     def record_fire(self, target_id: int, turn_number: int, fire_power: float, cooling_rate: float) -> GunHeatState:
         state = self.update(target_id, turn_number, cooling_rate)
-        state.heat = 1.0 + clamp(fire_power, self.config.min_fire_power, self.config.max_fire_power) / 5.0
+        state.heat = gun_heat_for_power(clamp(fire_power, self.config.min_fire_power, self.config.max_fire_power))
         state.last_expected_wave_turn = turn_number
         state.observed_fire = True
         return state
@@ -74,7 +75,7 @@ class GunHeatTracker:
             return None
         state.last_expected_wave_turn = turn_number
         fire_power = self.config.default_fire_power
-        state.heat = 1.0 + clamp(fire_power, self.config.min_fire_power, self.config.max_fire_power) / 5.0
+        state.heat = gun_heat_for_power(clamp(fire_power, self.config.min_fire_power, self.config.max_fire_power))
         return fire_power
 
     def clear_round_state(self) -> None:
@@ -124,7 +125,7 @@ def classify_energy_drop(
             0,
         )
 
-    bullet_speed = max(0.1, 20 - 3 * energy_drop)
+    bullet_speed = bullet_speed_for_power(energy_drop)
     bullet_travel_ticks = max(1, round(distance / bullet_speed))
     evade_ticks = round(
         clamp(

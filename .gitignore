@@ -3,6 +3,7 @@
 .cache/
 dist/
 battle-results/
+regression-investigation/
 target/
 *.pyc
 __pycache__/
