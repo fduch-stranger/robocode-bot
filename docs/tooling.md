@@ -33,6 +33,13 @@ Important variables:
 - `ROBOCODE_TELEMETRY_DIR`: default GUI telemetry JSONL directory.
 - `ROBOCODE_TELEMETRY_HOST` / `ROBOCODE_TELEMETRY_PORT`: telemetry viewer bind
   address.
+- `ROBOCODE_TELEMETRY_QUEUE_SIZE`: bounded async telemetry queue size, default
+  `4096`.
+- `ROBOCODE_TELEMETRY_SYNC=1`: force legacy synchronous telemetry writes for
+  debugging recorder behavior.
+- `ROBOCODE_DEBUG_QUEUE_SIZE`: bounded async debug-log queue size, default
+  `1024`.
+- `ROBOCODE_DEBUG_SYNC=1`: force legacy synchronous debug-log writes.
 
 The `.env` file is intentionally ignored by git.
 
@@ -179,6 +186,12 @@ CLI battle telemetry:
 scripts/run-battle.sh --telemetry bots/adaptive-prime bots/chase-lock
 scripts/run-battle.sh --telemetry --telemetry-open bots/adaptive-prime bots/chase-lock
 ```
+
+Telemetry and debug logs are buffered through bounded background writers by
+default. When a queue fills, events or log lines are dropped instead of blocking
+the bot loop; telemetry records a `telemetry.dropped` lifecycle event and debug
+logs record `debug.dropped` on close. Use `ROBOCODE_TELEMETRY_SYNC=1` or
+`ROBOCODE_DEBUG_SYNC=1` only when debugging the recorder/logging path itself.
 
 GUI telemetry:
 

@@ -44,6 +44,7 @@ class TelemetryEventSpec:
 
 EVENT_SPECS: dict[str, TelemetryEventSpec] = {
     "telemetry.session": TelemetryEventSpec("lifecycle"),
+    "telemetry.dropped": TelemetryEventSpec("lifecycle", required_fields=("count",)),
     "round.reset": TelemetryEventSpec("lifecycle", optional_fields=("previous_turn", "current_turn")),
     "scan.new": TelemetryEventSpec(
         "targeting",

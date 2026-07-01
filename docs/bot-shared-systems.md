@@ -203,6 +203,9 @@ Structured telemetry helpers live in `bot_core.telemetry`. `DebugLogger`
 remains the sink used by bots, while domain emitters in `telemetry.fire`,
 `telemetry.movement`, `telemetry.energy`, and `telemetry.targeting` keep
 event-specific field construction out of bot orchestration code.
+The recorder and debug log sink use bounded background writers by default so
+file I/O does not block the bot loop; overflow is summarized with lifecycle
+events instead of delaying movement, radar, or gun decisions.
 
 Shared dashboard/analyzer semantics are defined in `bot_core.telemetry.schema`.
 The JSONL envelope remains stable, and bot-specific extra fields are allowed,

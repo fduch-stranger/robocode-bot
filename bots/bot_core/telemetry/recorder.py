@@ -1,3 +1,4 @@
+import atexit
 import json
 import math
 import os
@@ -5,18 +6,24 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from types import TracebackType
 from typing import TextIO
 
 from robocode_tank_royale.bot_api import Bot
+
+from bot_core.async_writer import AsyncItemWriter, SyncItemWriter
 
 
 class TelemetryRecorder:
     _server_start_checked = False
 
-    def __init__(self, bot: Bot, bot_name: str, stream: TextIO) -> None:
+    def __init__(self, bot: Bot, bot_name: str, stream: TextIO, *, sync: bool | None = None, queue_size: int | None = None) -> None:
         self._bot = bot
         self._bot_name = bot_name
-        self._stream = stream
+        self._closed = False
+        self._writer = self._build_writer(stream, sync=sync, queue_size=queue_size)
+        self._atexit_callback = self.close
+        atexit.register(self._atexit_callback)
         self.write("telemetry.session", {"pid": os.getpid()})
 
     @classmethod
@@ -31,6 +38,35 @@ class TelemetryRecorder:
         return cls(bot, bot_name, stream)
 
     def write(self, event: str, fields: dict[str, object]) -> None:
+        if self._closed:
+            return
+        self._writer.submit(self._record(event, fields))
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        dropped_count = self._writer.dropped_count
+        if dropped_count:
+            self._writer.submit_blocking(self._record("telemetry.dropped", {"count": dropped_count}))
+        self._closed = True
+        self._writer.close()
+        try:
+            atexit.unregister(self._atexit_callback)
+        except ValueError:
+            pass
+
+    def __enter__(self) -> "TelemetryRecorder":
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        self.close()
+
+    def _record(self, event: str, fields: dict[str, object]) -> dict[str, object]:
         record = {
             "schema": 1,
             "ts": round(time.time(), 3),
@@ -41,8 +77,22 @@ class TelemetryRecorder:
             "state": self._state(),
             "fields": self._json_safe(fields),
         }
-        self._stream.write(json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n")
-        self._stream.flush()
+        return record
+
+    @staticmethod
+    def _build_writer(stream: TextIO, *, sync: bool | None, queue_size: int | None) -> AsyncItemWriter | SyncItemWriter:
+        if sync is None:
+            sync = os.environ.get("ROBOCODE_TELEMETRY_SYNC") == "1"
+        if sync:
+            return SyncItemWriter(stream, TelemetryRecorder._encode_record)
+        if queue_size is None:
+            queue_size = TelemetryRecorder._int_env("ROBOCODE_TELEMETRY_QUEUE_SIZE", 4096)
+        return AsyncItemWriter(
+            stream,
+            TelemetryRecorder._encode_record,
+            queue_size=queue_size,
+            thread_name="robocode-telemetry-writer",
+        )
 
     def _state(self) -> dict[str, object]:
         return {
@@ -142,3 +192,17 @@ class TelemetryRecorder:
         if isinstance(value, (list, tuple, set)):
             return [cls._json_safe(item) for item in value]
         return str(value)
+
+    @staticmethod
+    def _encode_record(record: object) -> str:
+        return json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n"
+
+    @staticmethod
+    def _int_env(name: str, default: int) -> int:
+        raw = os.environ.get(name)
+        if raw is None:
+            return default
+        try:
+            return max(1, int(raw))
+        except ValueError:
+            return default

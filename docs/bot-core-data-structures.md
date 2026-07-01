@@ -606,11 +606,19 @@ arena_width, arena_height
 distance, movement mode, aim mode, radar mode, firepower, gun bearing error,
 danger breakdown, wave bin, prediction confidence, and so on.
 
-`bot_core.telemetry.recorder.TelemetryRecorder` writes JSONL records.
+`bot_core.telemetry.recorder.TelemetryRecorder` writes JSONL records through
+`bot_core.async_writer.AsyncItemWriter` by default. Bot code still builds the
+record envelope on the hot path, but JSON serialization, file writes, and
+flushes happen on the writer thread. If the queue fills, telemetry events are
+dropped instead of blocking movement, radar, or gun decisions; close writes a
+`telemetry.dropped` lifecycle event with the dropped count.
+
 `bot_core.debug.DebugLogger` owns debug-log sampling and forwards structured
-events to the recorder. Domain-specific telemetry modules build event fields
-from decision records such as `FireTick`, `FireDecision`, `MovementCommand`,
-`TargetSelection`, and movement/gun wave visits.
+events to the recorder. Text debug logs use the same bounded background-write
+pattern and summarize dropped lines with `debug.dropped`. Domain-specific
+telemetry modules build event fields from decision records such as `FireTick`,
+`FireDecision`, `MovementCommand`, `TargetSelection`, and movement/gun wave
+visits.
 
 Important invariant: event fields should make derived dashboard stats possible
 without re-running bot logic.
