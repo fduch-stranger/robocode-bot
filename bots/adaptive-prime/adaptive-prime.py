@@ -47,8 +47,8 @@ ENEMY_FIRE_MAX_DROP = 3.0
 ENEMY_FIRE_SCAN_GAP_TURNS = 4
 ENEMY_FIRE_CLOSE_COLLISION_DISTANCE = 75
 ENEMY_FIRE_CLOSE_COLLISION_MAX_DROP = 0.8
-ENEMY_FIRE_ACTIVE_EVASION_MIN_DISTANCE = 120
-MELEE_FIRE_ACTIVE_EVASION_MIN_DISTANCE = 120
+ENEMY_FIRE_ACTIVE_EVASION_MIN_DISTANCE = 0
+MELEE_FIRE_ACTIVE_EVASION_MIN_DISTANCE = 0
 GUN_HEAT_WAVES_ACTIVE = True
 GUN_HEAT_WAVE_MIN_DISTANCE = 220
 GUN_HEAT_WAVE_MAX_TARGET_AGE = 2
@@ -387,19 +387,7 @@ class AdaptivePrime(Bot):
             self._radar_sweep_direction = 1 if radar_command.turn > 0 else -1
         self.set_turn_gun_left(aim.gun_bearing)
 
-        if self._near_wall() or self._wall_risk(8):
-            center_bearing = bearing_to(self, self.arena_width / 2, self.arena_height / 2, self.direction)
-            self.target_speed = WALL_ESCAPE_SPEED
-            self.set_turn_left(clamp(center_bearing, -35, 35))
-            self._sample_status(
-                "wall.avoid",
-                x=round(self.x, 1),
-                y=round(self.y, 1),
-                center_bearing=round(center_bearing, 2),
-                target=target.bot_id,
-            )
-        else:
-            movement_mode, strafe_offset, flattening = self._set_adaptive_movement(target, distance, body_bearing)
+        movement_mode, strafe_offset, flattening = self._set_adaptive_movement(target, distance, body_bearing)
 
         if (
             age <= FIRE_MEMORY_TURNS
@@ -442,8 +430,9 @@ class AdaptivePrime(Bot):
         body_bearing: float,
     ) -> tuple[str, float, FlatteningDecision | None]:
         evading = self.turn_number <= self._evade_until_turn
+        duel_active = len(self._targets) <= 1 and self.enemy_count <= 1
         panic_distance = PANIC_RETREAT_DISTANCE if len(self._targets) <= 1 else MELEE_PANIC_RETREAT_DISTANCE
-        if distance < panic_distance:
+        if not duel_active and distance < panic_distance:
             self.target_speed = -7
             self.set_turn_left(body_bearing + RETREAT_STRAFE_OFFSET * self._evade_direction)
             return "panic_retreat", RETREAT_STRAFE_OFFSET, None
@@ -477,7 +466,7 @@ class AdaptivePrime(Bot):
                 )
                 return "melee_minimum_risk", 0.0, None
 
-        if not self._melee_round and len(self._targets) <= 1:
+        if duel_active:
             flattening = self._movement.choose_direction(
                 self,
                 target,
