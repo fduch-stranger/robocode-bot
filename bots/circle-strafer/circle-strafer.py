@@ -25,17 +25,13 @@ from bot_core.geometry.angles import body_bearing_to
 from bot_core.geometry.numeric import clamp
 from bot_core.geometry.position import distance_to, drive_to_destination
 from bot_core.target_snapshot import TargetSnapshot, target_from_hit_bot, target_from_scan
-from bot_core.telemetry.energy import enemy_fire_detected_fields, energy_drop_ignored_fields
+from bot_core.telemetry.energy import EnergyTelemetry
 from bot_core.telemetry.fire import (
+    FireTelemetry,
     SimpleTrackTick,
-    bullet_fired_fields,
-    bullet_hit_bot_fields,
-    gun_switch_fields,
-    track_fields,
-    wave_visit_fields,
 )
-from bot_core.telemetry.movement import flattening_fields, minimum_risk_fields, profile_visit_fields, wall_avoid_fields
-from bot_core.telemetry.targeting import candidate_target_selection_fields, scan_new_fields
+from bot_core.telemetry.movement import MovementTelemetry
+from bot_core.telemetry.targeting import TargetingTelemetry
 
 
 FIRE_ALIGNMENT_DEGREES = 8
@@ -139,6 +135,10 @@ class CircleStrafer(Bot):
         self._own_motion = OwnMotionTracker()
         self._minimum_risk = MinimumRiskMovement()
         self._debug = DebugLogger(self, "circle-strafer")
+        self._energy_telemetry = EnergyTelemetry(self._debug)
+        self._fire_telemetry = FireTelemetry(self._debug)
+        self._movement_telemetry = MovementTelemetry(self._debug)
+        self._targeting_telemetry = TargetingTelemetry(self._debug)
         self._fired_bullets = FiredBulletTracker()
 
     def run(self) -> None:
@@ -163,10 +163,7 @@ class CircleStrafer(Bot):
             center_bearing = body_bearing_to(self, self.arena_width / 2, self.arena_height / 2)
             self.target_speed = WALL_ESCAPE_SPEED
             self.turn_rate = clamp(center_bearing, -10, 10)
-            self._sample_status(
-                "wall.avoid",
-                **wall_avoid_fields(self.x, self.y, center_bearing, self._move_direction),
-            )
+            self._movement_telemetry.sample_wall_avoid(self.x, self.y, center_bearing, self._move_direction)
             return
 
         close_target = self._nearest_target()
@@ -207,14 +204,11 @@ class CircleStrafer(Bot):
                 decision = self._minimum_risk.choose(self, list(self._targets.values()), focus_target)
                 if decision is not None:
                     turn, speed = self._drive_to_destination(decision.x, decision.y, ORBIT_SPEED)
-                    self._sample_status(
-                        "movement.minimum_risk",
-                        **minimum_risk_fields(
-                            focus_target.bot_id,
-                            decision,
-                            MovementCommand("minimum_risk", turn, speed),
-                            len(self._targets),
-                        ),
+                    self._movement_telemetry.sample_minimum_risk(
+                        focus_target.bot_id,
+                        decision,
+                        MovementCommand("minimum_risk", turn, speed),
+                        len(self._targets),
                     )
                     return
 
@@ -242,10 +236,7 @@ class CircleStrafer(Bot):
         self._targets[event.scanned_bot_id] = target_from_scan(event, self.turn_number)
         self._gun.observe_target(self._targets[event.scanned_bot_id])
         if previous is None:
-            self._log(
-                "scan.new",
-                **scan_new_fields(event.scanned_bot_id, event.energy, event.x, event.y),
-            )
+            self._targeting_telemetry.record_scan_new(event.scanned_bot_id, event.energy, event.x, event.y)
 
     def _detect_enemy_fire(self, event: ScannedBotEvent, previous: TargetSnapshot, scan_gap: int) -> bool:
         distance = distance_to(self, event.x, event.y)
@@ -264,10 +255,7 @@ class CircleStrafer(Bot):
         )
         if not signal.is_fire:
             if signal.raw_energy_drop > 0 or signal.energy_correction:
-                self._log(
-                    "enemy.energy_drop_ignored",
-                    **energy_drop_ignored_fields(event.scanned_bot_id, signal, scan_gap, distance),
-                )
+                self._energy_telemetry.record_drop_ignored(event.scanned_bot_id, signal, scan_gap, distance)
             return False
 
         actual_fire_power = signal.fire_power or 1.5
@@ -296,22 +284,19 @@ class CircleStrafer(Bot):
             self._move_direction *= -1
         self._evade_until_turn = max(self._evade_until_turn, self.turn_number + signal.evade_ticks)
         power_mae = self._enemy_fire_power.mean_absolute_error(event.scanned_bot_id)
-        self._log(
-            "enemy.fire_detected",
-            **enemy_fire_detected_fields(
-                event.scanned_bot_id,
-                signal,
-                scan_gap,
-                distance,
-                "active_duel" if active_evasion else "threat_only",
-                self._evade_until_turn,
-                movement_wave is not None,
-                prediction,
-                self._enemy_fire_power.sample_count(event.scanned_bot_id),
-                power_mae,
-                evading=active_evasion,
-                move_direction=self._move_direction,
-            ),
+        self._energy_telemetry.record_enemy_fire_detected(
+            event.scanned_bot_id,
+            signal,
+            scan_gap,
+            distance,
+            "active_duel" if active_evasion else "threat_only",
+            self._evade_until_turn,
+            movement_wave is not None,
+            prediction,
+            self._enemy_fire_power.sample_count(event.scanned_bot_id),
+            power_mae,
+            evading=active_evasion,
+            move_direction=self._move_direction,
         )
         return True
 
@@ -349,10 +334,7 @@ class CircleStrafer(Bot):
         )
         score_segment = aim.segment_key if use_segmented_gun_stats else None
         if aim.mode_changed:
-            self._log(
-                "gun.switch",
-                **gun_switch_fields(target.bot_id, aim, self._gun.score_summary(target.bot_id, score_segment)),
-            )
+            self._fire_telemetry.record_gun_switch(target.bot_id, aim, self._gun.score_summary(target.bot_id, score_segment))
         radar_command = lock_priority_radar(
             self,
             self._targets.values(),
@@ -368,22 +350,19 @@ class CircleStrafer(Bot):
             self._gun.set_pending_wave(self._gun.make_wave(self, target, firepower, aim))
             self.set_fire(firepower)
         else:
-            self._sample_status(
-                "track",
-                **track_fields(
-                    SimpleTrackTick(
-                        target,
-                        age,
-                        distance,
-                        aim,
-                        radar_command,
-                        firepower,
-                        hold_reason,
-                        self._gun.sample_count,
-                        self._gun.score_summary(target.bot_id, score_segment),
-                        len(self._targets),
-                    )
-                ),
+            self._fire_telemetry.sample_track(
+                SimpleTrackTick(
+                    target,
+                    age,
+                    distance,
+                    aim,
+                    radar_command,
+                    firepower,
+                    hold_reason,
+                    self._gun.sample_count,
+                    self._gun.score_summary(target.bot_id, score_segment),
+                    len(self._targets),
+                )
             )
 
     def _target_motion(self, target: TargetSnapshot) -> TargetMotion:
@@ -394,17 +373,11 @@ class CircleStrafer(Bot):
 
     def _log_wave_visits(self, target: TargetSnapshot) -> None:
         for visit in self._gun.update_waves(self, target):
-            self._log(
-                "gun.wave_visit",
-                **wave_visit_fields(visit),
-            )
+            self._fire_telemetry.record_wave_visit(visit)
 
     def _log_movement_profile_visits(self) -> None:
         for visit in self._movement.update(self):
-            self._log(
-                "movement.profile_visit",
-                **profile_visit_fields(visit),
-            )
+            self._movement_telemetry.record_profile_visit(visit)
 
     def _apply_movement_flattening(self, target: TargetSnapshot, distance: float) -> None:
         if self.enemy_count > 1:
@@ -428,10 +401,7 @@ class CircleStrafer(Bot):
             return
 
         self._move_direction = flattening.direction
-        self._log(
-            "movement.flatten",
-            **flattening_fields(target.bot_id, flattening, distance),
-        )
+        self._movement_telemetry.record_flattening(target.bot_id, flattening, distance)
 
     def _firepower_for(self, distance: float) -> float:
         if self.energy <= LOW_ENERGY_HOLD:
@@ -501,17 +471,14 @@ class CircleStrafer(Bot):
 
         self._target_id = target.bot_id
         if previous_id != target.bot_id:
-            self._log(
-                "target.select",
-                **candidate_target_selection_fields(
-                    previous_id,
-                    target,
-                    self._target_score(target),
-                    candidate,
-                    self._target_score(candidate),
-                    current_age if current is not None else None,
-                    len(self._targets),
-                ),
+            self._targeting_telemetry.record_candidate_selection(
+                previous_id,
+                target,
+                self._target_score(target),
+                candidate,
+                self._target_score(candidate),
+                current_age if current is not None else None,
+                len(self._targets),
             )
         return target
 
@@ -591,16 +558,13 @@ class CircleStrafer(Bot):
         self._record_enemy_energy_correction(event.victim_id, event.damage, "our_bullet_damage")
         self._movement.remove_shadow_bullet(event.bullet.bullet_id)
         bullet_fields = self._fired_bullets.fields_for(event.bullet.bullet_id)
-        self._log(
-            "bullet.hit_bot",
-            **bullet_hit_bot_fields(
-                event.victim_id,
-                event.bullet.bullet_id,
-                event.bullet.power,
-                event.damage,
-                event.energy,
-                bullet_fields,
-            ),
+        self._fire_telemetry.record_bullet_hit_bot(
+            event.victim_id,
+            event.bullet.bullet_id,
+            event.bullet.power,
+            event.damage,
+            event.energy,
+            bullet_fields,
         )
 
     def on_bullet_fired(self, event: BulletFiredEvent) -> None:
@@ -620,22 +584,19 @@ class CircleStrafer(Bot):
             if wave is not None and wave.aim_guess_factor is not None
             else None,
         )
-        self._log(
-            "bullet.fired",
-            **bullet_fired_fields(
-                event.bullet.bullet_id,
-                self._target_id,
-                event.bullet.power,
-                event.bullet.direction,
-                self.energy,
-                self._gun.wave_count,
-                self._gun.sample_count,
-                gun_score,
-                gun_visits,
-                bullet_fields,
-                wave_created=wave is not None,
-                shadow_bullets=self._movement.shadow_bullet_count,
-            ),
+        self._fire_telemetry.record_bullet_fired(
+            event.bullet.bullet_id,
+            self._target_id,
+            event.bullet.power,
+            event.bullet.direction,
+            self.energy,
+            self._gun.wave_count,
+            self._gun.sample_count,
+            gun_score,
+            gun_visits,
+            bullet_fields,
+            wave_created=wave is not None,
+            shadow_bullets=self._movement.shadow_bullet_count,
         )
 
     def _sample_status(self, event: str, **fields: object) -> None:

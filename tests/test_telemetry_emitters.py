@@ -6,11 +6,13 @@ from bot_core.movement import FlatteningDecision, GoToSurfDecision, MinimumRiskD
 from bot_core.radar import RadarCommand
 from bot_core.target_snapshot import TargetSnapshot
 from bot_core.telemetry.energy import (
+    EnergyTelemetry,
     enemy_fire_detected_fields,
     energy_drop_ignored_fields,
     gun_heat_wave_fields,
 )
 from bot_core.telemetry.fire import (
+    FireTelemetry,
     FireTick,
     SimpleTrackTick,
     bullet_fired_fields,
@@ -19,6 +21,7 @@ from bot_core.telemetry.fire import (
     wave_visit_fields,
 )
 from bot_core.telemetry.movement import (
+    MovementTelemetry,
     duel_potential_fields,
     flattening_fields,
     goto_surf_fields,
@@ -27,6 +30,7 @@ from bot_core.telemetry.movement import (
     wall_avoid_fields,
 )
 from bot_core.telemetry.targeting import (
+    TargetingTelemetry,
     candidate_target_selection_fields,
     scan_new_fields,
     scan_reacquired_fields,
@@ -34,6 +38,17 @@ from bot_core.telemetry.targeting import (
     target_selection_fields,
 )
 from bot_core.targeting import TargetSelection
+
+
+class RecordingSink:
+    def __init__(self) -> None:
+        self.records: list[tuple[str, str, dict[str, object]]] = []
+
+    def log(self, event: str, **fields: object) -> None:
+        self.records.append(("log", event, fields))
+
+    def sample(self, event: str, **fields: object) -> None:
+        self.records.append(("sample", event, fields))
 
 
 class TelemetryEmitterTest(unittest.TestCase):
@@ -285,6 +300,98 @@ class TelemetryEmitterTest(unittest.TestCase):
             },
             candidate_target_selection_fields(3, target, 12.34, TargetSnapshot(8, 70, 1, 2, 0, 0, 10), 11.11, 4, 2),
         )
+
+    def test_domain_emitters_record_concrete_events(self) -> None:
+        sink = RecordingSink()
+        target = TargetSnapshot(7, 81.0, 120.0, 160.0, 45.0, 4.0, 10)
+        aim = AimSolution(
+            predicted_x=130.04,
+            predicted_y=170.05,
+            gun_bearing=-2.345,
+            mode="linear",
+            guess_factor=None,
+            features=(0.0,) * 7,
+            segment_key=(1, 2, 3),
+            virtual_bearings={},
+        )
+        radar = RadarCommand(target, turn=4.444, mode="lock", bearing=-8.888, age=1)
+        fire_tick = SimpleTrackTick(target, 2, 321.98, aim, radar, 1.2, "gun_alignment", 42, {"linear": "0.42/9"}, 3)
+        FireTelemetry(sink).sample_track(fire_tick)
+
+        signal = EnergyDropSignal(True, "fire", 1.51, 1.41, 0.1, 1.41, 13, 20)
+        prediction = EnemyFirePowerPrediction(1.2, 0.75, 20, "knn", mean_absolute_error=0.2222)
+        EnergyTelemetry(sink).record_enemy_fire_detected(
+            7,
+            signal,
+            2,
+            200.12,
+            "active_duel",
+            99,
+            True,
+            prediction,
+            12,
+            0.3333,
+            evading=True,
+            move_direction=-1,
+        )
+
+        flattening = FlatteningDecision(-1, True, "lower_danger", 4, 2.22, 1.11)
+        MovementTelemetry(sink).record_flattening(7, flattening, 200.12)
+        TargetingTelemetry(sink).record_scan_new(7, 81.0, 120.0, 160.0)
+
+        self.assertEqual(
+            ["track", "enemy.fire_detected", "movement.flatten", "scan.new"],
+            [event for _, event, _ in sink.records],
+        )
+        self.assertEqual("sample", sink.records[0][0])
+        self.assertEqual(
+            {
+                "target",
+                "age",
+                "distance",
+                "gun_bearing",
+                "radar_turn",
+                "radar_mode",
+                "radar_target",
+                "radar_age",
+                "firepower",
+                "hold_reason",
+                "predicted_x",
+                "predicted_y",
+                "aim_mode",
+                "aim_guess_factor",
+                "gun_samples",
+                "gun_scores",
+                "known_targets",
+            },
+            set(sink.records[0][2]),
+        )
+        self.assertEqual(
+            {
+                "bot_id",
+                "power",
+                "raw_drop",
+                "corrected_drop",
+                "correction",
+                "scan_gap",
+                "distance",
+                "bullet_travel_ticks",
+                "evasion",
+                "evading",
+                "move_direction",
+                "evade_until",
+                "movement_wave",
+                "predicted_power",
+                "prediction_confidence",
+                "prediction_reason",
+                "prediction_error",
+                "power_samples",
+                "power_mae",
+            },
+            set(sink.records[1][2]),
+        )
+        self.assertEqual({"target", "suggested_direction", "bucket", "current_count", "alternative_count", "distance"}, set(sink.records[2][2]))
+        self.assertEqual({"bot_id", "energy", "x", "y"}, set(sink.records[3][2]))
 
     def test_bullet_emitters_preserve_lifecycle_fields(self) -> None:
         tracked = {"aim_mode": "linear", "aim_guess_factor": 0.123}

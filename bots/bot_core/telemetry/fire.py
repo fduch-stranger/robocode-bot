@@ -5,6 +5,7 @@ from bot_core.gun import AimSolution, WaveVisit
 from bot_core.movement import FlatteningDecision
 from bot_core.radar import RadarCommand
 from bot_core.target_snapshot import TargetSnapshot
+from bot_core.telemetry.sink import TelemetrySink
 from bot_core.telemetry.tick import rounded
 
 _UNSET = object()
@@ -41,6 +42,74 @@ class SimpleTrackTick:
     gun_samples: int
     gun_scores: dict[str, str]
     known_targets: int
+
+
+class FireTelemetry:
+    def __init__(self, sink: TelemetrySink) -> None:
+        self._sink = sink
+
+    def record_track(self, tick: FireTick | SimpleTrackTick) -> None:
+        self._sink.log("track", **track_fields(tick))
+
+    def sample_track(self, tick: FireTick | SimpleTrackTick) -> None:
+        self._sink.sample("track", **track_fields(tick))
+
+    def record_gun_switch(self, target_id: int, aim: AimSolution, scores: dict[str, str]) -> None:
+        self._sink.log("gun.switch", **gun_switch_fields(target_id, aim, scores))
+
+    def record_wave_visit(self, visit: WaveVisit) -> None:
+        self._sink.log("gun.wave_visit", **wave_visit_fields(visit))
+
+    def record_bullet_hit_bot(
+        self,
+        victim_id: int,
+        bullet_id: int,
+        power: float,
+        damage: float,
+        energy: float,
+        tracked_fields: dict[str, object],
+    ) -> None:
+        self._sink.log("bullet.hit_bot", **bullet_hit_bot_fields(victim_id, bullet_id, power, damage, energy, tracked_fields))
+
+    def record_bullet_fired(
+        self,
+        bullet_id: int,
+        target_id: int | None,
+        power: float,
+        direction: float,
+        energy: float,
+        gun_waves: int,
+        gun_samples: int,
+        gun_confidence: float,
+        gun_confidence_visits: int,
+        tracked_fields: dict[str, object],
+        *,
+        target_age: int | None | object = _UNSET,
+        target_x: float | None | object = _UNSET,
+        target_y: float | None | object = _UNSET,
+        wave_created: bool | object = _UNSET,
+        shadow_bullets: int | object = _UNSET,
+    ) -> None:
+        self._sink.log(
+            "bullet.fired",
+            **bullet_fired_fields(
+                bullet_id,
+                target_id,
+                power,
+                direction,
+                energy,
+                gun_waves,
+                gun_samples,
+                gun_confidence,
+                gun_confidence_visits,
+                tracked_fields,
+                target_age=target_age,
+                target_x=target_x,
+                target_y=target_y,
+                wave_created=wave_created,
+                shadow_bullets=shadow_bullets,
+            ),
+        )
 
 
 def track_fields(tick: FireTick | SimpleTrackTick) -> dict[str, object]:

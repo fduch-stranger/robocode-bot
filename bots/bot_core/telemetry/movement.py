@@ -1,5 +1,106 @@
 from bot_core.movement import FlatteningDecision, GoToSurfDecision, MinimumRiskDecision, MovementCommand, MovementProfileVisit
+from bot_core.telemetry.sink import TelemetrySink
 from bot_core.telemetry.tick import rounded
+
+
+class MovementTelemetry:
+    def __init__(self, sink: TelemetrySink) -> None:
+        self._sink = sink
+
+    def sample_wall_avoid(self, x: float, y: float, center_bearing: float, move_direction: int) -> None:
+        self._sink.sample("wall.avoid", **wall_avoid_fields(x, y, center_bearing, move_direction))
+
+    def sample_minimum_risk(
+        self,
+        target_id: int,
+        decision: MinimumRiskDecision,
+        command: MovementCommand,
+        known_targets: int,
+        fire_threat_id: int | None = None,
+        include_fire_threat: bool = False,
+    ) -> None:
+        self._sink.sample(
+            "movement.minimum_risk",
+            **minimum_risk_fields(target_id, decision, command, known_targets, fire_threat_id, include_fire_threat),
+        )
+
+    def record_profile_visit(self, visit: MovementProfileVisit) -> None:
+        self._sink.log("movement.profile_visit", **profile_visit_fields(visit))
+
+    def record_flattening(
+        self,
+        target_id: int,
+        flattening: FlatteningDecision,
+        distance: float,
+        current_direction: int | None = None,
+        include_reason: bool = False,
+    ) -> None:
+        self._sink.log(
+            "movement.flatten",
+            **flattening_fields(target_id, flattening, distance, current_direction=current_direction, include_reason=include_reason),
+        )
+
+    def record_duel_flattening(
+        self,
+        target_id: int,
+        flattening: FlatteningDecision,
+        distance: float,
+        current_direction: int,
+    ) -> None:
+        self._sink.log(
+            "movement.duel_flatten",
+            **flattening_fields(target_id, flattening, distance, current_direction=current_direction, include_reason=True),
+        )
+
+    def record_flattening_shadow(
+        self,
+        target_id: int,
+        flattening: FlatteningDecision,
+        distance: float,
+        current_direction: int,
+    ) -> None:
+        self._sink.log(
+            "movement.flatten_shadow",
+            **flattening_fields(target_id, flattening, distance, current_direction=current_direction),
+        )
+
+    def sample_goto_surf(
+        self,
+        target_id: int,
+        decision: GoToSurfDecision,
+        command: MovementCommand,
+        evade_direction: int,
+    ) -> None:
+        self._sink.sample("movement.goto_surf", **goto_surf_fields(target_id, decision, command, evade_direction))
+
+    def sample_duel_potential(
+        self,
+        target_id: int,
+        destination_x: float,
+        destination_y: float,
+        force_x: float,
+        force_y: float,
+        distance: float,
+        mode: str,
+        evading: bool,
+        evade_direction: int,
+        command: MovementCommand,
+    ) -> None:
+        self._sink.sample(
+            "movement.duel_potential",
+            **duel_potential_fields(
+                target_id,
+                destination_x,
+                destination_y,
+                force_x,
+                force_y,
+                distance,
+                mode,
+                evading,
+                evade_direction,
+                command,
+            ),
+        )
 
 
 def minimum_risk_fields(

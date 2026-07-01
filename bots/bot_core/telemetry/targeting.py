@@ -1,5 +1,51 @@
 from bot_core.target_snapshot import TargetSnapshot
+from bot_core.telemetry.sink import TelemetrySink
 from bot_core.targeting import TargetSelection
+
+
+class TargetingTelemetry:
+    def __init__(self, sink: TelemetrySink) -> None:
+        self._sink = sink
+
+    def record_scan_new(self, target_id: int, energy: float, x: float, y: float) -> None:
+        self._sink.log("scan.new", **scan_new_fields(target_id, energy, x, y))
+
+    def record_scan_reacquired(
+        self,
+        target_id: int,
+        age: int,
+        previous: TargetSnapshot,
+        x: float,
+        y: float,
+    ) -> None:
+        self._sink.log("scan.reacquired", **scan_reacquired_fields(target_id, age, previous, x, y))
+
+    def record_target_selection(self, selection: TargetSelection, known_targets: int) -> None:
+        self._sink.log("target.select", **target_selection_fields(selection, known_targets))
+
+    def record_candidate_selection(
+        self,
+        previous_id: int | None,
+        selected: TargetSnapshot,
+        score: float,
+        candidate: TargetSnapshot,
+        candidate_score: float,
+        previous_age: int | None,
+        known_targets: int,
+    ) -> None:
+        self._sink.log(
+            "target.select",
+            **candidate_target_selection_fields(previous_id, selected, score, candidate, candidate_score, previous_age, known_targets),
+        )
+
+    def record_target_drop_lost(
+        self,
+        target: TargetSnapshot,
+        age: int,
+        distance: float,
+        known_targets: int,
+    ) -> None:
+        self._sink.log("target.drop_lost", **target_drop_lost_fields(target, age, distance, known_targets))
 
 
 def scan_new_fields(target_id: int, energy: float, x: float, y: float) -> dict[str, object]:

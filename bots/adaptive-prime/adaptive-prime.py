@@ -34,21 +34,10 @@ from bot_core.geometry.numeric import clamp
 from bot_core.geometry.position import distance_to, drive_to_destination
 from bot_core.target_snapshot import TargetSnapshot, target_from_hit_bot, target_from_scan
 from bot_core.targeting import TargetMemory, TargetSelector
-from bot_core.telemetry.energy import energy_drop_ignored_fields, enemy_fire_detected_fields, gun_heat_wave_fields
-from bot_core.telemetry.fire import FireTick, bullet_fired_fields, bullet_hit_bot_fields, gun_switch_fields, track_fields, wave_visit_fields
-from bot_core.telemetry.movement import (
-    duel_potential_fields,
-    flattening_fields,
-    goto_surf_fields,
-    minimum_risk_fields,
-    profile_visit_fields,
-)
-from bot_core.telemetry.targeting import (
-    scan_new_fields,
-    scan_reacquired_fields,
-    target_drop_lost_fields,
-    target_selection_fields,
-)
+from bot_core.telemetry.energy import EnergyTelemetry
+from bot_core.telemetry.fire import FireTelemetry, FireTick
+from bot_core.telemetry.movement import MovementTelemetry
+from bot_core.telemetry.targeting import TargetingTelemetry
 from adaptive_config import (
     DUEL_MOVEMENT_POLICY,
     ENERGY_DROP_CONFIG,
@@ -126,6 +115,10 @@ class AdaptivePrime(Bot):
             )
         )
         self._debug = DebugLogger(self, "adaptive-prime")
+        self._energy_telemetry = EnergyTelemetry(self._debug)
+        self._fire_telemetry = FireTelemetry(self._debug)
+        self._movement_telemetry = MovementTelemetry(self._debug)
+        self._targeting_telemetry = TargetingTelemetry(self._debug)
         self._fired_bullets = FiredBulletTracker()
 
     def run(self) -> None:
@@ -162,12 +155,9 @@ class AdaptivePrime(Bot):
         if not fire_detected:
             self._record_gun_heat_wave(target)
         if previous is None:
-            self._log("scan.new", **scan_new_fields(event.scanned_bot_id, event.energy, event.x, event.y))
+            self._targeting_telemetry.record_scan_new(event.scanned_bot_id, event.energy, event.x, event.y)
         elif previous_age is not None and previous_age > TARGET_POLICY.reacquire_turns:
-            self._log(
-                "scan.reacquired",
-                **scan_reacquired_fields(event.scanned_bot_id, previous_age, previous, event.x, event.y),
-            )
+            self._targeting_telemetry.record_scan_reacquired(event.scanned_bot_id, previous_age, previous, event.x, event.y)
 
     def _update_target_motion_stats(self, event: ScannedBotEvent, previous: TargetSnapshot) -> None:
         speed_delta = event.speed - previous.speed
@@ -192,16 +182,13 @@ class AdaptivePrime(Bot):
         signal = detection.signal
         if not signal.is_fire:
             if signal.raw_energy_drop > 0 or signal.energy_correction:
-                self._log(
-                    "enemy.energy_drop_ignored",
-                    **energy_drop_ignored_fields(
-                        event.scanned_bot_id,
-                        signal,
-                        scan_gap,
-                        distance,
-                        previous.energy,
-                        event.energy,
-                    ),
+                self._energy_telemetry.record_drop_ignored(
+                    event.scanned_bot_id,
+                    signal,
+                    scan_gap,
+                    distance,
+                    previous.energy,
+                    event.energy,
                 )
             return False
 
@@ -227,25 +214,22 @@ class AdaptivePrime(Bot):
                 self._evade_direction *= -1
             self._evade_until_turn = max(self._evade_until_turn, self.turn_number + signal.evade_ticks)
         power_mae = self._enemy_fire_power.mean_absolute_error(event.scanned_bot_id)
-        self._log(
-            "enemy.fire_detected",
-            **enemy_fire_detected_fields(
-                event.scanned_bot_id,
-                signal,
-                scan_gap,
-                distance,
-                ("active_melee" if melee_active else "active_duel") if active_evasion else "threat_only",
-                self._evade_until_turn,
-                movement_wave is not None,
-                previous_prediction,
-                self._enemy_fire_power.sample_count(event.scanned_bot_id),
-                power_mae,
-                previous_energy=previous.energy,
-                energy=event.energy,
-                evade_direction=self._evade_direction,
-                known_targets=len(self._targets),
-                heat_state=heat_state,
-            ),
+        self._energy_telemetry.record_enemy_fire_detected(
+            event.scanned_bot_id,
+            signal,
+            scan_gap,
+            distance,
+            ("active_melee" if melee_active else "active_duel") if active_evasion else "threat_only",
+            self._evade_until_turn,
+            movement_wave is not None,
+            previous_prediction,
+            self._enemy_fire_power.sample_count(event.scanned_bot_id),
+            power_mae,
+            previous_energy=previous.energy,
+            energy=event.energy,
+            evade_direction=self._evade_direction,
+            known_targets=len(self._targets),
+            heat_state=heat_state,
         )
         return True
 
@@ -282,10 +266,7 @@ class AdaptivePrime(Bot):
             expected_confidence=prediction.confidence,
             **self._own_motion.movement_wave_kwargs(self.turn_number),
         )
-        self._log(
-            "enemy.gun_heat_wave",
-            **gun_heat_wave_fields(target.bot_id, fire_power, prediction, distance, age, movement_wave is not None),
-        )
+        self._energy_telemetry.record_gun_heat_wave(target.bot_id, fire_power, prediction, distance, age, movement_wave is not None)
 
     def _track_or_search(self) -> None:
         self._reset_if_new_round()
@@ -314,10 +295,7 @@ class AdaptivePrime(Bot):
         )
         score_segment = aim.segment_key if use_segmented_gun_stats else None
         if aim.mode_changed:
-            self._log(
-                "gun.switch",
-                **gun_switch_fields(target.bot_id, aim, self._gun.score_summary(target.bot_id, score_segment)),
-            )
+            self._fire_telemetry.record_gun_switch(target.bot_id, aim, self._gun.score_summary(target.bot_id, score_segment))
         age = self.turn_number - target.seen_turn
 
         if age > TARGET_POLICY.reacquire_turns:
@@ -356,27 +334,24 @@ class AdaptivePrime(Bot):
             self._gun.set_pending_wave(self._gun.make_wave(self, target, firepower, aim))
             self.set_fire(firepower)
         else:
-            self._sample_status(
-                "track",
-                **track_fields(
-                    FireTick(
-                        target=target,
-                        age=age,
-                        distance=distance,
-                        aim=aim,
-                        radar=radar_command,
-                        decision=fire_decision,
-                        gun_samples=self._gun.sample_count,
-                        gun_scores=self._gun.score_summary(target.bot_id, score_segment),
-                        evade_direction=self._evade_direction,
-                        evading=self.turn_number <= self._evade_until_turn,
-                        movement_mode=movement_mode,
-                        strafe_offset=strafe_offset,
-                        flattening=flattening,
-                        last_enemy_fire_age=self.turn_number - self._last_enemy_fire_turn,
-                        known_targets=len(self._targets),
-                    )
-                ),
+            self._fire_telemetry.sample_track(
+                FireTick(
+                    target=target,
+                    age=age,
+                    distance=distance,
+                    aim=aim,
+                    radar=radar_command,
+                    decision=fire_decision,
+                    gun_samples=self._gun.sample_count,
+                    gun_scores=self._gun.score_summary(target.bot_id, score_segment),
+                    evade_direction=self._evade_direction,
+                    evading=self.turn_number <= self._evade_until_turn,
+                    movement_mode=movement_mode,
+                    strafe_offset=strafe_offset,
+                    flattening=flattening,
+                    last_enemy_fire_age=self.turn_number - self._last_enemy_fire_turn,
+                    known_targets=len(self._targets),
+                )
             )
 
     def _set_adaptive_movement(
@@ -417,16 +392,13 @@ class AdaptivePrime(Bot):
                     "melee_minimum_risk",
                 )
                 self._apply_movement_command(command)
-                self._sample_status(
-                    "movement.minimum_risk",
-                    **minimum_risk_fields(
-                        target.bot_id,
-                        decision,
-                        command,
-                        len(self._targets),
-                        fire_threat_id=threat_target.bot_id if threat_target is not None else None,
-                        include_fire_threat=True,
-                    ),
+                self._movement_telemetry.sample_minimum_risk(
+                    target.bot_id,
+                    decision,
+                    command,
+                    len(self._targets),
+                    fire_threat_id=threat_target.bot_id if threat_target is not None else None,
+                    include_fire_threat=True,
                 )
                 return command.mode, command.strafe_offset, None
 
@@ -445,10 +417,7 @@ class AdaptivePrime(Bot):
                 use_surfing=True,
             )
             if flattening.changed:
-                self._log(
-                    "movement.duel_flatten",
-                    **flattening_fields(target.bot_id, flattening, distance, current_direction=self._evade_direction, include_reason=True),
-                )
+                self._movement_telemetry.record_duel_flattening(target.bot_id, flattening, distance, self._evade_direction)
                 if MOVEMENT_POLICY.flattener_active and flattening.current_count >= 2.0:
                     self._evade_direction = flattening.direction
             if MOVEMENT_POLICY.goto_surfing_active:
@@ -468,10 +437,7 @@ class AdaptivePrime(Bot):
                         direction_update=surf_decision.direction or None,
                     )
                     self._apply_movement_command(command)
-                    self._sample_status(
-                        "movement.goto_surf",
-                        **goto_surf_fields(target.bot_id, surf_decision, command, self._evade_direction),
-                    )
+                    self._movement_telemetry.sample_goto_surf(target.bot_id, surf_decision, command, self._evade_direction)
                     return command.mode, command.strafe_offset, flattening
             destination_x, destination_y, force_x, force_y, movement_mode = self._duel_potential_destination(
                 target,
@@ -486,20 +452,17 @@ class AdaptivePrime(Bot):
                 movement_mode,
             )
             self._apply_movement_command(command)
-            self._sample_status(
-                "movement.duel_potential",
-                **duel_potential_fields(
-                    target.bot_id,
-                    destination_x,
-                    destination_y,
-                    force_x,
-                    force_y,
-                    distance,
-                    movement_mode,
-                    evading,
-                    self._evade_direction,
-                    command,
-                ),
+            self._movement_telemetry.sample_duel_potential(
+                target.bot_id,
+                destination_x,
+                destination_y,
+                force_x,
+                force_y,
+                distance,
+                movement_mode,
+                evading,
+                self._evade_direction,
+                command,
             )
             return command.mode, command.strafe_offset, flattening
 
@@ -518,10 +481,10 @@ class AdaptivePrime(Bot):
             use_surfing=not self._melee_round,
         )
         if flattening.changed:
-            self._log(
-                "movement.flatten" if MOVEMENT_POLICY.flattener_active else "movement.flatten_shadow",
-                **flattening_fields(target.bot_id, flattening, distance, current_direction=self._evade_direction),
-            )
+            if MOVEMENT_POLICY.flattener_active:
+                self._movement_telemetry.record_flattening(target.bot_id, flattening, distance, current_direction=self._evade_direction)
+            else:
+                self._movement_telemetry.record_flattening_shadow(target.bot_id, flattening, distance, self._evade_direction)
             if MOVEMENT_POLICY.flattener_active:
                 self._evade_direction = flattening.direction
 
@@ -750,11 +713,11 @@ class AdaptivePrime(Bot):
 
     def _log_wave_visits(self, target: TargetSnapshot) -> None:
         for visit in self._gun.update_waves(self, target):
-            self._log("gun.wave_visit", **wave_visit_fields(visit))
+            self._fire_telemetry.record_wave_visit(visit)
 
     def _log_movement_profile_visits(self) -> None:
         for visit in self._movement.update(self):
-            self._log("movement.profile_visit", **profile_visit_fields(visit))
+            self._movement_telemetry.record_profile_visit(visit)
 
     def _set_lost_target_radar(self, radar_bearing: float, age: int) -> tuple[float, str]:
         if abs(radar_bearing) > RADAR_POLICY.reacquire_min_error:
@@ -811,10 +774,7 @@ class AdaptivePrime(Bot):
         if self._target_id == target.bot_id:
             self._target_id = None
         self._search()
-        self._log(
-            "target.drop_lost",
-            **target_drop_lost_fields(target, age, distance, len(self._targets)),
-        )
+        self._targeting_telemetry.record_target_drop_lost(target, age, distance, len(self._targets))
 
     def _forget_stale_targets(self) -> None:
         stale_ids = self._targets.stale_ids(self.turn_number, TARGET_POLICY.memory_turns)
@@ -839,10 +799,7 @@ class AdaptivePrime(Bot):
         target = selection.target
         self._target_id = target.bot_id
         if selection.changed:
-            self._log(
-                "target.select",
-                **target_selection_fields(selection, len(self._targets)),
-            )
+            self._targeting_telemetry.record_target_selection(selection, len(self._targets))
         return target
 
     def _target_score(self, target: TargetSnapshot) -> float:
@@ -969,16 +926,13 @@ class AdaptivePrime(Bot):
         self._record_enemy_energy_correction(event.victim_id, event.damage, "our_bullet_damage")
         self._movement.remove_shadow_bullet(event.bullet.bullet_id)
         bullet_fields = self._fired_bullets.fields_for(event.bullet.bullet_id)
-        self._log(
-            "bullet.hit_bot",
-            **bullet_hit_bot_fields(
-                event.victim_id,
-                event.bullet.bullet_id,
-                event.bullet.power,
-                event.damage,
-                event.energy,
-                bullet_fields,
-            ),
+        self._fire_telemetry.record_bullet_hit_bot(
+            event.victim_id,
+            event.bullet.bullet_id,
+            event.bullet.power,
+            event.damage,
+            event.energy,
+            bullet_fields,
         )
 
     def on_hit_bot(self, event: HitBotEvent) -> None:
@@ -1032,24 +986,21 @@ class AdaptivePrime(Bot):
             if wave is not None and wave.aim_guess_factor is not None
             else None,
         )
-        self._log(
-            "bullet.fired",
-            **bullet_fired_fields(
-                event.bullet.bullet_id,
-                self._target_id,
-                event.bullet.power,
-                event.bullet.direction,
-                self.energy,
-                self._gun.wave_count,
-                self._gun.sample_count,
-                gun_score,
-                gun_visits,
-                bullet_fields,
-                target_age=target_age,
-                target_x=target.x if target is not None else None,
-                target_y=target.y if target is not None else None,
-                shadow_bullets=self._movement.shadow_bullet_count,
-            ),
+        self._fire_telemetry.record_bullet_fired(
+            event.bullet.bullet_id,
+            self._target_id,
+            event.bullet.power,
+            event.bullet.direction,
+            self.energy,
+            self._gun.wave_count,
+            self._gun.sample_count,
+            gun_score,
+            gun_visits,
+            bullet_fields,
+            target_age=target_age,
+            target_x=target.x if target is not None else None,
+            target_y=target.y if target is not None else None,
+            shadow_bullets=self._movement.shadow_bullet_count,
         )
 
     def _log(self, event: str, **fields: object) -> None:
