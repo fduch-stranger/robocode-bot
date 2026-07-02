@@ -154,6 +154,17 @@ that gun has enough data to produce an aim bearing; otherwise the selector
 falls back to an available mode. `displacement` is included here for isolated
 experiments even though it is not part of normal live switching.
 
+For `traditional_gf` modeling experiments, Adaptive also accepts:
+
+```sh
+ROBOCODE_ADAPTIVE_TRADITIONAL_GF_SMOOTHING_BINS=1.0 \
+ROBOCODE_ADAPTIVE_TRADITIONAL_GF_DECAY=0.975 \
+ROBOCODE_ADAPTIVE_GUN_MODE=traditional_gf \
+scripts/run-battle.sh --telemetry --rounds 12 bots/adaptive-prime --legacy basic-gf-surfer
+```
+
+Use these as telemetry sweep knobs before changing committed defaults.
+
 For neutral gun-evaluation telemetry, set:
 
 ```sh

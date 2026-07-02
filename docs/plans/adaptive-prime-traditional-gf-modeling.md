@@ -27,6 +27,27 @@ and calibration problem before changing switch thresholds again.
   work, not only switch-threshold tuning.
 - `adaptive-traditional-gf-forced-profile-smoke-6`: verified decoupled
   `gun.traditional_gf_profile` sampling in forced mode with `28` profile events.
+- `adaptive-traditional-gf-smooth-075-forced-basic-gf-surfer-12`: forced
+  smoothing `0.75` nearly tied on score, `865` to `863`, with
+  `traditional_gf` hit rate `0.1218`.
+- `adaptive-traditional-gf-smooth-100-forced-basic-gf-surfer-12`: forced
+  smoothing `1.0` nearly tied on score, `877` to `875`, with the best forced
+  smoothing hit rate in this sweep at `0.1408`.
+- `adaptive-traditional-gf-smooth-125-forced-basic-gf-surfer-12`: default
+  smoothing `1.25` won `883` to `844`, with `traditional_gf` hit rate `0.1348`.
+- `adaptive-traditional-gf-smooth-100-normal-basic-gf-surfer-24`: normal
+  Adaptive with smoothing `1.0` won `2029` to `1760`, but
+  `traditional_gf` hit rate dropped to `0.075`. Do not change the default
+  smoothing from `1.25` based on current evidence.
+- `adaptive-traditional-gf-decay-096-forced-basic-gf-surfer-12`: decay `0.96`
+  lost `816` to `1021`; forced `traditional_gf` did not become available and
+  the bot fell back to `linear`/`dynamic_cluster`.
+- `adaptive-traditional-gf-decay-0975-forced-basic-gf-surfer-12`: decay
+  `0.975` lost `611` to `1219` despite `traditional_gf` hit rate `0.1504`.
+  Do not change the default decay from `0.985` based on current evidence.
+- `adaptive-traditional-gf-baseline-diamond-24`: Diamond validation is currently
+  unusable in this environment because the legacy Diamond bot repeatedly throws
+  movement exceptions and cannot write its `Diamond.data/error.log`.
 
 ## Hypothesis
 
@@ -64,11 +85,17 @@ velocity, acceleration, velocity-change age, and firepower.
 
 4. Tune histogram smoothing after segmentation.
    - Test `traditional_gf_smoothing_bins` around `0.75`, `1.0`, and `1.25`.
+   - Adaptive exposes `ROBOCODE_ADAPTIVE_TRADITIONAL_GF_SMOOTHING_BINS` so
+     sweep runs do not require code edits.
+   - Current sweep does not justify changing the default from `1.25`.
    - Avoid changing smoothing and segmentation in the same comparison unless a
      prior run already isolates the issue.
 
 5. Tune decay after segmentation.
    - Test `traditional_gf_decay` around `0.96`, `0.975`, and `0.985`.
+   - Adaptive exposes `ROBOCODE_ADAPTIVE_TRADITIONAL_GF_DECAY` for experiment
+     runs.
+   - Current sweep does not justify changing the default from `0.985`.
    - Faster decay may help if surfer behavior changes faster than the current
      global profile adapts.
 

@@ -23,6 +23,21 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
+def _env_float(name: str, default: float, *, minimum: float | None = None, maximum: float | None = None) -> float:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        return default
+    if minimum is not None:
+        value = max(minimum, value)
+    if maximum is not None:
+        value = min(maximum, value)
+    return value
+
+
 def _forced_gun_mode() -> str | None:
     mode = os.environ.get("ROBOCODE_ADAPTIVE_GUN_MODE", "").strip()
     return mode if mode in ADAPTIVE_FORCE_GUN_MODES else None
@@ -42,6 +57,17 @@ class GunPolicy:
     displacement_min_switch_score: float = 0.16
     traditional_gf_min_switch_visits: int = 160
     traditional_gf_min_switch_score: float = 0.24
+    traditional_gf_smoothing_bins: float = _env_float(
+        "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_SMOOTHING_BINS",
+        1.25,
+        minimum=0.1,
+    )
+    traditional_gf_decay: float = _env_float(
+        "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_DECAY",
+        0.985,
+        minimum=0.0,
+        maximum=0.999,
+    )
     traditional_gf_segment_min_samples: int = 12
     traditional_gf_segment_full_weight_samples: int = 48
     anti_surfer_min_switch_visits: int = 95

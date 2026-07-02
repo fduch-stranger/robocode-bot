@@ -102,6 +102,8 @@ class AdaptivePrime(Bot):
                 displacement_min_switch_score=GUN_POLICY.displacement_min_switch_score,
                 traditional_gf_min_switch_visits=GUN_POLICY.traditional_gf_min_switch_visits,
                 traditional_gf_min_switch_score=GUN_POLICY.traditional_gf_min_switch_score,
+                traditional_gf_smoothing_bins=GUN_POLICY.traditional_gf_smoothing_bins,
+                traditional_gf_decay=GUN_POLICY.traditional_gf_decay,
                 traditional_gf_segment_min_samples=GUN_POLICY.traditional_gf_segment_min_samples,
                 traditional_gf_segment_full_weight_samples=GUN_POLICY.traditional_gf_segment_full_weight_samples,
                 anti_surfer_min_switch_visits=GUN_POLICY.anti_surfer_min_switch_visits,
