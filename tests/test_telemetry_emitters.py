@@ -1,7 +1,8 @@
 import unittest
 
 from bot_core.energy import EnergyDropSignal, EnemyFirePowerPrediction, FireDecision, GunHeatState
-from bot_core.gun import AimSolution, GunSwitchCandidate, TraditionalGfDiagnostics, WaveVisit
+from bot_core.gun import AimSolution, GunSwitchCandidate, WaveVisit
+from bot_core.gun.guns.traditional_gf.diagnostics import TraditionalGfDiagnostics
 from bot_core.movement import FlatteningDecision, GoToSurfDecision, MinimumRiskDecision, MovementCommand, MovementProfileVisit
 from bot_core.radar import RadarCommand
 from bot_core.target_snapshot import TargetSnapshot
@@ -143,9 +144,13 @@ class TelemetryEmitterTest(unittest.TestCase):
                 "linear",
                 {"linear": 0.5},
                 {"linear": "0.50/1"},
-                traditional_gf_guess_factor=-0.1,
-                traditional_gf_error=-0.1345,
-                traditional_gf_abs_error=0.1345,
+                gun_diagnostics={
+                    "traditional_gf": {
+                        "aim_guess_factor": -0.1,
+                        "error": -0.1345,
+                        "abs_error": 0.1345,
+                    },
+                },
             )
         )
         telemetry.record_eval_wave_visit(
@@ -253,15 +258,17 @@ class TelemetryEmitterTest(unittest.TestCase):
             (0.0,) * 7,
             (1, 2, 3),
             {"traditional_gf": 1.0},
-            traditional_gf=TraditionalGfDiagnostics(
-                global_guess_factor=0.2,
-                global_weight=42.4,
-                segment_guess_factor=0.6,
-                segment_weight=18.2,
-                blend=0.35,
-                selected_guess_factor=0.4,
-                source="blend",
-            ),
+            gun_diagnostics={
+                "traditional_gf": TraditionalGfDiagnostics(
+                    global_guess_factor=0.2,
+                    global_weight=42.4,
+                    segment_guess_factor=0.6,
+                    segment_weight=18.2,
+                    blend=0.35,
+                    selected_guess_factor=0.4,
+                    source="blend",
+                ),
+            },
         )
 
         FireTelemetry(sink).sample_track(
@@ -288,15 +295,17 @@ class TelemetryEmitterTest(unittest.TestCase):
             (0.0,) * 7,
             (1, 2, 3),
             {"traditional_gf": 1.0},
-            traditional_gf=TraditionalGfDiagnostics(
-                global_guess_factor=0.2,
-                global_weight=42.4,
-                segment_guess_factor=0.6,
-                segment_weight=18.2,
-                blend=0.35,
-                selected_guess_factor=0.4,
-                source="blend",
-            ),
+            gun_diagnostics={
+                "traditional_gf": TraditionalGfDiagnostics(
+                    global_guess_factor=0.2,
+                    global_weight=42.4,
+                    segment_guess_factor=0.6,
+                    segment_weight=18.2,
+                    blend=0.35,
+                    selected_guess_factor=0.4,
+                    source="blend",
+                ),
+            },
         )
 
         FireTelemetry(sink).record_traditional_gf_profile(4, aim)

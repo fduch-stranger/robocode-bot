@@ -67,3 +67,5 @@ class RollingKnnBuffer:
             self._sample_count -= 1
             if not samples:
                 del self._samples_by_target[oldest_target]
+
+__all__ = ["RollingKnnBuffer"]

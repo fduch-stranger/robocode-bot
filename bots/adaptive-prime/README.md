@@ -208,10 +208,10 @@ confidence/source penalties, selected-source counts, and score-vs-hit gaps.
 Treat `eval_hit_gap` as diagnostic evidence only; eval waves are not direct
 proof that a mode should switch live.
 
-For the `traditional_gf` modeling follow-up, use
-[Adaptive Prime traditional GF modeling](../../docs/plans/adaptive-prime-traditional-gf-modeling.md).
-Do not tune its switch thresholds again until that plan's model/calibration
-checks are done.
+For gun modeling and selector calibration follow-up, check the active plan list
+in [docs/plans](../../docs/plans/README.md), especially the current
+confidence-calibrated selector work. Do not tune `traditional_gf` switch
+thresholds again until the model/calibration checks are done.
 
 ## Key Telemetry
 

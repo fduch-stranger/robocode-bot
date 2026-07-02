@@ -1,0 +1,50 @@
+# Gun Components
+
+Concrete virtual gun components live in this package. `bot_core.gun.system`
+orchestrates aiming, wave lifecycle, scoring, switching, and telemetry; each
+sub-package owns one aiming model and the state needed to learn or explain that
+model.
+
+## Component Contract
+
+Every gun implements `GunComponent` from `base.py`:
+
+- `aim(context)` returns a `GunBearing` or `None` when the gun is unavailable.
+- `observe_visit(visit)` learns from resolved production visits when the gun
+  has state.
+- `visit_diagnostics(visit)` returns per-wave diagnostics for telemetry and
+  tools.
+- `metrics()`, `clear_round_state()`, and `remove_target()` expose lifecycle
+  hooks to the facade.
+
+Mode-specific selector thresholds belong to the component configuration through
+`GunModePolicy`. The selector should not need concrete-gun branches.
+
+## Runtime Flow
+
+```mermaid
+flowchart TD
+    A["VirtualGunSystem builds AimContext"] --> B["GunRegistry asks each component"]
+    B --> C{"component can aim?"}
+    C -- "no" --> D["mode unavailable for this shot"]
+    C -- "yes" --> E["component returns GunBearing"]
+    E --> F["VirtualGunScorer stores virtual bearing on wave"]
+    F --> G["AimModeSelector applies mode policy"]
+    G --> H["selected aim_mode"]
+    H --> I["resolved wave returns as GunVisit"]
+    I --> J["component observe_visit and diagnostics"]
+```
+
+## Packages
+
+| Package | Mode | State owner |
+| --- | --- | --- |
+| `head_on` | `head_on` | Stateless direct bearing. |
+| `linear` | `linear` | Stateless linear intercept prediction. |
+| `displacement` | `displacement` | Reads shared target history, no private learner. |
+| `dynamic_cluster` | `dynamic_cluster` | Owns KNN sample memory. |
+| `traditional_gf` | `traditional_gf` | Owns global, exact-segment, and coarse GF profiles. |
+| `anti_surfer` | `anti_surfer` | Owns anti-surfer guess-factor profile bins. |
+
+`factory.standard_runtime_config()` wires the standard bot gun set. Add a
+sub-package README whenever a new concrete gun is introduced.

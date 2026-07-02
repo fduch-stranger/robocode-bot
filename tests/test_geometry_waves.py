@@ -2,6 +2,7 @@ import unittest
 from types import SimpleNamespace
 
 from bot_core.gun import AimSolution, VirtualGunSystem, bullet_speed_for_power, lateral_direction
+from bot_core.gun.factory import standard_runtime_config
 from bot_core.geometry.waves import wall_limited_escape_angle, wall_limited_escape_angle_from_state
 from bot_core.movement import MovementFlattener
 from bot_core.target_snapshot import TargetSnapshot
@@ -30,7 +31,7 @@ class GeometryWavesTest(unittest.TestCase):
             virtual_bearings={},
         )
 
-        gun = VirtualGunSystem()
+        gun = VirtualGunSystem(standard_runtime_config())
         wave = gun.make_wave(bot, target, 1.4, aim)
         expected_lateral = lateral_direction(target, wave.fire_bearing)
         bullet_speed = bullet_speed_for_power(1.4)

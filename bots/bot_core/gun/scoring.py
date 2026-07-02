@@ -2,13 +2,14 @@ import math
 
 from bot_core.geometry.angles import relative_bearing
 from bot_core.geometry.numeric import clamp
-from bot_core.gun.models import GunConfig, GunStats, GunWave
+from bot_core.gun.config import GunScoringConfig
+from bot_core.gun.models import GunStats, GunWave
 
 
 class VirtualGunScorer:
     def __init__(
         self,
-        config: GunConfig,
+        config: GunScoringConfig,
         stats: dict[tuple[int, str], GunStats],
         segment_stats: dict[tuple[int, str, tuple[int, ...]], GunStats],
     ) -> None:

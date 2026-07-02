@@ -68,28 +68,41 @@ Virtual gun behavior lives in `bot_core.gun`.
 
 Typical aim modes:
 
-- `linear`: intercept target assuming current velocity.
-- `head_on`: direct bearing.
-- `displacement`: average historical displacement.
-- `traditional_gf`: guess-factor profile.
-- `anti_surfer`: historical escape bias.
-- `dynamic_cluster`: KNN guess-factor estimate.
+- [`linear`](../bots/bot_core/gun/guns/linear/README.md): intercept target
+  assuming current velocity.
+- [`head_on`](../bots/bot_core/gun/guns/head_on/README.md): direct bearing.
+- [`displacement`](../bots/bot_core/gun/guns/displacement/README.md): average
+  historical displacement.
+- [`traditional_gf`](../bots/bot_core/gun/guns/traditional_gf/README.md):
+  guess-factor profile.
+- [`anti_surfer`](../bots/bot_core/gun/guns/anti_surfer/README.md):
+  historical escape bias.
+- [`dynamic_cluster`](../bots/bot_core/gun/guns/dynamic_cluster/README.md):
+  KNN guess-factor estimate.
 
 The selected mode is reported as `aim_mode`.
 
 Gun selection is sticky. A different mode must have enough visits, clear its
 mode-specific score floor, and beat the current score by a margin before the
-bot switches. `GunConfig.switch_confidence_visits` and
-`GunConfig.switch_confidence_penalty` can optionally reduce low-visit switch
+bot switches. `GunSelectorConfig.switch_confidence_visits` and
+`GunSelectorConfig.switch_confidence_penalty` can optionally reduce low-visit switch
 scores before those gates are applied; they default to disabled. A first
 `gun.switch` event with `previous=null` is an initial selection, not real
 churn. `gun.switch_decision` records sampled candidate diagnostics so tuning
 can distinguish unavailable guns from candidates blocked by visits, score
 floor, margin, or a better superseding candidate.
 
-`VirtualGunSystem` remains the compatibility facade. Internally, wave storage,
+`VirtualGunSystem` remains the stable facade. Internally, it builds an
+`AimContext`, asks a `GunRegistry` of concrete gun components for available
+bearings, passes those bearings to `AimModeSelector`, and publishes resolved
+production-wave visits back to the components for learning. Wave storage,
 virtual-gun scoring, and aim-mode switching are isolated in `GunWaveTracker`,
-`VirtualGunScorer`, and `AimModeSelector`.
+`VirtualGunScorer`, and `AimModeSelector`. Concrete guns live under
+[`bot_core.gun.guns`](../bots/bot_core/gun/guns/README.md): stateless
+`head_on`/`linear`, history-backed `displacement`, KNN-backed
+`dynamic_cluster`, profile-backed `traditional_gf`, and profile-backed
+`anti_surfer`. Each package README documents its behavior flow, owned state,
+selector policy surface, and telemetry notes.
 
 Traditional guess-factor aiming always keeps a global profile per target; that
 global profile is the shared default. Bots that enable segmented traditional GF
@@ -109,7 +122,9 @@ samples are sparse.
 Bots may optionally apply a source-trust penalty to `traditional_gf` selection.
 This lets a bot require more evidence from low-context global profiles while
 trusting exact or coarse segment profiles normally. Shared defaults leave this
-disabled unless a bot config opts in.
+disabled unless a bot config opts in. Selector thresholds and source penalties
+are supplied as per-mode policy data, so the selector does not need concrete gun
+classes or mode-specific threshold branches.
 `tools/gun_eval_summary.py` groups Traditional GF real hit rate, model
 diagnostics, and GF error by profile source so source-trust changes can be
 validated before changing selector policy.

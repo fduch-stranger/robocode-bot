@@ -1,8 +1,9 @@
-from bot_core.gun.models import GunConfig, GunWave
+from bot_core.gun.config import GunSystemConfig
+from bot_core.gun.models import GunWave
 
 
 class GunWaveTracker:
-    def __init__(self, config: GunConfig, waves: list[GunWave]) -> None:
+    def __init__(self, config: GunSystemConfig, waves: list[GunWave]) -> None:
         self.config = config
         self.waves = waves
         self.pending_wave: GunWave | None = None

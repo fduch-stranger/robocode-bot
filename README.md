@@ -71,6 +71,7 @@ scripts/run-battle.sh --telemetry --rounds 1 bots/adaptive-prime bots/chase-lock
 | Set up the repo, package bots, run battles, use telemetry, run A/B experiments, use legacy bots | [Tooling](docs/tooling.md) |
 | Understand common bot behavior: radar, virtual guns, movement learning, fire gates, telemetry semantics | [Shared Bot Systems](docs/bot-shared-systems.md) |
 | Understand implementation structures: KNN buffers, waves, stats buffers, prediction data | [Bot Core Data Structures](docs/bot-core-data-structures.md) |
+| Understand concrete gun component behavior and package ownership | [Gun Component Docs](docs/README.md#gun-component-docs) |
 | Inspect the generated telemetry event contract | [Telemetry Event Schema](docs/telemetry-schema.md) |
 | Inspect or tune a specific bot | [Bot Docs](docs/README.md#bot-docs) |
 | Browse all documentation | [Documentation Index](docs/README.md) |

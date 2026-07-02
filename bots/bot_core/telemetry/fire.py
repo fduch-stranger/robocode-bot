@@ -63,7 +63,7 @@ class FireTelemetry:
         self._sink.log("gun.switch_decision", **_gun_switch_decision_fields(target_id, aim))
 
     def record_traditional_gf_profile(self, target_id: int, aim: AimSolution) -> None:
-        if aim.traditional_gf is not None:
+        if _traditional_gf_diagnostics(aim) is not None:
             self._sink.log("gun.traditional_gf_profile", **_traditional_gf_profile_fields(target_id, aim))
 
     def record_wave_visit(self, visit: WaveVisit) -> None:
@@ -212,16 +212,17 @@ def _track_base_fields(
         "gun_scores": gun_scores,
         "known_targets": known_targets,
     }
-    if aim.traditional_gf is not None:
+    traditional_gf = _traditional_gf_diagnostics(aim)
+    if traditional_gf is not None:
         fields.update(
             {
-                "traditional_gf_global": rounded(aim.traditional_gf.global_guess_factor, 3),
-                "traditional_gf_global_weight": round(aim.traditional_gf.global_weight, 1),
-                "traditional_gf_segment": rounded(aim.traditional_gf.segment_guess_factor, 3),
-                "traditional_gf_segment_weight": round(aim.traditional_gf.segment_weight, 1),
-                "traditional_gf_blend": round(aim.traditional_gf.blend, 3),
-                "traditional_gf_selected": rounded(aim.traditional_gf.selected_guess_factor, 3),
-                "traditional_gf_source": aim.traditional_gf.source,
+                "traditional_gf_global": rounded(getattr(traditional_gf, "global_guess_factor", None), 3),
+                "traditional_gf_global_weight": round(getattr(traditional_gf, "global_weight", 0.0), 1),
+                "traditional_gf_segment": rounded(getattr(traditional_gf, "segment_guess_factor", None), 3),
+                "traditional_gf_segment_weight": round(getattr(traditional_gf, "segment_weight", 0.0), 1),
+                "traditional_gf_blend": round(getattr(traditional_gf, "blend", 0.0), 3),
+                "traditional_gf_selected": rounded(getattr(traditional_gf, "selected_guess_factor", None), 3),
+                "traditional_gf_source": getattr(traditional_gf, "source", None),
             }
         )
     return fields
@@ -267,23 +268,26 @@ def _gun_switch_candidate_fields(candidate: GunSwitchCandidate) -> dict[str, obj
         "margin": round(candidate.margin, 3),
         "reason": candidate.reason,
     }
-    if candidate.traditional_gf_source is not None:
-        fields["traditional_gf_source"] = candidate.traditional_gf_source
+    if candidate.decision_source is not None:
+        fields["decision_source"] = candidate.decision_source
+        if candidate.mode == "traditional_gf":
+            fields["traditional_gf_source"] = candidate.decision_source
     return fields
 
 
 def _traditional_gf_profile_fields(target_id: int, aim: AimSolution) -> dict[str, object]:
-    assert aim.traditional_gf is not None
+    traditional_gf = _traditional_gf_diagnostics(aim)
+    assert traditional_gf is not None
     return {
         "target": target_id,
         "aim_mode": aim.mode,
-        "global_guess_factor": rounded(aim.traditional_gf.global_guess_factor, 3),
-        "global_weight": round(aim.traditional_gf.global_weight, 1),
-        "segment_guess_factor": rounded(aim.traditional_gf.segment_guess_factor, 3),
-        "segment_weight": round(aim.traditional_gf.segment_weight, 1),
-        "blend": round(aim.traditional_gf.blend, 3),
-        "selected_guess_factor": rounded(aim.traditional_gf.selected_guess_factor, 3),
-        "source": aim.traditional_gf.source,
+        "global_guess_factor": rounded(getattr(traditional_gf, "global_guess_factor", None), 3),
+        "global_weight": round(getattr(traditional_gf, "global_weight", 0.0), 1),
+        "segment_guess_factor": rounded(getattr(traditional_gf, "segment_guess_factor", None), 3),
+        "segment_weight": round(getattr(traditional_gf, "segment_weight", 0.0), 1),
+        "blend": round(getattr(traditional_gf, "blend", 0.0), 3),
+        "selected_guess_factor": rounded(getattr(traditional_gf, "selected_guess_factor", None), 3),
+        "source": getattr(traditional_gf, "source", None),
     }
 
 
@@ -407,12 +411,35 @@ def _wave_visit_fields(visit: WaveVisit) -> dict[str, object]:
         "virtual_scores": visit.virtual_scores,
         "gun_scores": visit.gun_scores,
     }
-    if visit.traditional_gf_guess_factor is not None:
-        fields["traditional_gf_guess_factor"] = round(visit.traditional_gf_guess_factor, 3)
-    if visit.traditional_gf_error is not None:
-        fields["traditional_gf_error"] = round(visit.traditional_gf_error, 3)
-    if visit.traditional_gf_abs_error is not None:
-        fields["traditional_gf_abs_error"] = round(visit.traditional_gf_abs_error, 3)
-    if visit.traditional_gf_source is not None:
-        fields["traditional_gf_source"] = visit.traditional_gf_source
+    traditional_gf = visit.gun_diagnostics.get("traditional_gf", {})
+    aim_guess_factor = _diagnostic_float(traditional_gf, "aim_guess_factor")
+    error = _diagnostic_float(traditional_gf, "error")
+    abs_error = _diagnostic_float(traditional_gf, "abs_error")
+    source = _diagnostic_str(traditional_gf, "source")
+    if aim_guess_factor is not None:
+        fields["traditional_gf_guess_factor"] = round(aim_guess_factor, 3)
+    if error is not None:
+        fields["traditional_gf_error"] = round(error, 3)
+    if abs_error is not None:
+        fields["traditional_gf_abs_error"] = round(abs_error, 3)
+    if source is not None:
+        fields["traditional_gf_source"] = source
     return fields
+
+
+def _traditional_gf_diagnostics(aim: AimSolution) -> object | None:
+    return aim.gun_diagnostics.get("traditional_gf")
+
+
+def _diagnostic_float(diagnostics: object, key: str) -> float | None:
+    if not isinstance(diagnostics, dict):
+        return None
+    value = diagnostics.get(key)
+    return value if isinstance(value, float) else None
+
+
+def _diagnostic_str(diagnostics: object, key: str) -> str | None:
+    if not isinstance(diagnostics, dict):
+        return None
+    value = diagnostics.get(key)
+    return value if isinstance(value, str) else None

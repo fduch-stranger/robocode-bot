@@ -1,34 +1,38 @@
+from collections.abc import Mapping
 from dataclasses import replace
 
-from bot_core.gun.models import GunConfig, GunStats, GunSwitchCandidate, TraditionalGfDiagnostics
+from bot_core.gun.config import GunDecisionContext, GunModePolicy, GunSelectorConfig
+from bot_core.gun.models import GunStats, GunSwitchCandidate
 from bot_core.gun.scoring import VirtualGunScorer
 
 
 class AimModeSelector:
     def __init__(
         self,
-        config: GunConfig,
+        config: GunSelectorConfig,
         scorer: VirtualGunScorer,
         active_modes: dict[int, str],
         stats: dict[tuple[int, str], GunStats],
+        mode_policies: Mapping[str, GunModePolicy] | None = None,
     ) -> None:
         self.config = config
         self.scorer = scorer
         self.active_modes = active_modes
         self.stats = stats
+        self.mode_policies = dict(mode_policies or {})
 
     def select(
         self,
         target_id: int,
         virtual_bearings: dict[str, float],
         segment_key: tuple[int, ...] | None,
-        traditional_gf: TraditionalGfDiagnostics | None = None,
+        decision_contexts: Mapping[str, GunDecisionContext] | None = None,
     ) -> tuple[str, str | None, bool]:
         mode, previous, changed, _ = self.select_with_diagnostics(
             target_id,
             virtual_bearings,
             segment_key,
-            traditional_gf,
+            decision_contexts,
         )
         return mode, previous, changed
 
@@ -37,7 +41,7 @@ class AimModeSelector:
         target_id: int,
         virtual_bearings: dict[str, float],
         segment_key: tuple[int, ...] | None,
-        traditional_gf: TraditionalGfDiagnostics | None = None,
+        decision_contexts: Mapping[str, GunDecisionContext] | None = None,
     ) -> tuple[str, str | None, bool, tuple[GunSwitchCandidate, ...]]:
         previous = self.active_modes.get(target_id)
         forced_mode = self.config.forced_mode
@@ -50,7 +54,7 @@ class AimModeSelector:
                 target_id,
                 forced_mode,
                 segment_key,
-                traditional_gf,
+                decision_contexts,
             )
             current_mode = previous if previous in virtual_bearings else None
             if current_mode is None:
@@ -59,7 +63,7 @@ class AimModeSelector:
                 target_id,
                 current_mode,
                 segment_key,
-                traditional_gf,
+                decision_contexts,
             )
             stats = self.stats.get((target_id, forced_mode))
             candidate = GunSwitchCandidate(
@@ -78,7 +82,7 @@ class AimModeSelector:
                 current_penalty,
                 source_penalty,
                 current_source_penalty,
-                traditional_gf.source if forced_mode == "traditional_gf" and traditional_gf is not None else None,
+                self._decision_penalty(forced_mode, decision_contexts)[1],
             )
             return forced_mode, previous, previous != forced_mode, (candidate,)
 
@@ -91,7 +95,7 @@ class AimModeSelector:
             target_id,
             current,
             segment_key,
-            traditional_gf,
+            decision_contexts,
         )
         best_score = current_score
         candidates: dict[str, GunSwitchCandidate] = {}
@@ -108,7 +112,7 @@ class AimModeSelector:
                 target_id,
                 mode,
                 segment_key,
-                traditional_gf,
+                decision_contexts,
             )
             reason = "current" if mode == current else "margin"
             if mode != current and visits < required_visits:
@@ -137,7 +141,7 @@ class AimModeSelector:
                 current_penalty,
                 source_penalty,
                 current_source_penalty,
-                traditional_gf.source if mode == "traditional_gf" and traditional_gf is not None else None,
+                self._decision_penalty(mode, decision_contexts)[1],
             )
         for mode, candidate in list(candidates.items()):
             if candidate.reason == "selected" and mode != best_mode:
@@ -151,7 +155,7 @@ class AimModeSelector:
                 target_id,
                 mode,
                 segment_key,
-                traditional_gf,
+                decision_contexts,
             )
             ordered_modes.append(mode)
             candidates[mode] = GunSwitchCandidate(
@@ -170,7 +174,7 @@ class AimModeSelector:
                 current_penalty,
                 source_penalty,
                 current_source_penalty,
-                traditional_gf.source if mode == "traditional_gf" and traditional_gf is not None else None,
+                self._decision_penalty(mode, decision_contexts)[1],
             )
 
         self.active_modes[target_id] = best_mode
@@ -181,27 +185,20 @@ class AimModeSelector:
         target_id: int,
         mode: str,
         segment_key: tuple[int, ...] | None,
-        traditional_gf: TraditionalGfDiagnostics | None = None,
+        decision_contexts: Mapping[str, GunDecisionContext] | None = None,
     ) -> tuple[float, float, float, float]:
         raw_score = self.scorer.gun_score(target_id, mode, segment_key)
         confidence_penalty = self._confidence_penalty(target_id, mode)
-        source_penalty = self._traditional_gf_source_penalty(mode, traditional_gf)
+        source_penalty, _ = self._decision_penalty(mode, decision_contexts)
         return raw_score, max(0.0, raw_score - confidence_penalty - source_penalty), confidence_penalty, source_penalty
 
-    def _traditional_gf_source_penalty(
+    def _decision_penalty(
         self,
         mode: str,
-        traditional_gf: TraditionalGfDiagnostics | None,
-    ) -> float:
-        if mode != "traditional_gf" or traditional_gf is None:
-            return 0.0
-        if traditional_gf.source == "global":
-            return self.config.traditional_gf_global_source_penalty
-        if traditional_gf.source == "blend":
-            return self.config.traditional_gf_blend_source_penalty * (1.0 - traditional_gf.blend)
-        if traditional_gf.source == "coarse_blend":
-            return self.config.traditional_gf_coarse_blend_source_penalty * (1.0 - traditional_gf.blend)
-        return 0.0
+        decision_contexts: Mapping[str, GunDecisionContext] | None,
+    ) -> tuple[float, str | None]:
+        context = decision_contexts.get(mode) if decision_contexts is not None else None
+        return self._policy_for(mode).decision_score_penalty(context)
 
     def _confidence_penalty(self, target_id: int, mode: str) -> float:
         if self.config.switch_confidence_visits <= 0 or self.config.switch_confidence_penalty <= 0:
@@ -214,21 +211,15 @@ class AimModeSelector:
         return self.config.switch_confidence_penalty * missing_ratio
 
     def min_switch_score(self, mode: str) -> float:
-        if mode == "head_on":
-            return self.config.head_on_min_switch_score
-        if mode == "displacement":
-            return self.config.displacement_min_switch_score
-        if mode == "traditional_gf":
-            return self.config.traditional_gf_min_switch_score
-        if mode == "anti_surfer":
-            return self.config.anti_surfer_min_switch_score
-        return self.config.min_switch_score
+        return self._policy_for(mode).min_switch_score
 
     def min_switch_visits(self, mode: str) -> int:
-        if mode == "displacement":
-            return self.config.displacement_min_switch_visits
-        if mode == "traditional_gf":
-            return self.config.traditional_gf_min_switch_visits
-        if mode == "anti_surfer":
-            return self.config.anti_surfer_min_switch_visits
-        return self.config.min_visits
+        return self._policy_for(mode).min_switch_visits
+
+    def _policy_for(self, mode: str) -> GunModePolicy:
+        fallback = self.mode_policies.get(self.config.default_mode)
+        if fallback is None and self.mode_policies:
+            fallback = next(iter(self.mode_policies.values()))
+        if fallback is None:
+            fallback = GunModePolicy(mode, 0, 0.0)
+        return self.mode_policies.get(mode, fallback)

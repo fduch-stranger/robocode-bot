@@ -1,17 +1,23 @@
 from bot_core.gun.aim import AimModeSelector
+from bot_core.gun.config import (
+    GunDecisionContext,
+    GunModePolicy,
+    GunRuntimeConfig,
+    GunScoringConfig,
+    GunSelectorConfig,
+    GunSystemConfig,
+)
+from bot_core.gun.context import AimContext, GunBearing, GunVisit, TargetHistoryStore
 from bot_core.gun.diagnostics import should_log_switch_decision
-from bot_core.gun.knn import RollingKnnBuffer
+from bot_core.gun.guns.base import GunComponent
 from bot_core.gun.models import (
     AimSolution,
-    GunConfig,
     GunSample,
     GunStats,
     GunSwitchCandidate,
     GunWave,
-    GuessFactorProfile,
     TargetMotion,
     TargetPosition,
-    TraditionalGfDiagnostics,
     WaveVisit,
 )
 from bot_core.gun.scoring import VirtualGunScorer
@@ -32,17 +38,24 @@ from bot_core.physics import bullet_speed_for_power
 __all__ = [
     "AimModeSelector",
     "AimSolution",
-    "GunConfig",
+    "AimContext",
+    "GunBearing",
+    "GunComponent",
+    "GunDecisionContext",
+    "GunModePolicy",
+    "GunRuntimeConfig",
     "GunSample",
+    "GunScoringConfig",
+    "GunSelectorConfig",
     "GunStats",
     "GunSwitchCandidate",
+    "GunSystemConfig",
+    "GunVisit",
     "GunWave",
     "GunWaveTracker",
-    "GuessFactorProfile",
-    "RollingKnnBuffer",
     "TargetMotion",
     "TargetPosition",
-    "TraditionalGfDiagnostics",
+    "TargetHistoryStore",
     "VirtualGunScorer",
     "VirtualGunSystem",
     "WaveVisit",

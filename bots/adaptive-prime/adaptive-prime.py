@@ -18,7 +18,20 @@ from bot_core.energy import (
     EnemyFirePowerPredictor,
     GunHeatTracker,
 )
-from bot_core.gun import AimSolution, GunConfig, TargetMotion, VirtualGunSystem, should_log_switch_decision
+from bot_core.gun import (
+    AimSolution,
+    GunScoringConfig,
+    GunSelectorConfig,
+    GunSystemConfig,
+    TargetMotion,
+    VirtualGunSystem,
+    should_log_switch_decision,
+)
+from bot_core.gun.factory import standard_runtime_config
+from bot_core.gun.guns.anti_surfer.config import AntiSurferGunConfig
+from bot_core.gun.guns.displacement.config import DisplacementGunConfig
+from bot_core.gun.guns.dynamic_cluster.config import DynamicClusterGunConfig
+from bot_core.gun.guns.traditional_gf.config import TraditionalGfGunConfig
 from bot_core.movement import (
     FlatteningDecision,
     MinimumRiskConfig,
@@ -89,35 +102,50 @@ class AdaptivePrime(Bot):
         )
         self._target_selector = TargetSelector(TARGET_POLICY.reacquire_turns)
         self._gun = VirtualGunSystem(
-            GunConfig(
-                selectable_modes=GUN_POLICY.selectable_modes,
-                forced_mode=GUN_POLICY.forced_mode,
-                eval_waves_enabled=GUN_POLICY.eval_waves_enabled,
-                eval_wave_min_interval=GUN_POLICY.eval_wave_min_interval,
-                knn_min_samples=GUN_POLICY.knn_min_samples,
+            standard_runtime_config(
+                system=GunSystemConfig(
+                    eval_waves_enabled=GUN_POLICY.eval_waves_enabled,
+                    eval_wave_min_interval=GUN_POLICY.eval_wave_min_interval,
+                ),
+                selector=GunSelectorConfig(
+                    selectable_modes=GUN_POLICY.selectable_modes,
+                    forced_mode=GUN_POLICY.forced_mode,
+                    switch_margin=GUN_POLICY.switch_margin,
+                    switch_confidence_visits=GUN_POLICY.switch_confidence_visits,
+                    switch_confidence_penalty=GUN_POLICY.switch_confidence_penalty,
+                ),
+                scoring=GunScoringConfig(selectable_modes=GUN_POLICY.selectable_modes),
                 min_visits=GUN_POLICY.min_visits,
-                switch_margin=GUN_POLICY.switch_margin,
                 min_switch_score=GUN_POLICY.min_switch_score,
-                displacement_min_switch_visits=GUN_POLICY.displacement_min_switch_visits,
-                displacement_min_switch_score=GUN_POLICY.displacement_min_switch_score,
-                traditional_gf_min_switch_visits=GUN_POLICY.traditional_gf_min_switch_visits,
-                traditional_gf_min_switch_score=GUN_POLICY.traditional_gf_min_switch_score,
-                traditional_gf_smoothing_bins=GUN_POLICY.traditional_gf_smoothing_bins,
-                traditional_gf_decay=GUN_POLICY.traditional_gf_decay,
-                traditional_gf_centering_factor=GUN_POLICY.traditional_gf_centering_factor,
-                traditional_gf_segment_min_samples=GUN_POLICY.traditional_gf_segment_min_samples,
-                traditional_gf_segment_full_weight_samples=GUN_POLICY.traditional_gf_segment_full_weight_samples,
-                traditional_gf_coarse_segment_min_samples=GUN_POLICY.traditional_gf_coarse_segment_min_samples,
-                traditional_gf_coarse_segment_full_weight_samples=GUN_POLICY.traditional_gf_coarse_segment_full_weight_samples,
-                traditional_gf_peak_selection=GUN_POLICY.traditional_gf_peak_selection,
-                traditional_gf_peak_support_radius=GUN_POLICY.traditional_gf_peak_support_radius,
-                traditional_gf_global_source_penalty=GUN_POLICY.traditional_gf_global_source_penalty,
-                traditional_gf_blend_source_penalty=GUN_POLICY.traditional_gf_blend_source_penalty,
-                traditional_gf_coarse_blend_source_penalty=GUN_POLICY.traditional_gf_coarse_blend_source_penalty,
-                anti_surfer_min_switch_visits=GUN_POLICY.anti_surfer_min_switch_visits,
-                anti_surfer_min_switch_score=GUN_POLICY.anti_surfer_min_switch_score,
-                switch_confidence_visits=GUN_POLICY.switch_confidence_visits,
-                switch_confidence_penalty=GUN_POLICY.switch_confidence_penalty,
+                displacement=DisplacementGunConfig(
+                    min_switch_visits=GUN_POLICY.displacement_min_switch_visits,
+                    min_switch_score=GUN_POLICY.displacement_min_switch_score,
+                ),
+                dynamic_cluster=DynamicClusterGunConfig(
+                    min_samples=GUN_POLICY.knn_min_samples,
+                    min_switch_visits=GUN_POLICY.min_visits,
+                    min_switch_score=GUN_POLICY.min_switch_score,
+                ),
+                traditional_gf=TraditionalGfGunConfig(
+                    min_switch_visits=GUN_POLICY.traditional_gf_min_switch_visits,
+                    min_switch_score=GUN_POLICY.traditional_gf_min_switch_score,
+                    smoothing_bins=GUN_POLICY.traditional_gf_smoothing_bins,
+                    decay=GUN_POLICY.traditional_gf_decay,
+                    centering_factor=GUN_POLICY.traditional_gf_centering_factor,
+                    segment_min_samples=GUN_POLICY.traditional_gf_segment_min_samples,
+                    segment_full_weight_samples=GUN_POLICY.traditional_gf_segment_full_weight_samples,
+                    coarse_segment_min_samples=GUN_POLICY.traditional_gf_coarse_segment_min_samples,
+                    coarse_segment_full_weight_samples=GUN_POLICY.traditional_gf_coarse_segment_full_weight_samples,
+                    peak_selection=GUN_POLICY.traditional_gf_peak_selection,
+                    peak_support_radius=GUN_POLICY.traditional_gf_peak_support_radius,
+                    global_source_penalty=GUN_POLICY.traditional_gf_global_source_penalty,
+                    blend_source_penalty=GUN_POLICY.traditional_gf_blend_source_penalty,
+                    coarse_blend_source_penalty=GUN_POLICY.traditional_gf_coarse_blend_source_penalty,
+                ),
+                anti_surfer=AntiSurferGunConfig(
+                    min_switch_visits=GUN_POLICY.anti_surfer_min_switch_visits,
+                    min_switch_score=GUN_POLICY.anti_surfer_min_switch_score,
+                ),
             )
         )
         self._movement = MovementFlattener(
@@ -269,7 +297,7 @@ class AdaptivePrime(Bot):
             inferred_fire_turn=estimated_fire_turn,
             fire_source_x=fire_source.x,
             fire_source_y=fire_source.y,
-            fire_source_offset=distance_to(fire_source, current_target.x, current_target.y),
+            fire_source_offset=math.hypot(current_target.x - fire_source.x, current_target.y - fire_source.y),
         )
         return True
 
@@ -330,7 +358,7 @@ class AdaptivePrime(Bot):
             firepower,
             self._target_motion(target),
             MOVEMENT_POLICY.field_margin,
-            allow_traditional_gf=use_segmented_gun_stats,
+            disabled_modes=frozenset() if use_segmented_gun_stats else frozenset({"traditional_gf"}),
             allow_segmented_stats=use_segmented_gun_stats,
         )
         score_segment = aim.segment_key if use_segmented_gun_stats else None
@@ -759,7 +787,7 @@ class AdaptivePrime(Bot):
         self._last_gun_decision_log_turn[target_id] = self.turn_number
 
     def _maybe_log_traditional_gf_profile(self, target_id: int, aim: AimSolution) -> None:
-        if aim.traditional_gf is None:
+        if aim.gun_diagnostics.get("traditional_gf") is None:
             return
         last_turn = self._last_traditional_gf_profile_log_turn.get(target_id, -100000)
         if not aim.mode_changed and self.turn_number - last_turn < GUN_POLICY.switch_diagnostics_interval:
@@ -1054,7 +1082,7 @@ class AdaptivePrime(Bot):
             aim_guess_factor=round(wave.aim_guess_factor, 3)
             if wave is not None and wave.aim_guess_factor is not None
             else None,
-            traditional_gf_source=wave.traditional_gf_source
+            traditional_gf_source=getattr(wave.gun_metadata.get("traditional_gf"), "source", None)
             if wave is not None and wave.aim_mode == "traditional_gf"
             else None,
         )

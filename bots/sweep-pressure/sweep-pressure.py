@@ -22,7 +22,18 @@ from bot_core.energy import (
     FireGate,
     FireGateConfig,
 )
-from bot_core.gun import AimSolution, GunConfig, TargetMotion, VirtualGunSystem, should_log_switch_decision
+from bot_core.gun import (
+    AimSolution,
+    GunScoringConfig,
+    GunSelectorConfig,
+    GunSystemConfig,
+    TargetMotion,
+    VirtualGunSystem,
+    should_log_switch_decision,
+)
+from bot_core.gun.factory import standard_runtime_config
+from bot_core.gun.guns.dynamic_cluster.config import DynamicClusterGunConfig
+from bot_core.gun.guns.traditional_gf.config import TraditionalGfGunConfig
 from bot_core.movement import MinimumRiskMovement, MovementCommand, MovementFlattener, MovementFlatteningConfig
 from bot_core.motion import OwnMotionTracker
 from bot_core.radar import RadarLockConfig, lock_priority_radar
@@ -164,17 +175,28 @@ class SweepPressure(Bot):
         self._target_accel: dict[int, float] = {}
         self._last_velocity_change_turn: dict[int, int] = {}
         self._gun = VirtualGunSystem(
-            GunConfig(
-                selectable_modes=GUN_POLICY.selectable_modes,
-                forced_mode=GUN_POLICY.forced_mode,
-                eval_waves_enabled=GUN_POLICY.eval_waves_enabled,
-                eval_wave_min_interval=GUN_POLICY.eval_wave_min_interval,
-                knn_min_samples=GUN_POLICY.knn_min_samples,
+            standard_runtime_config(
+                system=GunSystemConfig(
+                    eval_waves_enabled=GUN_POLICY.eval_waves_enabled,
+                    eval_wave_min_interval=GUN_POLICY.eval_wave_min_interval,
+                ),
+                selector=GunSelectorConfig(
+                    selectable_modes=GUN_POLICY.selectable_modes,
+                    forced_mode=GUN_POLICY.forced_mode,
+                    switch_margin=GUN_POLICY.switch_margin,
+                ),
+                scoring=GunScoringConfig(selectable_modes=GUN_POLICY.selectable_modes),
                 min_visits=GUN_POLICY.min_visits,
-                switch_margin=GUN_POLICY.switch_margin,
                 min_switch_score=GUN_POLICY.min_switch_score,
-                traditional_gf_min_switch_visits=GUN_POLICY.traditional_gf_min_switch_visits,
-                traditional_gf_min_switch_score=GUN_POLICY.traditional_gf_min_switch_score,
+                dynamic_cluster=DynamicClusterGunConfig(
+                    min_samples=GUN_POLICY.knn_min_samples,
+                    min_switch_visits=GUN_POLICY.min_visits,
+                    min_switch_score=GUN_POLICY.min_switch_score,
+                ),
+                traditional_gf=TraditionalGfGunConfig(
+                    min_switch_visits=GUN_POLICY.traditional_gf_min_switch_visits,
+                    min_switch_score=GUN_POLICY.traditional_gf_min_switch_score,
+                ),
             )
         )
         self._movement = MovementFlattener(
@@ -318,7 +340,7 @@ class SweepPressure(Bot):
             inferred_fire_turn=estimated_fire_turn,
             fire_source_x=fire_source.x,
             fire_source_y=fire_source.y,
-            fire_source_offset=distance_to(fire_source, current_target.x, current_target.y),
+            fire_source_offset=math.hypot(current_target.x - fire_source.x, current_target.y - fire_source.y),
         )
         return True
 
@@ -351,7 +373,7 @@ class SweepPressure(Bot):
             firepower,
             self._target_motion(target),
             FIELD_MARGIN,
-            allow_traditional_gf=use_segmented_gun_stats,
+            disabled_modes=frozenset() if use_segmented_gun_stats else frozenset({"traditional_gf"}),
             allow_segmented_stats=use_segmented_gun_stats,
         )
         score_segment = aim.segment_key if use_segmented_gun_stats else None

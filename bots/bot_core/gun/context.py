@@ -1,0 +1,162 @@
+import math
+from dataclasses import dataclass, field
+
+from robocode_tank_royale.bot_api import Bot
+
+from bot_core.geometry.angles import absolute_bearing_between
+from bot_core.geometry.numeric import clamp
+from bot_core.geometry.waves import escape_angle_for_guess_factor
+from bot_core.gun.config import GunDecisionContext
+from bot_core.gun.models import GunWave, TargetMotion, TargetPosition
+from bot_core.gun.utils import lateral_direction
+from bot_core.physics import bullet_speed_for_power
+from bot_core.target_snapshot import TargetSnapshot
+
+
+@dataclass(frozen=True)
+class AimContext:
+    bot: Bot
+    target: TargetSnapshot
+    distance: float
+    firepower: float
+    motion: TargetMotion
+    field_margin: float
+    features: tuple[float, ...]
+    segment_key: tuple[int, ...]
+    disabled_modes: frozenset[str] = frozenset()
+
+
+@dataclass(frozen=True)
+class GunBearing:
+    mode: str
+    absolute_bearing: float
+    guess_factor: float | None = None
+    decision_context: GunDecisionContext | None = None
+    metadata: dict[str, object] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class GunVisit:
+    wave: GunWave
+    actual_bearing: float
+    target_distance: float
+    guess_factor: float
+    segment_key: tuple[int, ...]
+    is_evaluation: bool = False
+
+
+class TargetHistoryStore:
+    def __init__(self, max_history: int) -> None:
+        self.max_history = max_history
+        self._history: dict[int, list[TargetPosition]] = {}
+
+    def observe_target(self, target: TargetSnapshot) -> None:
+        history = self._history.setdefault(target.bot_id, [])
+        if history and history[-1].turn == target.seen_turn:
+            history[-1] = TargetPosition(target.seen_turn, target.x, target.y, target.speed)
+        else:
+            history.append(TargetPosition(target.seen_turn, target.x, target.y, target.speed))
+        if len(history) > self.max_history:
+            del history[: len(history) - self.max_history]
+
+    def history_for(self, target_id: int) -> list[TargetPosition]:
+        return self._history.get(target_id, [])
+
+    def previous_position(self, target: TargetSnapshot) -> TargetPosition | None:
+        for position in reversed(self._history.get(target.bot_id, [])):
+            if position.turn < target.seen_turn:
+                return position
+        return None
+
+    def wave_visit_position(
+        self,
+        bot: Bot,
+        wave: GunWave,
+        target: TargetSnapshot,
+        visit_margin: float,
+    ) -> tuple[float, float, float, float]:
+        current_traveled = (bot.turn_number - wave.fire_turn) * wave.bullet_speed
+        current_distance = math.hypot(target.x - wave.source_x, target.y - wave.source_y)
+        previous = self.previous_position(target)
+        if previous is None or previous.turn >= target.seen_turn:
+            return target.x, target.y, current_traveled, current_distance
+
+        previous_traveled = (previous.turn - wave.fire_turn) * wave.bullet_speed
+        previous_distance = math.hypot(previous.x - wave.source_x, previous.y - wave.source_y)
+        if previous_traveled + visit_margin >= previous_distance:
+            return previous.x, previous.y, previous_traveled, previous_distance
+        if current_traveled + visit_margin < current_distance:
+            return target.x, target.y, current_traveled, current_distance
+
+        low = 0.0
+        high = 1.0
+        elapsed = target.seen_turn - previous.turn
+        for _ in range(12):
+            mid = (low + high) / 2.0
+            x = previous.x + (target.x - previous.x) * mid
+            y = previous.y + (target.y - previous.y) * mid
+            turn = previous.turn + elapsed * mid
+            traveled = (turn - wave.fire_turn) * wave.bullet_speed
+            distance = math.hypot(x - wave.source_x, y - wave.source_y)
+            if traveled + visit_margin >= distance:
+                high = mid
+            else:
+                low = mid
+
+        ratio = high
+        x = previous.x + (target.x - previous.x) * ratio
+        y = previous.y + (target.y - previous.y) * ratio
+        turn = previous.turn + elapsed * ratio
+        traveled = (turn - wave.fire_turn) * wave.bullet_speed
+        distance = math.hypot(x - wave.source_x, y - wave.source_y)
+        return x, y, traveled, distance
+
+    def clear_round_state(self) -> None:
+        self._history.clear()
+
+    def remove_target(self, target_id: int) -> None:
+        self._history.pop(target_id, None)
+
+
+def build_gun_features(
+    bot: Bot,
+    target: TargetSnapshot,
+    distance: float,
+    firepower: float,
+    motion: TargetMotion,
+) -> tuple[float, ...]:
+    absolute_bearing = math.radians(absolute_bearing_between(bot.x, bot.y, target.x, target.y))
+    heading = math.radians(target.direction)
+    velocity_x = math.cos(heading) * target.speed
+    velocity_y = math.sin(heading) * target.speed
+    lateral_velocity = velocity_x * -math.sin(absolute_bearing) + velocity_y * math.cos(absolute_bearing)
+    advancing_velocity = velocity_x * math.cos(absolute_bearing) + velocity_y * math.sin(absolute_bearing)
+    wall_margin = min(
+        target.x,
+        bot.arena_width - target.x,
+        target.y,
+        bot.arena_height - target.y,
+    )
+    arena_scale = max(bot.arena_width, bot.arena_height)
+    return (
+        distance / arena_scale,
+        firepower / 3.0,
+        abs(lateral_velocity) / 8.0,
+        advancing_velocity / 8.0,
+        clamp(motion.acceleration / 8.0, -1.0, 1.0),
+        min(60, motion.velocity_change_age) / 60.0,
+        wall_margin / arena_scale,
+    )
+
+
+def guess_factor_aim_bearing(
+    bot: Bot,
+    target: TargetSnapshot,
+    firepower: float,
+    guess_factor: float,
+) -> float:
+    absolute_bearing = absolute_bearing_between(bot.x, bot.y, target.x, target.y)
+    bullet_speed = bullet_speed_for_power(firepower)
+    lateral = lateral_direction(target, absolute_bearing)
+    escape_angle = escape_angle_for_guess_factor(bot, target, bullet_speed, lateral, guess_factor)
+    return absolute_bearing + guess_factor * lateral * escape_angle

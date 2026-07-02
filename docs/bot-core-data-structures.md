@@ -99,19 +99,40 @@ Location: `bot_core.gun`
 
 | Structure | Purpose |
 | --- | --- |
-| `GunConfig` | Tuning constants for KNN, wave scoring, switch thresholds, profile source trust, coarse traditional-GF keys, and profile peak selection. |
+| `GunRuntimeConfig` | Composed runtime wiring used by bots. It contains system, selector, scoring, and component-factory inputs. |
 | `GunSample` | One learned target escape sample for KNN: target id, turn, feature vector, guess factor. |
-| `GunWave` | A simulated bullet wave for a fired shot or optional neutral evaluation opportunity. Used to score virtual guns when it reaches the target. |
+| `GunWave` | A simulated bullet wave for a fired shot or optional neutral evaluation opportunity. Used to score virtual guns when it reaches the target. Component metadata is carried generically in `gun_metadata`. |
 | `GunStats` | Per-target/per-mode visits, hits, and rolling score. |
-| `GuessFactorProfile` | Decayed histogram for traditional and anti-surfer guess-factor aiming. Traditional GF can keep global, exact-segment, and coarse-segment profiles. |
-| `AimSolution` | Output of aiming: predicted point, bearing error, selected mode, features, and mode-change info. |
-| `GunSwitchCandidate` | Per-candidate selector diagnostic with adjusted/raw score, confidence/source penalties, visits, thresholds, margin, and rejection/selection reason. |
-| `WaveVisit` | Telemetry/learning result when a gun wave reaches the target, including optional traditional-GF source/error context. |
-| `RollingKnnBuffer` | Per-target bounded memory of `GunSample` records. |
-| `VirtualGunSystem` | The orchestrator for aiming, scoring, KNN memory, waves, and virtual gun selection. |
+| `GuessFactorProfile` | Component-local decayed histogram for profile guns. Traditional GF and anti-surfer keep separate profile types under their component packages. |
+| `AimSolution` | Output of aiming: predicted point, bearing error, selected mode, features, mode-change info, and component diagnostics keyed by mode. |
+| `GunSwitchCandidate` | Per-candidate selector diagnostic with adjusted/raw score, confidence/source penalties, visits, thresholds, margin, generic decision source, and rejection/selection reason. |
+| `WaveVisit` | Telemetry/learning result when a gun wave reaches the target, with component diagnostics keyed by mode. |
+| `RollingKnnBuffer` | Dynamic-cluster component memory for per-target bounded `GunSample` records. |
+| `AimContext` | Shared aiming input passed from the facade to concrete gun components. Includes bot/target state, firepower, normalized features, segment key, field margin, and disabled mode set. |
+| `GunBearing` | Concrete gun output: mode, absolute bearing, optional guess factor, optional decision context, and generic metadata. |
+| `GunVisit` | Resolved production/eval wave data passed to gun components. Production visits update learners; eval visits remain isolated. |
+| `GunRegistry` | Holds concrete gun components and gathers available bearings for the facade. |
+| `VirtualGunSystem` | Stable bot-facing facade that orchestrates context building, component bearings, wave lifecycle, scoring, selection, and telemetry data assembly. |
 | `GunWaveTracker` | Owns pending/fired gun wave retention and round/target cleanup. |
 | `VirtualGunScorer` | Scores virtual bearings and updates global/segmented gun stats. |
-| `AimModeSelector` | Applies mode switch visit, score, and margin thresholds. |
+| `AimModeSelector` | Applies mode switch visit, score, margin, confidence, and per-mode policy penalties. |
+
+### Gun Components
+
+Concrete guns live under `bot_core.gun.guns` and own their private aiming or
+learning state. The package docs include behavior diagrams and ownership notes:
+
+| Component | State |
+| --- | --- |
+| [`HeadOnGun`](../bots/bot_core/gun/guns/head_on/README.md) | Stateless direct bearing. |
+| [`LinearGun`](../bots/bot_core/gun/guns/linear/README.md) | Stateless linear prediction. |
+| [`DisplacementGun`](../bots/bot_core/gun/guns/displacement/README.md) | Reads shared `TargetHistoryStore` to average matching historical displacement samples. |
+| [`DynamicClusterGun`](../bots/bot_core/gun/guns/dynamic_cluster/README.md) | Owns `RollingKnnBuffer`, sample sequencing, neighbor selection, decayed weighting, bandwidth scoring, and warmup blending. |
+| [`TraditionalGfGun`](../bots/bot_core/gun/guns/traditional_gf/README.md) | Owns global, exact-segment, and coarse-segment GF profiles, peak selection, centering, and diagnostics. |
+| [`AntiSurferGun`](../bots/bot_core/gun/guns/anti_surfer/README.md) | Owns anti-surfer profile bins and valley selection. |
+
+Start from the [gun component package overview](../bots/bot_core/gun/guns/README.md)
+when changing the shared component contract or runtime wiring.
 
 ### Gun Wave Lifecycle
 
@@ -231,11 +252,12 @@ The selected candidate is reported as `selected`; the active gun is reported as
 `current` when no switch occurs. These diagnostics are surfaced through
 `gun.switch_decision` telemetry and do not change scoring by themselves.
 
-When `GunConfig.switch_confidence_visits` and
-`GunConfig.switch_confidence_penalty` are enabled, selector decisions can apply
-a low-visit confidence penalty. Bots can also enable source-aware
-`traditional_gf` penalties for low-context profile sources. Selector decisions
-use an adjusted score:
+When `GunSelectorConfig.switch_confidence_visits` and
+`GunSelectorConfig.switch_confidence_penalty` are enabled, selector decisions
+can apply a low-visit confidence penalty. Components can also provide
+mode-specific decision penalties, such as source-aware `traditional_gf`
+penalties for low-context profile sources. Selector decisions use an adjusted
+score:
 
 ```text
 adjusted_score = raw_score - confidence_penalty - source_penalty
@@ -253,7 +275,8 @@ penalties or promoting a coarse-key experiment.
 
 ### KNN Gun Memory
 
-`RollingKnnBuffer` stores `GunSample` values per target.
+`DynamicClusterGun` owns `RollingKnnBuffer`, which stores `GunSample` values
+per target.
 
 Memory limits:
 

@@ -1,0 +1,283 @@
+from typing import Callable
+
+from bot_core.geometry.angles import relative_bearing
+from bot_core.geometry.numeric import clamp
+from bot_core.geometry.waves import guess_factor_from_offset
+from bot_core.gun.config import GunDecisionContext
+from bot_core.gun.context import AimContext, GunBearing, GunVisit, guess_factor_aim_bearing
+from bot_core.gun.guns.traditional_gf.config import TraditionalGfGunConfig
+from bot_core.gun.guns.traditional_gf.diagnostics import TraditionalGfDiagnostics
+from bot_core.gun.guns.traditional_gf.profile import GuessFactorProfile
+from bot_core.gun.models import GunWave
+from bot_core.gun.utils import bin_to_guess_factor
+
+
+class TraditionalGfGun:
+    mode = "traditional_gf"
+
+    def __init__(self, config: TraditionalGfGunConfig) -> None:
+        self.config = config
+        self.profiles: dict[int, GuessFactorProfile] = {}
+        self.segment_profiles: dict[tuple[int, tuple[int, ...]], GuessFactorProfile] = {}
+        self.coarse_segment_profiles: dict[tuple[int, tuple[int, ...]], GuessFactorProfile] = {}
+        self.mode_policy = config.mode_policy()
+
+    def aim(self, context: AimContext) -> GunBearing | None:
+        if self.mode in context.disabled_modes:
+            return None
+        diagnostics = self.diagnostics(context.target.bot_id, context.segment_key)
+        guess_factor = diagnostics.selected_guess_factor if diagnostics is not None else None
+        if guess_factor is None:
+            return None
+        return GunBearing(
+            self.mode,
+            guess_factor_aim_bearing(context.bot, context.target, context.firepower, guess_factor),
+            guess_factor=guess_factor,
+            decision_context=GunDecisionContext(
+                self.mode,
+                {"source": diagnostics.source, "blend": diagnostics.blend},
+            ),
+            metadata={self.mode: diagnostics},
+        )
+
+    def observe_visit(self, visit: GunVisit) -> None:
+        self.record(visit.wave.target_id, visit.guess_factor, visit.segment_key)
+
+    def visit_diagnostics(self, visit: GunVisit) -> dict[str, object]:
+        error = self.error(visit.wave, visit.guess_factor)
+        if error is None:
+            return {}
+        aim_guess_factor, signed_error, abs_error = error
+        source = None
+        metadata = visit.wave.gun_metadata.get(self.mode)
+        metadata_source = getattr(metadata, "source", None)
+        if isinstance(metadata_source, str):
+            source = metadata_source
+        return {
+            "aim_guess_factor": aim_guess_factor,
+            "error": signed_error,
+            "abs_error": abs_error,
+            "source": source,
+        }
+
+    def metrics(self, target_id: int | None = None) -> dict[str, int | float]:
+        return {}
+
+    def record(
+        self,
+        target_id: int,
+        guess_factor: float,
+        segment_key: tuple[int, ...] | None = None,
+    ) -> None:
+        profile = self.profiles.setdefault(
+            target_id,
+            GuessFactorProfile.with_bins(self.config.guess_factor_bins),
+        )
+        self.record_profile(profile, guess_factor, self.config.smoothing_bins, self.config.decay)
+        if self.config.segment_min_samples > 0 and segment_key is not None:
+            segment_profile = self.segment_profiles.setdefault(
+                (target_id, segment_key),
+                GuessFactorProfile.with_bins(self.config.guess_factor_bins),
+            )
+            self.record_profile(segment_profile, guess_factor, self.config.smoothing_bins, self.config.decay)
+        if self.config.coarse_segment_min_samples > 0 and segment_key is not None:
+            coarse_key = self.coarse_segment_key(segment_key)
+            coarse_profile = self.coarse_segment_profiles.setdefault(
+                (target_id, coarse_key),
+                GuessFactorProfile.with_bins(self.config.guess_factor_bins),
+            )
+            self.record_profile(coarse_profile, guess_factor, self.config.smoothing_bins, self.config.decay)
+
+    def record_profile(
+        self,
+        profile: GuessFactorProfile,
+        guess_factor: float,
+        smoothing_bins: float,
+        decay: float,
+    ) -> None:
+        profile.record(guess_factor, self.config.guess_factor_bins, smoothing_bins, decay)
+
+    def guess_factor(
+        self,
+        target_id: int,
+        segment_key: tuple[int, ...] | None = None,
+    ) -> float | None:
+        diagnostics = self.diagnostics(target_id, segment_key)
+        return diagnostics.selected_guess_factor if diagnostics is not None else None
+
+    def diagnostics(
+        self,
+        target_id: int,
+        segment_key: tuple[int, ...] | None = None,
+    ) -> TraditionalGfDiagnostics | None:
+        profile = self.profiles.get(target_id)
+        if profile is None or profile.effective_weight < self.config.min_samples:
+            return None
+        global_guess_factor = self.profile_guess_factor(profile)
+        if self.config.segment_min_samples <= 0 or segment_key is None:
+            selected_guess_factor = self.center_guess_factor(global_guess_factor)
+            return TraditionalGfDiagnostics(
+                global_guess_factor=global_guess_factor,
+                global_weight=profile.effective_weight,
+                selected_guess_factor=selected_guess_factor,
+                source="global",
+            )
+
+        segment_profile = self.segment_profiles.get((target_id, segment_key))
+        if (
+            segment_profile is None
+            or segment_profile.effective_weight < self.config.segment_min_samples
+        ):
+            coarse_diagnostics = self.coarse_diagnostics(
+                target_id,
+                segment_key,
+                profile,
+                global_guess_factor,
+            )
+            if coarse_diagnostics is not None:
+                return coarse_diagnostics
+            selected_guess_factor = self.center_guess_factor(global_guess_factor)
+            return TraditionalGfDiagnostics(
+                global_guess_factor=global_guess_factor,
+                global_weight=profile.effective_weight,
+                segment_weight=segment_profile.effective_weight if segment_profile is not None else 0.0,
+                selected_guess_factor=selected_guess_factor,
+                source="global",
+            )
+
+        blend = clamp(
+            (segment_profile.effective_weight - self.config.segment_min_samples)
+            / max(1.0, self.config.segment_full_weight_samples - self.config.segment_min_samples),
+            0.0,
+            1.0,
+        )
+        segment_guess_factor = self.profile_guess_factor(segment_profile)
+        blended_guess_factor = self.blended_profile_guess_factor(profile, segment_profile, blend)
+        selected_guess_factor = self.center_guess_factor(blended_guess_factor)
+        return TraditionalGfDiagnostics(
+            global_guess_factor=global_guess_factor,
+            global_weight=profile.effective_weight,
+            segment_guess_factor=segment_guess_factor,
+            segment_weight=segment_profile.effective_weight,
+            blend=blend,
+            selected_guess_factor=selected_guess_factor,
+            source="segment" if blend >= 1.0 else "blend",
+        )
+
+    def coarse_diagnostics(
+        self,
+        target_id: int,
+        segment_key: tuple[int, ...],
+        global_profile: GuessFactorProfile,
+        global_guess_factor: float,
+    ) -> TraditionalGfDiagnostics | None:
+        if self.config.coarse_segment_min_samples <= 0:
+            return None
+        coarse_key = self.coarse_segment_key(segment_key)
+        coarse_profile = self.coarse_segment_profiles.get((target_id, coarse_key))
+        if (
+            coarse_profile is None
+            or coarse_profile.effective_weight < self.config.coarse_segment_min_samples
+        ):
+            return None
+        blend = clamp(
+            (coarse_profile.effective_weight - self.config.coarse_segment_min_samples)
+            / max(1.0, self.config.coarse_segment_full_weight_samples - self.config.coarse_segment_min_samples),
+            0.0,
+            1.0,
+        )
+        coarse_guess_factor = self.profile_guess_factor(coarse_profile)
+        blended_guess_factor = self.blended_profile_guess_factor(global_profile, coarse_profile, blend)
+        selected_guess_factor = self.center_guess_factor(blended_guess_factor)
+        return TraditionalGfDiagnostics(
+            global_guess_factor=global_guess_factor,
+            global_weight=global_profile.effective_weight,
+            segment_guess_factor=coarse_guess_factor,
+            segment_weight=coarse_profile.effective_weight,
+            blend=blend,
+            selected_guess_factor=selected_guess_factor,
+            source="coarse" if blend >= 1.0 else "coarse_blend",
+        )
+
+    @staticmethod
+    def coarse_segment_key(segment_key: tuple[int, ...]) -> tuple[int, ...]:
+        return (segment_key[0], segment_key[2], segment_key[5])
+
+    def profile_guess_factor(self, profile: GuessFactorProfile) -> float:
+        if self.config.peak_selection == "density":
+            return self.density_peak_guess_factor(lambda index: profile.bins[index])
+        best_index = max(range(len(profile.bins)), key=lambda index: profile.bins[index])
+        return bin_to_guess_factor(best_index, self.config.guess_factor_bins)
+
+    def blended_profile_guess_factor(
+        self,
+        global_profile: GuessFactorProfile,
+        segment_profile: GuessFactorProfile,
+        segment_weight: float,
+    ) -> float:
+        def blended_value(index: int) -> float:
+            return (
+                (1.0 - segment_weight) * self.normalized_bin(global_profile, index)
+                + segment_weight * self.normalized_bin(segment_profile, index)
+            )
+
+        if self.config.peak_selection == "density":
+            return self.density_peak_guess_factor(blended_value)
+        best_index = max(range(self.config.guess_factor_bins), key=blended_value)
+        return bin_to_guess_factor(best_index, self.config.guess_factor_bins)
+
+    def density_peak_guess_factor(self, value_at: Callable[[int], float]) -> float:
+        bins = self.config.guess_factor_bins
+        radius = max(0, self.config.peak_support_radius)
+        if radius <= 0:
+            best_index = max(range(bins), key=value_at)
+            return bin_to_guess_factor(best_index, bins)
+
+        def support_weight(center: int, index: int) -> float:
+            return (radius + 1 - abs(index - center)) / (radius + 1)
+
+        def supported_density(center: int) -> float:
+            start = max(0, center - radius)
+            end = min(bins, center + radius + 1)
+            return sum(value_at(index) * support_weight(center, index) for index in range(start, end))
+
+        best_index = max(range(bins), key=supported_density)
+        start = max(0, best_index - radius)
+        end = min(bins, best_index + radius + 1)
+        total_weight = 0.0
+        weighted_guess_factor = 0.0
+        for index in range(start, end):
+            weight = max(0.0, value_at(index)) * support_weight(best_index, index)
+            total_weight += weight
+            weighted_guess_factor += bin_to_guess_factor(index, bins) * weight
+        if total_weight <= 0.0:
+            return bin_to_guess_factor(best_index, bins)
+        return clamp(weighted_guess_factor / total_weight, -1.0, 1.0)
+
+    @staticmethod
+    def normalized_bin(profile: GuessFactorProfile, index: int) -> float:
+        return profile.normalized_bin(index)
+
+    def center_guess_factor(self, guess_factor: float) -> float:
+        return clamp(guess_factor * self.config.centering_factor, -1.0, 1.0)
+
+    @staticmethod
+    def error(wave: GunWave, actual_guess_factor: float) -> tuple[float, float, float] | None:
+        aim_bearing = wave.virtual_bearings.get("traditional_gf")
+        if aim_bearing is None:
+            return None
+        aim_offset = relative_bearing(aim_bearing, wave.fire_bearing)
+        aim_guess_factor = guess_factor_from_offset(
+            aim_offset,
+            wave.lateral_direction,
+            wave.max_escape_angle_positive,
+            wave.max_escape_angle_negative,
+        )
+        error = actual_guess_factor - aim_guess_factor
+        return aim_guess_factor, error, abs(error)
+
+    def clear_round_state(self) -> None:
+        return None
+
+    def remove_target(self, target_id: int) -> None:
+        return None
