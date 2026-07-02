@@ -36,8 +36,11 @@ class GunConfig:
     traditional_gf_min_samples: int = 28
     traditional_gf_smoothing_bins: float = 1.25
     traditional_gf_decay: float = 0.985
+    traditional_gf_centering_factor: float = 1.0
     traditional_gf_segment_min_samples: int = 0
     traditional_gf_segment_full_weight_samples: int = 80
+    traditional_gf_coarse_segment_min_samples: int = 8
+    traditional_gf_coarse_segment_full_weight_samples: int = 36
     traditional_gf_min_switch_visits: int = 260
     traditional_gf_min_switch_score: float = 0.42
     anti_surfer_min_samples: int = 7
@@ -158,3 +161,6 @@ class WaveVisit:
     selected_gun: str
     virtual_scores: dict[str, float]
     gun_scores: dict[str, str]
+    traditional_gf_guess_factor: float | None = None
+    traditional_gf_error: float | None = None
+    traditional_gf_abs_error: float | None = None

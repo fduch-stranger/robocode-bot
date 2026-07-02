@@ -133,7 +133,21 @@ class TelemetryEmitterTest(unittest.TestCase):
                 ),
             ),
         )
-        telemetry.record_wave_visit(WaveVisit(1, -0.2345, 17, 88.88, 199.99, "linear", {"linear": 0.5}, {"linear": "0.50/1"}))
+        telemetry.record_wave_visit(
+            WaveVisit(
+                1,
+                -0.2345,
+                17,
+                88.88,
+                199.99,
+                "linear",
+                {"linear": 0.5},
+                {"linear": "0.50/1"},
+                traditional_gf_guess_factor=-0.1,
+                traditional_gf_error=-0.1345,
+                traditional_gf_abs_error=0.1345,
+            )
+        )
         telemetry.record_eval_wave_visit(
             WaveVisit(1, -0.1234, 3, 44.44, 188.88, "dynamic_cluster", {"dynamic_cluster": 0.6}, {"dynamic_cluster": "0.60/3"})
         )
@@ -193,6 +207,9 @@ class TelemetryEmitterTest(unittest.TestCase):
         self.assertEqual(0.18, sink.records[1][2]["candidates"][1]["raw_score"])
         self.assertEqual(0.0, sink.records[1][2]["candidates"][1]["confidence_penalty"])
         self.assertEqual(-0.234, sink.records[2][2]["guess_factor"])
+        self.assertEqual(-0.1, sink.records[2][2]["traditional_gf_guess_factor"])
+        self.assertEqual(-0.135, sink.records[2][2]["traditional_gf_error"])
+        self.assertEqual(0.135, sink.records[2][2]["traditional_gf_abs_error"])
         self.assertEqual("dynamic_cluster", sink.records[3][2]["selected_gun"])
         self.assertEqual(5.68, sink.records[4][2]["damage"])
         self.assertIsNone(sink.records[5][2]["target_age"])

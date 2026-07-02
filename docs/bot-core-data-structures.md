@@ -103,7 +103,7 @@ Location: `bot_core.gun`
 | `GunSample` | One learned target escape sample for KNN: target id, turn, feature vector, guess factor. |
 | `GunWave` | A simulated bullet wave for a fired shot or optional neutral evaluation opportunity. Used to score virtual guns when it reaches the target. |
 | `GunStats` | Per-target/per-mode visits, hits, and rolling score. |
-| `GuessFactorProfile` | Decayed histogram for traditional and anti-surfer guess-factor aiming. Traditional GF can keep both global and segmented profiles. |
+| `GuessFactorProfile` | Decayed histogram for traditional and anti-surfer guess-factor aiming. Traditional GF can keep global, exact-segment, and coarse-segment profiles. |
 | `AimSolution` | Output of aiming: predicted point, bearing error, selected mode, features, and mode-change info. |
 | `GunSwitchCandidate` | Per-candidate selector diagnostic with adjusted/raw score, confidence penalty, visits, thresholds, margin, and rejection/selection reason. |
 | `WaveVisit` | Telemetry/learning result when a gun wave reaches the target. |

@@ -163,6 +163,53 @@ class GunEvalSummaryTest(unittest.TestCase):
         self.assertEqual(0.25, averages["blend"])
         self.assertEqual(-0.05, averages["selected_guess_factor"])
 
+    def test_summarizes_traditional_gf_error(self) -> None:
+        summary = summarize_events(
+            [
+                {
+                    "event": "gun.wave_visit",
+                    "fields": {
+                        "selected_gun": "linear",
+                        "guess_factor": 0.5,
+                        "traditional_gf_guess_factor": 0.2,
+                        "traditional_gf_error": 0.3,
+                        "traditional_gf_abs_error": 0.3,
+                    },
+                },
+                {
+                    "event": "gun.wave_visit",
+                    "fields": {
+                        "selected_gun": "traditional_gf",
+                        "guess_factor": -0.1,
+                        "traditional_gf_guess_factor": 0.2,
+                        "traditional_gf_error": -0.3,
+                        "traditional_gf_abs_error": 0.3,
+                    },
+                },
+                {
+                    "event": "gun.eval_wave_visit",
+                    "fields": {
+                        "selected_gun": "traditional_gf",
+                        "guess_factor": 0.1,
+                        "traditional_gf_guess_factor": 0.0,
+                        "traditional_gf_error": 0.1,
+                        "traditional_gf_abs_error": 0.1,
+                    },
+                },
+            ]
+        )
+
+        gf_error = summary["traditional_gf_error"]  # type: ignore[assignment]
+        self.assertEqual(2, gf_error["production"]["count"])  # type: ignore[index]
+        self.assertEqual(0.2, gf_error["production"]["avg_actual_guess_factor"])  # type: ignore[index]
+        self.assertEqual(0.2, gf_error["production"]["avg_aim_guess_factor"])  # type: ignore[index]
+        self.assertEqual(0.0, gf_error["production"]["avg_error"])  # type: ignore[index]
+        self.assertEqual(0.3, gf_error["production"]["avg_abs_error"])  # type: ignore[index]
+        self.assertEqual(1, gf_error["production_selected"]["count"])  # type: ignore[index]
+        self.assertEqual(-0.3, gf_error["production_selected"]["avg_error"])  # type: ignore[index]
+        self.assertEqual(1, gf_error["eval_selected"]["count"])  # type: ignore[index]
+        self.assertEqual(0.1, gf_error["eval_selected"]["avg_abs_error"])  # type: ignore[index]
+
     def test_print_summary_includes_selected_counts(self) -> None:
         stream = StringIO()
         summary = {
@@ -176,6 +223,7 @@ class GunEvalSummaryTest(unittest.TestCase):
             "wave_count": {},
             "eval_count": {},
             "traditional_gf_diagnostics": {},
+            "traditional_gf_error": {},
             "calibration": {"2": {"linear": {"post_switch_hit_rate": 0.5}}},
         }
 
@@ -186,6 +234,7 @@ class GunEvalSummaryTest(unittest.TestCase):
         self.assertIn("wave_selected: {'linear': 2}", output)
         self.assertIn("eval_selected: {'dynamic_cluster': 3}", output)
         self.assertIn("traditional_gf_diagnostics:", output)
+        self.assertIn("traditional_gf_error:", output)
         self.assertIn("calibration:", output)
 
 

@@ -68,8 +68,22 @@ class GunPolicy:
         minimum=0.0,
         maximum=0.999,
     )
+    traditional_gf_centering_factor: float = _env_float(
+        "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_CENTERING_FACTOR",
+        1.0,
+        minimum=0.0,
+        maximum=1.0,
+    )
     traditional_gf_segment_min_samples: int = 12
     traditional_gf_segment_full_weight_samples: int = 48
+    traditional_gf_coarse_segment_min_samples: int = _env_int(
+        "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_COARSE_SEGMENT_MIN_SAMPLES",
+        8,
+    )
+    traditional_gf_coarse_segment_full_weight_samples: int = _env_int(
+        "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_COARSE_SEGMENT_FULL_WEIGHT_SAMPLES",
+        36,
+    )
     anti_surfer_min_switch_visits: int = 95
     anti_surfer_min_switch_score: float = 0.28
     switch_confidence_visits: int = 240

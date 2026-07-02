@@ -130,8 +130,11 @@ less linear-biased than the shared defaults:
   switch visit thresholds.
 - `traditional_gf` has an Adaptive-specific activation path so it can replace
   `linear` when virtual scoring shows a clear advantage.
-- `traditional_gf` uses segmented guess-factor profile blending with global
-  fallback so the actual bearing can track current movement context.
+- `traditional_gf` uses exact and coarse segmented guess-factor profile
+  blending with global fallback so the actual bearing can track current
+  movement context without waiting too long for exact-segment samples. Coarse
+  min/full `8/36` is the shared traditional-GF default; Adaptive keeps env
+  knobs for isolated sweeps.
 - `displacement` is force-testable but not live-selectable yet; BasicGFSurfer
   telemetry showed high virtual scores but poor real hit rate and noisy
   switching.
@@ -159,6 +162,9 @@ For `traditional_gf` modeling experiments, Adaptive also accepts:
 ```sh
 ROBOCODE_ADAPTIVE_TRADITIONAL_GF_SMOOTHING_BINS=1.0 \
 ROBOCODE_ADAPTIVE_TRADITIONAL_GF_DECAY=0.975 \
+ROBOCODE_ADAPTIVE_TRADITIONAL_GF_CENTERING_FACTOR=1.0 \
+ROBOCODE_ADAPTIVE_TRADITIONAL_GF_COARSE_SEGMENT_MIN_SAMPLES=8 \
+ROBOCODE_ADAPTIVE_TRADITIONAL_GF_COARSE_SEGMENT_FULL_WEIGHT_SAMPLES=36 \
 ROBOCODE_ADAPTIVE_GUN_MODE=traditional_gf \
 scripts/run-battle.sh --telemetry --rounds 12 bots/adaptive-prime --legacy basic-gf-surfer
 ```
@@ -178,7 +184,7 @@ analysis when telemetry volume is acceptable.
 
 Use `tools/gun_eval_summary.py <telemetry-dir> --bot adaptive-prime
 --post-switch-shots 6` to compare switch-time score/visits, production
-wave averages, eval-wave averages, and real post-switch hit rate. Its
+wave averages, eval-wave averages, GF error, and real post-switch hit rate. Its
 calibration table reports adjusted score, raw score, confidence penalty, and
 score-vs-hit gaps. Treat `eval_hit_gap` as diagnostic evidence only; eval
 waves are not direct proof that a mode should switch live.

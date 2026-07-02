@@ -45,6 +45,22 @@ and calibration problem before changing switch thresholds again.
 - `adaptive-traditional-gf-decay-0975-forced-basic-gf-surfer-12`: decay
   `0.975` lost `611` to `1219` despite `traditional_gf` hit rate `0.1504`.
   Do not change the default decay from `0.985` based on current evidence.
+- `adaptive-traditional-gf-error-forced-basic-gf-surfer-12`: added GF-error
+  telemetry. Forced `traditional_gf` lost `621` to `1187` with hit rate
+  `0.1486`; production waves showed average actual GF `0.166`, aim GF `0.320`,
+  signed error `-0.154`, and abs error `0.550`.
+- Center-shrink experiments did not improve hit score. Factor `0.5` reduced
+  abs GF error to `0.390` but dropped hit rate to `0.1012`; factor `0.75`
+  also dropped hit rate to `0.1004`. Do not set a non-`1.0` centering default
+  from current evidence.
+- `adaptive-traditional-gf-coarse-8-36-forced-basic-gf-surfer-12`: coarse
+  segment profiles won `1011` to `806`, firsts `7-5`, and raised forced
+  `traditional_gf` hit rate to `0.1910`. Profile source shifted mostly to
+  `coarse_blend`.
+- `adaptive-traditional-gf-coarse-8-36-normal-basic-gf-surfer-12`: normal
+  Adaptive with coarse profiles won `1020` to `885`, firsts `7-5`. The
+  comparable no-coarse normal run lost by score, `909` to `942`, despite
+  firsts `7-5`. Set shared traditional-GF coarse defaults to min/full `8/36`.
 - `adaptive-traditional-gf-baseline-diamond-24`: Diamond validation is currently
   unusable in this environment because the legacy Diamond bot repeatedly throws
   movement exceptions and cannot write its `Diamond.data/error.log`.
@@ -64,6 +80,9 @@ velocity, acceleration, velocity-change age, and firepower.
    `traditional_gf_segment_min_samples=12` and
    `traditional_gf_segment_full_weight_samples=48` after the first telemetry
    check showed the initial 18/80 warmup rarely let segment evidence participate.
+   Added coarse segment fallback keyed by distance, lateral speed, and wall
+   margin. Traditional GF now defaults coarse min/full to `8/36` because
+   BasicGFSurfer forced and normal checks improved.
    - Useful dimensions: distance, wall margin, lateral velocity, acceleration,
      velocity-change age, and firepower.
    - Keep the existing global profile as the fallback when segment evidence is

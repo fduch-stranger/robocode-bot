@@ -54,6 +54,7 @@ class VirtualGunSystem:
     _target_history: dict[int, list[TargetPosition]] = field(default_factory=dict)
     _traditional_profiles: dict[int, GuessFactorProfile] = field(default_factory=dict)
     _traditional_segment_profiles: dict[tuple[int, tuple[int, ...]], GuessFactorProfile] = field(default_factory=dict)
+    _traditional_coarse_segment_profiles: dict[tuple[int, tuple[int, ...]], GuessFactorProfile] = field(default_factory=dict)
     _anti_surfer_profiles: dict[int, GuessFactorProfile] = field(default_factory=dict)
     _wave_tracker: GunWaveTracker = field(init=False)
     _scorer: VirtualGunScorer = field(init=False)
@@ -252,6 +253,7 @@ class VirtualGunSystem:
                 wave.max_escape_angle_negative,
             )
             virtual_scores = self._score_virtual_guns(wave, actual_bearing, target_distance)
+            traditional_gf_error = self._traditional_gf_error(wave, guess_factor)
             self._knn_sequence += 1
             self._knn_memory.add(GunSample(wave.target_id, self._knn_sequence, wave.features, guess_factor))
             self._record_traditional_guess_factor(wave.target_id, guess_factor, wave.segment_key)
@@ -266,6 +268,9 @@ class VirtualGunSystem:
                     selected_gun=wave.aim_mode,
                     virtual_scores=virtual_scores,
                     gun_scores=self.score_summary(target.bot_id, wave.segment_key),
+                    traditional_gf_guess_factor=traditional_gf_error[0] if traditional_gf_error is not None else None,
+                    traditional_gf_error=traditional_gf_error[1] if traditional_gf_error is not None else None,
+                    traditional_gf_abs_error=traditional_gf_error[2] if traditional_gf_error is not None else None,
                 )
             )
 
@@ -295,6 +300,7 @@ class VirtualGunSystem:
                 wave.max_escape_angle_negative,
             )
             virtual_scores = self._eval_scorer.score_virtual_guns(wave, actual_bearing, target_distance)
+            traditional_gf_error = self._traditional_gf_error(wave, guess_factor)
             visits.append(
                 WaveVisit(
                     target_id=target.bot_id,
@@ -305,6 +311,9 @@ class VirtualGunSystem:
                     selected_gun=wave.aim_mode,
                     virtual_scores=virtual_scores,
                     gun_scores=self.eval_score_summary(target.bot_id, wave.segment_key),
+                    traditional_gf_guess_factor=traditional_gf_error[0] if traditional_gf_error is not None else None,
+                    traditional_gf_error=traditional_gf_error[1] if traditional_gf_error is not None else None,
+                    traditional_gf_abs_error=traditional_gf_error[2] if traditional_gf_error is not None else None,
                 )
             )
 
@@ -509,6 +518,18 @@ class VirtualGunSystem:
                 self.config.traditional_gf_smoothing_bins,
                 self.config.traditional_gf_decay,
             )
+        if self.config.traditional_gf_coarse_segment_min_samples > 0 and segment_key is not None:
+            coarse_key = self._traditional_coarse_segment_key(segment_key)
+            coarse_profile = self._traditional_coarse_segment_profiles.setdefault(
+                (target_id, coarse_key),
+                GuessFactorProfile(bins=[0.0] * self.config.guess_factor_bins),
+            )
+            self._record_guess_factor_profile(
+                coarse_profile,
+                guess_factor,
+                self.config.traditional_gf_smoothing_bins,
+                self.config.traditional_gf_decay,
+            )
 
     def _record_guess_factor_profile(
         self,
@@ -543,10 +564,11 @@ class VirtualGunSystem:
             return None
         global_guess_factor = self._profile_guess_factor(profile)
         if self.config.traditional_gf_segment_min_samples <= 0 or segment_key is None:
+            selected_guess_factor = self._center_traditional_guess_factor(global_guess_factor)
             return TraditionalGfDiagnostics(
                 global_guess_factor=global_guess_factor,
                 global_weight=profile.effective_weight,
-                selected_guess_factor=global_guess_factor,
+                selected_guess_factor=selected_guess_factor,
                 source="global",
             )
 
@@ -555,11 +577,20 @@ class VirtualGunSystem:
             segment_profile is None
             or segment_profile.effective_weight < self.config.traditional_gf_segment_min_samples
         ):
+            coarse_diagnostics = self._coarse_traditional_guess_factor_diagnostics(
+                target_id,
+                segment_key,
+                profile,
+                global_guess_factor,
+            )
+            if coarse_diagnostics is not None:
+                return coarse_diagnostics
+            selected_guess_factor = self._center_traditional_guess_factor(global_guess_factor)
             return TraditionalGfDiagnostics(
                 global_guess_factor=global_guess_factor,
                 global_weight=profile.effective_weight,
                 segment_weight=segment_profile.effective_weight if segment_profile is not None else 0.0,
-                selected_guess_factor=global_guess_factor,
+                selected_guess_factor=selected_guess_factor,
                 source="global",
             )
 
@@ -574,7 +605,8 @@ class VirtualGunSystem:
             1.0,
         )
         segment_guess_factor = self._profile_guess_factor(segment_profile)
-        selected_guess_factor = self._blended_profile_guess_factor(profile, segment_profile, blend)
+        blended_guess_factor = self._blended_profile_guess_factor(profile, segment_profile, blend)
+        selected_guess_factor = self._center_traditional_guess_factor(blended_guess_factor)
         return TraditionalGfDiagnostics(
             global_guess_factor=global_guess_factor,
             global_weight=profile.effective_weight,
@@ -584,6 +616,49 @@ class VirtualGunSystem:
             selected_guess_factor=selected_guess_factor,
             source="segment" if blend >= 1.0 else "blend",
         )
+
+    def _coarse_traditional_guess_factor_diagnostics(
+        self,
+        target_id: int,
+        segment_key: tuple[int, ...],
+        global_profile: GuessFactorProfile,
+        global_guess_factor: float,
+    ) -> TraditionalGfDiagnostics | None:
+        if self.config.traditional_gf_coarse_segment_min_samples <= 0:
+            return None
+        coarse_key = self._traditional_coarse_segment_key(segment_key)
+        coarse_profile = self._traditional_coarse_segment_profiles.get((target_id, coarse_key))
+        if (
+            coarse_profile is None
+            or coarse_profile.effective_weight < self.config.traditional_gf_coarse_segment_min_samples
+        ):
+            return None
+        blend = clamp(
+            (coarse_profile.effective_weight - self.config.traditional_gf_coarse_segment_min_samples)
+            / max(
+                1.0,
+                self.config.traditional_gf_coarse_segment_full_weight_samples
+                - self.config.traditional_gf_coarse_segment_min_samples,
+            ),
+            0.0,
+            1.0,
+        )
+        coarse_guess_factor = self._profile_guess_factor(coarse_profile)
+        blended_guess_factor = self._blended_profile_guess_factor(global_profile, coarse_profile, blend)
+        selected_guess_factor = self._center_traditional_guess_factor(blended_guess_factor)
+        return TraditionalGfDiagnostics(
+            global_guess_factor=global_guess_factor,
+            global_weight=global_profile.effective_weight,
+            segment_guess_factor=coarse_guess_factor,
+            segment_weight=coarse_profile.effective_weight,
+            blend=blend,
+            selected_guess_factor=selected_guess_factor,
+            source="coarse" if blend >= 1.0 else "coarse_blend",
+        )
+
+    @staticmethod
+    def _traditional_coarse_segment_key(segment_key: tuple[int, ...]) -> tuple[int, ...]:
+        return (segment_key[0], segment_key[2], segment_key[5])
 
     def _profile_guess_factor(self, profile: GuessFactorProfile) -> float:
         best_index = max(range(len(profile.bins)), key=lambda index: profile.bins[index])
@@ -644,3 +719,21 @@ class VirtualGunSystem:
         target_distance: float,
     ) -> dict[str, float]:
         return self._scorer.score_virtual_guns(wave, actual_bearing, target_distance)
+
+    def _center_traditional_guess_factor(self, guess_factor: float) -> float:
+        return clamp(guess_factor * self.config.traditional_gf_centering_factor, -1.0, 1.0)
+
+    @staticmethod
+    def _traditional_gf_error(wave: GunWave, actual_guess_factor: float) -> tuple[float, float, float] | None:
+        aim_bearing = wave.virtual_bearings.get("traditional_gf")
+        if aim_bearing is None:
+            return None
+        aim_offset = relative_bearing(aim_bearing, wave.fire_bearing)
+        aim_guess_factor = guess_factor_from_offset(
+            aim_offset,
+            wave.lateral_direction,
+            wave.max_escape_angle_positive,
+            wave.max_escape_angle_negative,
+        )
+        error = actual_guess_factor - aim_guess_factor
+        return aim_guess_factor, error, abs(error)

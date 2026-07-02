@@ -65,6 +65,12 @@ def summarize_events(events: list[dict[str, Any]], *, post_switch_shots: int = 6
     eval_scores_by_target: dict[tuple[str, str], list[float]] = defaultdict(list)
     traditional_gf_sources: Counter[str] = Counter()
     traditional_gf_values: dict[str, list[float]] = defaultdict(list)
+    traditional_gf_error_values: dict[str, dict[str, list[float]]] = {
+        "production": defaultdict(list),
+        "production_selected": defaultdict(list),
+        "eval": defaultdict(list),
+        "eval_selected": defaultdict(list),
+    }
     switch_windows: list[SwitchWindow] = []
     active_switch_window: int | None = None
     shot_to_switch_window: dict[str, int] = {}
@@ -114,8 +120,14 @@ def summarize_events(events: list[dict[str, Any]], *, post_switch_shots: int = 6
                 switch_windows[shot_to_switch_window[bullet_id]].hits += 1
         elif name == "gun.wave_visit":
             _record_wave(fields, wave_selected, wave_scores, wave_scores_by_target)
+            _record_traditional_gf_error(fields, traditional_gf_error_values["production"])
+            if fields.get("selected_gun") == "traditional_gf":
+                _record_traditional_gf_error(fields, traditional_gf_error_values["production_selected"])
         elif name == "gun.eval_wave_visit":
             _record_wave(fields, eval_selected, eval_scores, eval_scores_by_target)
+            _record_traditional_gf_error(fields, traditional_gf_error_values["eval"])
+            if fields.get("selected_gun") == "traditional_gf":
+                _record_traditional_gf_error(fields, traditional_gf_error_values["eval_selected"])
         elif name == "track" and fields.get("traditional_gf_source"):
             _record_traditional_gf_diagnostics(fields, traditional_gf_sources, traditional_gf_values)
         elif name == "gun.traditional_gf_profile" and fields.get("source"):
@@ -142,6 +154,7 @@ def summarize_events(events: list[dict[str, Any]], *, post_switch_shots: int = 6
             traditional_gf_sources,
             traditional_gf_values,
         ),
+        "traditional_gf_error": _traditional_gf_error_summary(traditional_gf_error_values),
         "calibration": _calibration_summary(switch_windows, wave_scores_by_target, eval_scores_by_target),
     }
 
@@ -187,6 +200,36 @@ def _record_traditional_gf_diagnostics(
         value = next((_float_or_none(fields.get(field)) for field in field_names if field in fields), None)
         if value is not None:
             values[output_field].append(value)
+
+
+def _record_traditional_gf_error(fields: dict[str, Any], values: dict[str, list[float]]) -> None:
+    if "traditional_gf_error" not in fields:
+        return
+    for output_field in (
+        "guess_factor",
+        "traditional_gf_guess_factor",
+        "traditional_gf_error",
+        "traditional_gf_abs_error",
+    ):
+        value = _float_or_none(fields.get(output_field))
+        if value is not None:
+            values[output_field].append(value)
+
+
+def _traditional_gf_error_summary(
+    grouped_values: dict[str, dict[str, list[float]]],
+) -> dict[str, dict[str, float | int | None]]:
+    summary: dict[str, dict[str, float | int | None]] = {}
+    for group, values in grouped_values.items():
+        count = len(values.get("traditional_gf_error", []))
+        summary[group] = {
+            "count": count,
+            "avg_actual_guess_factor": _average_values(values.get("guess_factor", [])),
+            "avg_aim_guess_factor": _average_values(values.get("traditional_gf_guess_factor", [])),
+            "avg_error": _average_values(values.get("traditional_gf_error", [])),
+            "avg_abs_error": _average_values(values.get("traditional_gf_abs_error", [])),
+        }
+    return summary
 
 
 def _traditional_gf_diagnostics_summary(
@@ -322,6 +365,7 @@ def _print_summary(summary: dict[str, object]) -> None:
         "wave_count",
         "eval_count",
         "traditional_gf_diagnostics",
+        "traditional_gf_error",
         "calibration",
     ):
         print(f"{key}: {summary[key]}")

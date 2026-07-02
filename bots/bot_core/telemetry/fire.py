@@ -306,7 +306,7 @@ def _bullet_fired_fields(
 
 
 def _wave_visit_fields(visit: WaveVisit) -> dict[str, object]:
-    return {
+    fields: dict[str, object] = {
         "target": visit.target_id,
         "guess_factor": round(visit.guess_factor, 3),
         "samples": visit.samples,
@@ -316,3 +316,10 @@ def _wave_visit_fields(visit: WaveVisit) -> dict[str, object]:
         "virtual_scores": visit.virtual_scores,
         "gun_scores": visit.gun_scores,
     }
+    if visit.traditional_gf_guess_factor is not None:
+        fields["traditional_gf_guess_factor"] = round(visit.traditional_gf_guess_factor, 3)
+    if visit.traditional_gf_error is not None:
+        fields["traditional_gf_error"] = round(visit.traditional_gf_error, 3)
+    if visit.traditional_gf_abs_error is not None:
+        fields["traditional_gf_abs_error"] = round(visit.traditional_gf_abs_error, 3)
+    return fields
