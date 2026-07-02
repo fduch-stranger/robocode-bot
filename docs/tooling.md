@@ -296,6 +296,7 @@ neutral eval-wave scores:
 
 ```sh
 tools/gun_eval_summary.py battle-results/runs/<run>/telemetry --bot adaptive-prime
+tools/gun_eval_summary.py battle-results/runs/<run>/telemetry --bot adaptive-prime --post-switch-shots 6
 ```
 
 `gun.wave_visit` reflects production virtual-gun switching evidence from real
@@ -303,6 +304,12 @@ shots. `gun.eval_wave_visit` reflects optional neutral evaluation waves and
 must be interpreted separately. `gun.switch_decision` explains sampled selector
 choices, including candidates blocked by visits, score floor, margin, or a
 better superseding candidate.
+
+The summary also reports a `calibration` table by target id and gun mode. It
+compares adjusted score, raw score, confidence penalty, visits at switch time,
+the next N real shots, production wave average, eval-wave average, and
+score-vs-hit gaps. Use this to identify modes that look strong virtually but
+underperform with real bullets before changing live switch policy.
 
 The browser viewer keeps raw JSONL fields available through the event API and
 source files. Its decision stream uses readable event summaries, while cards,

@@ -2,6 +2,7 @@
 import argparse
 import json
 from collections import Counter, defaultdict
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -9,7 +10,7 @@ from typing import Any
 def main() -> int:
     args = _parse_args()
     events = list(_read_events(Path(args.telemetry_dir), args.bot))
-    summary = summarize_events(events)
+    summary = summarize_events(events, post_switch_shots=args.post_switch_shots)
     _print_summary(summary)
     return 0
 
@@ -18,6 +19,7 @@ def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Summarize gun-mode telemetry from a Robocode telemetry directory.")
     parser.add_argument("telemetry_dir", help="Directory containing telemetry JSONL files.")
     parser.add_argument("--bot", default="adaptive-prime", help="Bot telemetry name to summarize.")
+    parser.add_argument("--post-switch-shots", type=int, default=6, help="Real shots to track after each gun switch.")
     return parser.parse_args()
 
 
@@ -34,7 +36,23 @@ def _read_events(telemetry_dir: Path, bot: str) -> list[dict[str, Any]]:
     return events
 
 
-def summarize_events(events: list[dict[str, Any]]) -> dict[str, object]:
+@dataclass
+class SwitchWindow:
+    target: str
+    mode: str
+    turn: int | None
+    score: float | None
+    raw_score: float | None
+    current_score: float | None
+    raw_current_score: float | None
+    confidence_penalty: float | None
+    visits: int | None
+    shots: list[str] = field(default_factory=list)
+    hits: int = 0
+    accepting: bool = True
+
+
+def summarize_events(events: list[dict[str, Any]], *, post_switch_shots: int = 6) -> dict[str, object]:
     fired: Counter[str] = Counter()
     hits: Counter[str] = Counter()
     shots_by_id: dict[str, str] = {}
@@ -43,22 +61,42 @@ def summarize_events(events: list[dict[str, Any]]) -> dict[str, object]:
     eval_selected: Counter[str] = Counter()
     wave_scores: dict[str, list[float]] = defaultdict(list)
     eval_scores: dict[str, list[float]] = defaultdict(list)
+    wave_scores_by_target: dict[tuple[str, str], list[float]] = defaultdict(list)
+    eval_scores_by_target: dict[tuple[str, str], list[float]] = defaultdict(list)
+    switch_windows: list[SwitchWindow] = []
+    active_switch_window: int | None = None
+    shot_to_switch_window: dict[str, int] = {}
 
-    for event in events:
+    for event_index, event in enumerate(events):
         name = event.get("event")
         fields = event.get("fields") if isinstance(event.get("fields"), dict) else {}
         if name == "round.reset":
             shots_by_id.clear()
             pending_hits_by_id.clear()
+            shot_to_switch_window.clear()
+            if active_switch_window is not None:
+                switch_windows[active_switch_window].accepting = False
+            active_switch_window = None
         elif name == "bullet.fired" and fields.get("aim_mode"):
             mode = str(fields["aim_mode"])
             fired[mode] += 1
-            bullet_id = _bullet_id(fields)
-            if bullet_id is not None:
-                shots_by_id[bullet_id] = mode
-                pending_hits = pending_hits_by_id.pop(bullet_id, 0)
-                if pending_hits:
-                    hits[mode] += pending_hits
+            bullet_id = _bullet_id(fields) or f"event:{event_index}"
+            if (
+                active_switch_window is not None
+                and switch_windows[active_switch_window].accepting
+                and switch_windows[active_switch_window].mode == mode
+                and len(switch_windows[active_switch_window].shots) < post_switch_shots
+            ):
+                switch_windows[active_switch_window].shots.append(bullet_id)
+                shot_to_switch_window[bullet_id] = active_switch_window
+                if len(switch_windows[active_switch_window].shots) >= post_switch_shots:
+                    switch_windows[active_switch_window].accepting = False
+            shots_by_id[bullet_id] = mode
+            pending_hits = pending_hits_by_id.pop(bullet_id, 0)
+            if pending_hits:
+                hits[mode] += pending_hits
+                if bullet_id in shot_to_switch_window:
+                    switch_windows[shot_to_switch_window[bullet_id]].hits += pending_hits
         elif name == "bullet.hit_bot":
             mode = str(fields["aim_mode"]) if fields.get("aim_mode") else None
             if mode is None:
@@ -69,10 +107,20 @@ def summarize_events(events: list[dict[str, Any]]) -> dict[str, object]:
                         pending_hits_by_id[bullet_id] += 1
             if mode is not None:
                 hits[mode] += 1
+            bullet_id = _bullet_id(fields)
+            if bullet_id is not None and bullet_id in shot_to_switch_window:
+                switch_windows[shot_to_switch_window[bullet_id]].hits += 1
         elif name == "gun.wave_visit":
-            _record_wave(fields, wave_selected, wave_scores)
+            _record_wave(fields, wave_selected, wave_scores, wave_scores_by_target)
         elif name == "gun.eval_wave_visit":
-            _record_wave(fields, eval_selected, eval_scores)
+            _record_wave(fields, eval_selected, eval_scores, eval_scores_by_target)
+        elif name == "gun.switch_decision" and fields.get("changed"):
+            if active_switch_window is not None:
+                switch_windows[active_switch_window].accepting = False
+            window = _switch_window_from_decision(event, fields)
+            if window is not None:
+                switch_windows.append(window)
+                active_switch_window = len(switch_windows) - 1
 
     return {
         "fired": dict(fired),
@@ -84,6 +132,7 @@ def summarize_events(events: list[dict[str, Any]]) -> dict[str, object]:
         "eval_avg": _averages(eval_scores),
         "wave_count": {mode: len(scores) for mode, scores in sorted(wave_scores.items())},
         "eval_count": {mode: len(scores) for mode, scores in sorted(eval_scores.items())},
+        "calibration": _calibration_summary(switch_windows, wave_scores_by_target, eval_scores_by_target),
     }
 
 
@@ -94,12 +143,101 @@ def _bullet_id(fields: dict[str, Any]) -> str | None:
     return str(bullet_id)
 
 
-def _record_wave(fields: dict[str, Any], selected: Counter[str], scores_by_mode: dict[str, list[float]]) -> None:
+def _record_wave(
+    fields: dict[str, Any],
+    selected: Counter[str],
+    scores_by_mode: dict[str, list[float]],
+    scores_by_target: dict[tuple[str, str], list[float]],
+) -> None:
     if fields.get("selected_gun"):
         selected[str(fields["selected_gun"])] += 1
     scores = fields.get("virtual_scores") if isinstance(fields.get("virtual_scores"), dict) else {}
+    target = str(fields.get("target"))
     for mode, score in scores.items():
-        scores_by_mode[str(mode)].append(float(score))
+        mode_name = str(mode)
+        score_value = float(score)
+        scores_by_mode[mode_name].append(score_value)
+        scores_by_target[(target, mode_name)].append(score_value)
+
+
+def _switch_window_from_decision(event: dict[str, Any], fields: dict[str, Any]) -> SwitchWindow | None:
+    selected = fields.get("selected")
+    if not selected:
+        return None
+    selected_candidate = _selected_candidate(fields, str(selected))
+    score = _float_or_none(selected_candidate.get("score") if selected_candidate is not None else None)
+    current_score = _float_or_none(selected_candidate.get("current_score") if selected_candidate is not None else None)
+    raw_score = _float_or_none(selected_candidate.get("raw_score") if selected_candidate is not None else None)
+    raw_current_score = _float_or_none(
+        selected_candidate.get("raw_current_score") if selected_candidate is not None else None
+    )
+    confidence_penalty = _float_or_none(
+        selected_candidate.get("confidence_penalty") if selected_candidate is not None else None
+    )
+    return SwitchWindow(
+        target=str(fields.get("target")),
+        mode=str(selected),
+        turn=_int_or_none(event.get("turn")),
+        score=score,
+        raw_score=score if raw_score is None else raw_score,
+        current_score=current_score,
+        raw_current_score=current_score if raw_current_score is None else raw_current_score,
+        confidence_penalty=0.0 if confidence_penalty is None else confidence_penalty,
+        visits=_int_or_none(selected_candidate.get("visits") if selected_candidate is not None else None),
+    )
+
+
+def _selected_candidate(fields: dict[str, Any], selected: str) -> dict[str, Any] | None:
+    candidates = fields.get("candidates") if isinstance(fields.get("candidates"), list) else []
+    for candidate in candidates:
+        if isinstance(candidate, dict) and candidate.get("mode") == selected:
+            return candidate
+    return None
+
+
+def _calibration_summary(
+    windows: list[SwitchWindow],
+    wave_scores_by_target: dict[tuple[str, str], list[float]],
+    eval_scores_by_target: dict[tuple[str, str], list[float]],
+) -> dict[str, dict[str, dict[str, float | int | None]]]:
+    grouped: dict[tuple[str, str], list[SwitchWindow]] = defaultdict(list)
+    for window in windows:
+        grouped[(window.target, window.mode)].append(window)
+
+    summary: dict[str, dict[str, dict[str, float | int | None]]] = defaultdict(dict)
+    for (target, mode), mode_windows in sorted(grouped.items()):
+        shots = sum(len(window.shots) for window in mode_windows)
+        hits = sum(window.hits for window in mode_windows)
+        switch_scores = [window.score for window in mode_windows if window.score is not None]
+        raw_switch_scores = [window.raw_score for window in mode_windows if window.raw_score is not None]
+        confidence_penalties = [
+            window.confidence_penalty for window in mode_windows if window.confidence_penalty is not None
+        ]
+        switch_visits = [window.visits for window in mode_windows if window.visits is not None]
+        hit_rate = round(hits / shots, 4) if shots else 0.0
+        avg_score = _average_values(switch_scores)
+        avg_raw_score = _average_values(raw_switch_scores)
+        production_avg = _average_values(wave_scores_by_target.get((target, mode), []))
+        eval_avg = _average_values(eval_scores_by_target.get((target, mode), []))
+        summary[target][mode] = {
+            "switches": len(mode_windows),
+            "avg_score_at_switch": avg_score,
+            "avg_raw_score_at_switch": avg_raw_score,
+            "avg_confidence_penalty": _average_values(confidence_penalties),
+            "avg_visits_at_switch": _average_values(switch_visits),
+            "post_switch_shots": shots,
+            "post_switch_hits": hits,
+            "post_switch_hit_rate": hit_rate,
+            "score_hit_gap": round(avg_score - hit_rate, 4) if avg_score is not None else None,
+            "raw_score_hit_gap": round(avg_raw_score - hit_rate, 4) if avg_raw_score is not None else None,
+            "production_wave_avg": production_avg,
+            "production_wave_count": len(wave_scores_by_target.get((target, mode), [])),
+            "production_hit_gap": round(production_avg - hit_rate, 4) if production_avg is not None else None,
+            "eval_avg": eval_avg,
+            "eval_count": len(eval_scores_by_target.get((target, mode), [])),
+            "eval_hit_gap": round(eval_avg - hit_rate, 4) if eval_avg is not None else None,
+        }
+    return {target: dict(modes) for target, modes in sorted(summary.items())}
 
 
 def _rates(hits: Counter[str], fired: Counter[str]) -> dict[str, float]:
@@ -108,6 +246,28 @@ def _rates(hits: Counter[str], fired: Counter[str]) -> dict[str, float]:
 
 def _averages(scores_by_mode: dict[str, list[float]]) -> dict[str, float]:
     return {mode: round(sum(scores) / len(scores), 4) for mode, scores in sorted(scores_by_mode.items()) if scores}
+
+
+def _average_values(values: list[float] | list[int]) -> float | None:
+    return round(sum(values) / len(values), 4) if values else None
+
+
+def _float_or_none(value: object) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _int_or_none(value: object) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _print_summary(summary: dict[str, object]) -> None:
@@ -121,6 +281,7 @@ def _print_summary(summary: dict[str, object]) -> None:
         "eval_avg",
         "wave_count",
         "eval_count",
+        "calibration",
     ):
         print(f"{key}: {summary[key]}")
 

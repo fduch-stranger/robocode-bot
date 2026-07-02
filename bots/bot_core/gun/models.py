@@ -26,6 +26,8 @@ class GunConfig:
     head_on_min_switch_score: float = 0.45
     displacement_min_switch_visits: int = 90
     displacement_min_switch_score: float = 0.30
+    switch_confidence_visits: int = 0
+    switch_confidence_penalty: float = 0.0
     score_alpha: float = 0.12
     virtual_hit_radius: float = 18
     max_target_history: int = 80
@@ -126,6 +128,10 @@ class GunSwitchCandidate:
     min_score: float
     margin: float
     reason: str
+    raw_score: float | None = None
+    raw_current_score: float | None = None
+    confidence_penalty: float = 0.0
+    current_confidence_penalty: float = 0.0
 
 
 @dataclass

@@ -39,7 +39,7 @@ class AimModeSelector:
             and forced_mode in virtual_bearings
         ):
             self.active_modes[target_id] = forced_mode
-            score = self.scorer.gun_score(target_id, forced_mode, segment_key)
+            raw_score, score, penalty = self._score_with_confidence(target_id, forced_mode, segment_key)
             stats = self.stats.get((target_id, forced_mode))
             candidate = GunSwitchCandidate(
                 forced_mode,
@@ -51,6 +51,10 @@ class AimModeSelector:
                 self.min_switch_score(forced_mode),
                 self.config.switch_margin,
                 "forced",
+                raw_score,
+                raw_score,
+                penalty,
+                penalty,
             )
             return forced_mode, previous, previous != forced_mode, (candidate,)
 
@@ -59,7 +63,7 @@ class AimModeSelector:
             current = self.config.default_mode if self.config.default_mode in virtual_bearings else next(iter(virtual_bearings))
 
         best_mode = current
-        current_score = self.scorer.gun_score(target_id, current, segment_key)
+        raw_current_score, current_score, current_penalty = self._score_with_confidence(target_id, current, segment_key)
         best_score = current_score
         candidates: dict[str, GunSwitchCandidate] = {}
         ordered_modes: list[str] = []
@@ -71,7 +75,7 @@ class AimModeSelector:
             visits = stats.visits if stats is not None else 0
             required_visits = self.min_switch_visits(mode)
             min_score = self.min_switch_score(mode)
-            score = self.scorer.gun_score(target_id, mode, segment_key)
+            raw_score, score, penalty = self._score_with_confidence(target_id, mode, segment_key)
             reason = "current" if mode == current else "margin"
             if mode != current and visits < required_visits:
                 reason = "visits"
@@ -93,6 +97,10 @@ class AimModeSelector:
                 min_score,
                 self.config.switch_margin,
                 reason,
+                raw_score,
+                raw_current_score,
+                penalty,
+                current_penalty,
             )
         for mode, candidate in list(candidates.items()):
             if candidate.reason == "selected" and mode != best_mode:
@@ -111,10 +119,34 @@ class AimModeSelector:
                 self.min_switch_score(mode),
                 self.config.switch_margin,
                 "unavailable",
+                0.0,
+                raw_current_score,
+                0.0,
+                current_penalty,
             )
 
         self.active_modes[target_id] = best_mode
         return best_mode, previous, previous != best_mode, tuple(candidates[mode] for mode in ordered_modes)
+
+    def _score_with_confidence(
+        self,
+        target_id: int,
+        mode: str,
+        segment_key: tuple[int, ...] | None,
+    ) -> tuple[float, float, float]:
+        raw_score = self.scorer.gun_score(target_id, mode, segment_key)
+        penalty = self._confidence_penalty(target_id, mode)
+        return raw_score, max(0.0, raw_score - penalty), penalty
+
+    def _confidence_penalty(self, target_id: int, mode: str) -> float:
+        if self.config.switch_confidence_visits <= 0 or self.config.switch_confidence_penalty <= 0:
+            return 0.0
+        stats = self.stats.get((target_id, mode))
+        visits = stats.visits if stats is not None else 0
+        if visits >= self.config.switch_confidence_visits:
+            return 0.0
+        missing_ratio = 1.0 - visits / self.config.switch_confidence_visits
+        return self.config.switch_confidence_penalty * missing_ratio
 
     def min_switch_score(self, mode: str) -> float:
         if mode == "head_on":

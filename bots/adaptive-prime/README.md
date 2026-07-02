@@ -136,6 +136,9 @@ less linear-biased than the shared defaults:
 - `anti_surfer` stays conservative because it intentionally aims at
   under-visited guess-factor bins; select it only after its virtual score has
   enough evidence.
+- Switching uses a small confidence penalty until a mode has enough virtual
+  visits. `gun.switch_decision` reports both adjusted `score` and `raw_score`
+  so score-vs-hit calibration can separate weak evidence from weak aim logic.
 
 For isolated gun testing, set:
 
@@ -159,6 +162,18 @@ This emits `gun.eval_wave_visit` at fresh, gun-ready opportunities. Eval-wave
 stats are separate from production `gun.wave_visit` stats and do not influence
 virtual-gun switching. Use `ROBOCODE_ADAPTIVE_GUN_EVAL_INTERVAL=1` for denser
 analysis when telemetry volume is acceptable.
+
+Use `tools/gun_eval_summary.py <telemetry-dir> --bot adaptive-prime
+--post-switch-shots 6` to compare switch-time score/visits, production
+wave averages, eval-wave averages, and real post-switch hit rate. Its
+calibration table reports adjusted score, raw score, confidence penalty, and
+score-vs-hit gaps. Treat `eval_hit_gap` as diagnostic evidence only; eval
+waves are not direct proof that a mode should switch live.
+
+For the `traditional_gf` modeling follow-up, use
+[Adaptive Prime traditional GF modeling](../../docs/plans/adaptive-prime-traditional-gf-modeling.md).
+Do not tune its switch thresholds again until that plan's model/calibration
+checks are done.
 
 ## Key Telemetry
 

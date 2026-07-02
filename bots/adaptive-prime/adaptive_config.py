@@ -44,6 +44,8 @@ class GunPolicy:
     traditional_gf_min_switch_score: float = 0.24
     anti_surfer_min_switch_visits: int = 95
     anti_surfer_min_switch_score: float = 0.28
+    switch_confidence_visits: int = 240
+    switch_confidence_penalty: float = 0.06
     switch_diagnostics_interval: int = 24
 
 

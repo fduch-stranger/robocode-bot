@@ -104,6 +104,8 @@ class AdaptivePrime(Bot):
                 traditional_gf_min_switch_score=GUN_POLICY.traditional_gf_min_switch_score,
                 anti_surfer_min_switch_visits=GUN_POLICY.anti_surfer_min_switch_visits,
                 anti_surfer_min_switch_score=GUN_POLICY.anti_surfer_min_switch_score,
+                switch_confidence_visits=GUN_POLICY.switch_confidence_visits,
+                switch_confidence_penalty=GUN_POLICY.switch_confidence_penalty,
             )
         )
         self._movement = MovementFlattener(

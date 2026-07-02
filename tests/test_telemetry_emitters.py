@@ -190,6 +190,8 @@ class TelemetryEmitterTest(unittest.TestCase):
         )
         self.assertIsNone(sink.records[0][2]["aim_guess_factor"])
         self.assertEqual("visits", sink.records[1][2]["candidates"][1]["reason"])
+        self.assertEqual(0.18, sink.records[1][2]["candidates"][1]["raw_score"])
+        self.assertEqual(0.0, sink.records[1][2]["candidates"][1]["confidence_penalty"])
         self.assertEqual(-0.234, sink.records[2][2]["guess_factor"])
         self.assertEqual("dynamic_cluster", sink.records[3][2]["selected_gun"])
         self.assertEqual(5.68, sink.records[4][2]["damage"])

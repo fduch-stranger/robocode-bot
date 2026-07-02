@@ -17,7 +17,10 @@ Gun architecture context:
 - `VirtualGunSystem` is the shared gun facade. `AimModeSelector` owns sticky virtual-gun selection and can report `GunSwitchCandidate` diagnostics through `select_with_diagnostics()`.
 - `bot_core.gun.should_log_switch_decision()` centralizes sampled switch-decision telemetry gating for mode changes and blocked better-scoring candidates.
 - `gun.switch_decision` telemetry records sampled selector decisions/rejections: unavailable, visits, score floor, margin, superseded, selected, current, and forced.
+- `GunConfig.switch_confidence_visits`/`switch_confidence_penalty` optionally apply a low-visit uncertainty penalty before switch gates. In `gun.switch_decision`, `score` is the adjusted decision score and `raw_score` is the unadjusted virtual-gun score.
 - `gun.eval_wave_visit` is optional neutral evaluation telemetry. Eval-wave stats are separate from production switching stats and should be used for diagnostics, not A/B performance gates.
+- `tools/gun_eval_summary.py` reports calibration by target and gun mode: switch-time score/visits, next-N real post-switch hit rate, production wave average, eval-wave average, and score-vs-hit gaps. Use eval gaps as diagnostic evidence only.
+- Adaptive `traditional_gf` is suspected to be under-modeled, not merely mis-thresholded. Check `docs/plans/adaptive-prime-traditional-gf-modeling.md` before changing its gates again.
 - Adaptive Prime has bot-specific `GunPolicy` thresholds in `bots/adaptive-prime/adaptive_config.py`; do not copy them blindly to other bots.
 - Chase Lock, Circle Strafer, and Sweep Pressure each have bot-local `GunPolicy` surfaces in their bot entry file and emit sampled `gun.switch_decision` telemetry.
 - Chase Lock keeps shared-default switch thresholds except for a narrower `traditional_gf` activation gate.

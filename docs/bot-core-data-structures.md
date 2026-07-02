@@ -105,7 +105,7 @@ Location: `bot_core.gun`
 | `GunStats` | Per-target/per-mode visits, hits, and rolling score. |
 | `GuessFactorProfile` | Decayed histogram for traditional and anti-surfer guess-factor aiming. |
 | `AimSolution` | Output of aiming: predicted point, bearing error, selected mode, features, and mode-change info. |
-| `GunSwitchCandidate` | Per-candidate selector diagnostic with score, visits, thresholds, margin, and rejection/selection reason. |
+| `GunSwitchCandidate` | Per-candidate selector diagnostic with adjusted/raw score, confidence penalty, visits, thresholds, margin, and rejection/selection reason. |
 | `WaveVisit` | Telemetry/learning result when a gun wave reaches the target. |
 | `RollingKnnBuffer` | Per-target bounded memory of `GunSample` records. |
 | `VirtualGunSystem` | The orchestrator for aiming, scoring, KNN memory, waves, and virtual gun selection. |
@@ -210,6 +210,18 @@ candidates can be rejected for:
 The selected candidate is reported as `selected`; the active gun is reported as
 `current` when no switch occurs. These diagnostics are surfaced through
 `gun.switch_decision` telemetry and do not change scoring by themselves.
+
+When `GunConfig.switch_confidence_visits` and
+`GunConfig.switch_confidence_penalty` are enabled, selector decisions use an
+adjusted score:
+
+```text
+adjusted_score = raw_score - confidence_penalty * max(0, 1 - visits / confidence_visits)
+```
+
+The adjusted score is clamped at zero. Candidate telemetry reports `score` as
+the adjusted decision score and `raw_score` as the virtual-gun score before the
+confidence penalty.
 
 ### KNN Gun Memory
 

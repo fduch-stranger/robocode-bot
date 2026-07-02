@@ -187,6 +187,41 @@ class GunStatsTest(unittest.TestCase):
         self.assertTrue(changed)
         self.assertEqual("selected", {candidate.mode: candidate.reason for candidate in candidates}["displacement"])
 
+    def test_aim_mode_selector_applies_confidence_penalty_to_switch_score(self) -> None:
+        config = GunConfig(
+            selectable_modes=frozenset({"linear", "dynamic_cluster"}),
+            min_visits=1,
+            min_switch_score=0.1,
+            switch_margin=0.03,
+            switch_confidence_visits=100,
+            switch_confidence_penalty=0.10,
+        )
+        stats = {
+            (1, "linear"): GunStats(visits=100, hits=0, rolling_score=0.30),
+            (1, "dynamic_cluster"): GunStats(visits=10, hits=0, rolling_score=0.40),
+        }
+        scorer = VirtualGunScorer(config, stats, {})
+        selector = AimModeSelector(config, scorer, {1: "linear"}, stats)
+
+        selected, _, changed, candidates = selector.select_with_diagnostics(1, {"linear": 0.0, "dynamic_cluster": 0.5}, None)
+
+        by_mode = {candidate.mode: candidate for candidate in candidates}
+        self.assertEqual("linear", selected)
+        self.assertFalse(changed)
+        self.assertEqual("margin", by_mode["dynamic_cluster"].reason)
+        self.assertAlmostEqual(0.28, by_mode["dynamic_cluster"].raw_score or 0.0)
+        self.assertAlmostEqual(0.19, by_mode["dynamic_cluster"].score)
+        self.assertAlmostEqual(0.09, by_mode["dynamic_cluster"].confidence_penalty)
+
+        stats[(1, "dynamic_cluster")].visits = 100
+        selected, _, changed, candidates = selector.select_with_diagnostics(1, {"linear": 0.0, "dynamic_cluster": 0.5}, None)
+
+        by_mode = {candidate.mode: candidate for candidate in candidates}
+        self.assertEqual("dynamic_cluster", selected)
+        self.assertTrue(changed)
+        self.assertEqual("selected", by_mode["dynamic_cluster"].reason)
+        self.assertAlmostEqual(0.0, by_mode["dynamic_cluster"].confidence_penalty)
+
     def test_aim_mode_selector_honors_forced_available_mode(self) -> None:
         config = GunConfig(
             forced_mode="traditional_gf",

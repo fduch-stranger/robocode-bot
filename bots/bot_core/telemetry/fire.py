@@ -195,6 +195,13 @@ def _gun_switch_candidate_fields(candidate: GunSwitchCandidate) -> dict[str, obj
         "available": candidate.available,
         "score": round(candidate.score, 3),
         "current_score": round(candidate.current_score, 3),
+        "raw_score": round(candidate.raw_score if candidate.raw_score is not None else candidate.score, 3),
+        "raw_current_score": round(
+            candidate.raw_current_score if candidate.raw_current_score is not None else candidate.current_score,
+            3,
+        ),
+        "confidence_penalty": round(candidate.confidence_penalty, 3),
+        "current_confidence_penalty": round(candidate.current_confidence_penalty, 3),
         "visits": candidate.visits,
         "required_visits": candidate.required_visits,
         "min_score": round(candidate.min_score, 3),

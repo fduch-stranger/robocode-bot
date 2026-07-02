@@ -11,6 +11,7 @@ This is the navigation hub for the Robocode bot workspace.
 | Understand implementation structures: KNN buffers, waves, stats buffers, prediction data | [Bot Core Data Structures](bot-core-data-structures.md) |
 | Inspect the generated telemetry event contract | [Telemetry Event Schema](telemetry-schema.md) |
 | Review latest local championship results | [Championship Results](championship-results.md) |
+| Review active research and tuning plans | [Plans](plans/README.md) |
 | Tune or inspect a specific bot | [Bot Docs](#bot-docs) |
 
 ## Bot Docs
@@ -46,6 +47,11 @@ This is the navigation hub for the Robocode bot workspace.
   - melee confirmation
   - legacy boss check
 
+- [Plans](plans/README.md)
+  - active bot tuning plans
+  - research hypotheses
+  - validation checklists
+
 ## Architecture Docs
 
 - [Shared Bot Systems](bot-shared-systems.md)
@@ -72,3 +78,5 @@ This is the navigation hub for the Robocode bot workspace.
 - New shared bot behavior: add to [Shared Bot Systems](bot-shared-systems.md).
 - New shared data structure or approximation: add to [Bot Core Data Structures](bot-core-data-structures.md).
 - Bot-specific strategy, mode, or tuning note: add to that bot README.
+- Longer research or tuning plan: add to `docs/plans/` and link from the
+  relevant bot README.
