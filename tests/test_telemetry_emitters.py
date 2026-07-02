@@ -170,6 +170,21 @@ class TelemetryEmitterTest(unittest.TestCase):
             selected_gun_confidence=0.3456,
             selected_gun_confidence_visits=8,
         )
+        telemetry.record_fire_drift(
+            99,
+            4,
+            "linear",
+            100.0,
+            200.0,
+            10.0,
+            1.5,
+            15.5,
+            100.25,
+            199.75,
+            12.5,
+            1.6,
+            15.2,
+        )
 
         self.assertEqual(
             [
@@ -179,6 +194,7 @@ class TelemetryEmitterTest(unittest.TestCase):
                 ("log", "gun.eval_wave_visit"),
                 ("log", "bullet.hit_bot"),
                 ("log", "bullet.fired"),
+                ("log", "gun.fire_drift"),
             ],
             [(kind, event) for kind, event, _ in sink.records],
         )
@@ -219,6 +235,10 @@ class TelemetryEmitterTest(unittest.TestCase):
         self.assertEqual(120.0, sink.records[5][2]["target_y"])
         self.assertEqual(0.346, sink.records[5][2]["selected_gun_confidence"])
         self.assertEqual(8, sink.records[5][2]["selected_gun_confidence_visits"])
+        self.assertEqual(2.5, sink.records[6][2]["direction_error"])
+        self.assertEqual(0.354, sink.records[6][2]["source_error"])
+        self.assertEqual(0.1, sink.records[6][2]["power_error"])
+        self.assertEqual(-0.3, sink.records[6][2]["speed_error"])
 
     def test_fire_telemetry_records_traditional_gf_diagnostics(self) -> None:
         sink = RecordingSink()
@@ -317,6 +337,10 @@ class TelemetryEmitterTest(unittest.TestCase):
             evade_direction=-1,
             known_targets=2,
             heat_state=GunHeatState(heat=1.386),
+            inferred_fire_turn=15,
+            fire_source_x=120.04,
+            fire_source_y=180.05,
+            fire_source_offset=12.345,
         )
         telemetry.record_gun_heat_wave(3, 1.66, EnemyFirePowerPrediction(1.7, 0.5, 8, "fallback", mean_absolute_error=None), 400.01, 1, True)
 
@@ -357,12 +381,20 @@ class TelemetryEmitterTest(unittest.TestCase):
                 "prediction_error",
                 "power_samples",
                 "power_mae",
+                "inferred_fire_turn",
+                "fire_source_x",
+                "fire_source_y",
+                "fire_source_offset",
             },
             set(sink.records[1][2]),
         )
         self.assertEqual(1.93, sink.records[1][2]["power"])
         self.assertEqual(0.43, sink.records[1][2]["prediction_error"])
         self.assertEqual(0.457, sink.records[1][2]["power_mae"])
+        self.assertEqual(15, sink.records[1][2]["inferred_fire_turn"])
+        self.assertEqual(120.0, sink.records[1][2]["fire_source_x"])
+        self.assertEqual(180.1, sink.records[1][2]["fire_source_y"])
+        self.assertEqual(12.35, sink.records[1][2]["fire_source_offset"])
         self.assertEqual(1.66, sink.records[2][2]["power"])
         self.assertIsNone(sink.records[2][2]["power_mae"])
 

@@ -4,7 +4,7 @@ from robocode_tank_royale.bot_api import Bot
 
 from bot_core.geometry.angles import absolute_bearing_between, relative_bearing
 from bot_core.geometry.numeric import clamp
-from bot_core.physics import max_escape_angle_for_bullet_speed
+from bot_core.physics import MAX_ROBOT_SPEED, RobotMovementState, max_escape_angle_for_bullet_speed, predict_robot_movement
 from bot_core.target_snapshot import TargetSnapshot
 
 
@@ -31,6 +31,8 @@ def wall_limited_escape_angle(
         orbit_direction,
         ticks,
         field_margin,
+        start_direction=target.direction,
+        start_speed=target.speed,
     )
 
 
@@ -45,38 +47,49 @@ def wall_limited_escape_angle_from_state(
     orbit_direction: int,
     ticks: int = 64,
     field_margin: float = 18.0,
+    start_direction: float | None = None,
+    start_speed: float = 0.0,
 ) -> float:
-    x = start_x
-    y = start_y
     theoretical = max_escape_angle_for_speed(bullet_speed)
     max_offset = 0.0
+    direct_bearing = absolute_bearing_between(source_x, source_y, start_x, start_y)
+    state = RobotMovementState(
+        x=start_x,
+        y=start_y,
+        direction=start_direction if start_direction is not None else direct_bearing + orbit_direction * 90.0,
+        speed=start_speed,
+    )
 
     for tick in range(1, ticks + 1):
-        source_bearing = math.atan2(y - source_y, x - source_x)
+        source_bearing = math.atan2(state.y - source_y, state.x - source_x)
         move_bearing = source_bearing + orbit_direction * math.pi / 2
-        next_x = x + math.cos(move_bearing) * 8
-        next_y = y + math.sin(move_bearing) * 8
-        if not _inside_field(arena_width, arena_height, next_x, next_y, field_margin):
+        lookahead_x = state.x + math.cos(move_bearing) * MAX_ROBOT_SPEED
+        lookahead_y = state.y + math.sin(move_bearing) * MAX_ROBOT_SPEED
+        if not _inside_field(arena_width, arena_height, lookahead_x, lookahead_y, field_margin):
             smoothed = _smoothed_wall_bearing(
                 arena_width,
                 arena_height,
-                x,
-                y,
+                state.x,
+                state.y,
                 move_bearing,
                 orbit_direction,
                 field_margin,
             )
-            next_x = x + math.cos(smoothed) * 8
-            next_y = y + math.sin(smoothed) * 8
+            move_bearing = smoothed
 
-        x = clamp(next_x, field_margin, arena_width - field_margin)
-        y = clamp(next_y, field_margin, arena_height - field_margin)
+        state = predict_robot_movement(
+            state,
+            math.degrees(move_bearing),
+            max_speed=MAX_ROBOT_SPEED,
+            field_margin=field_margin,
+            arena_width=arena_width,
+            arena_height=arena_height,
+        )
         bullet_radius = bullet_speed * tick
-        if bullet_radius > math.hypot(x - source_x, y - source_y) + 18:
+        if bullet_radius > math.hypot(state.x - source_x, state.y - source_y) + 18:
             break
 
-        current_bearing = absolute_bearing_between(source_x, source_y, x, y)
-        direct_bearing = absolute_bearing_between(source_x, source_y, start_x, start_y)
+        current_bearing = absolute_bearing_between(source_x, source_y, state.x, state.y)
         max_offset = max(max_offset, abs(relative_bearing(current_bearing, direct_bearing)))
 
     return clamp(max_offset or theoretical, 0.1, theoretical)

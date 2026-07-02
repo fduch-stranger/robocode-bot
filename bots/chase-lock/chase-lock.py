@@ -356,6 +356,10 @@ class ChaseLock(Bot):
             evade_direction=self._evade_direction,
             known_targets=len(self._targets),
             heat_state=heat_state,
+            inferred_fire_turn=estimated_fire_turn,
+            fire_source_x=fire_source.x,
+            fire_source_y=fire_source.y,
+            fire_source_offset=distance_to(fire_source, current_target.x, current_target.y),
         )
         return True
 
@@ -923,6 +927,14 @@ class ChaseLock(Bot):
             if target_id is not None and wave is not None
             else (0.0, 0)
         )
+        self._movement.record_shadow_bullet_state(
+            event.bullet.bullet_id,
+            event.bullet.x,
+            event.bullet.y,
+            event.bullet.direction,
+            event.bullet.speed,
+            self.turn_number,
+        )
         bullet_fields = self._fired_bullets.record(
             event.bullet.bullet_id,
             aim_mode=wave.aim_mode if wave is not None else None,
@@ -944,9 +956,26 @@ class ChaseLock(Bot):
             target_age=target_age,
             target_x=target.x if target is not None else None,
             target_y=target.y if target is not None else None,
+            shadow_bullets=self._movement.shadow_bullet_count,
             selected_gun_confidence=selected_gun_score,
             selected_gun_confidence_visits=selected_gun_visits,
         )
+        if wave is not None:
+            self._fire_telemetry.record_fire_drift(
+                event.bullet.bullet_id,
+                target_id,
+                wave.aim_mode,
+                wave.source_x,
+                wave.source_y,
+                wave.virtual_bearings.get(wave.aim_mode, wave.fire_bearing),
+                wave.bullet_power,
+                wave.bullet_speed,
+                event.bullet.x,
+                event.bullet.y,
+                event.bullet.direction,
+                event.bullet.power,
+                event.bullet.speed,
+            )
 
     def _log(self, event: str, **fields: object) -> None:
         self._debug.log(event, **fields)

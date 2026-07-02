@@ -152,6 +152,14 @@ bearing the target escaped toward.
 Bullet physics lives in `bot_core.physics`, while angle, position, and
 guess-factor geometry lives in `bot_core.geometry`.
 
+Wall-limited escape angles and go-to surfing use the shared movement predictor.
+The predictor follows the Tank Royale turn order for target-speed movement:
+update speed, move along the previous direction, apply the turn limit for that
+new speed, then apply wall collision clipping and return a zero-speed state when
+the move hit a wall. Its `distance_remaining` stop helper is a local planning
+approximation; the Tank Royale server processes target speed, not a bot-side
+distance command.
+
 Bullet physics:
 
 ```text
@@ -181,6 +189,11 @@ Optional neutral evaluation waves use the same scoring math, but their stats
 are stored separately from the production switcher stats. They do not add KNN
 samples, update traditional/anti-surfer profiles, or affect `AimModeSelector`.
 They are intended for telemetry comparisons against forced-gun battles.
+
+`gun.fire_drift` compares each fired production wave against the actual
+`BulletFiredEvent` bullet state. Use it to audit planned source point, selected
+bearing, firepower, and bullet speed against the engine event before trusting
+virtual-gun score gaps.
 
 The final raw gun score blends rolling score and hit rate:
 
@@ -421,6 +434,9 @@ Without surfing, it projects a simpler fixed lookahead point.
 
 Go-to surfing generates candidate destinations around the current position and
 simulates driving to each destination until the selected wave intersects.
+The simulation uses the Tank Royale movement order: calculate new speed, move
+along the old body direction, apply line-preserving wall clipping inside the
+bot-radius field rectangle, then apply the body turn limited by the new speed.
 
 Candidate score:
 
@@ -440,8 +456,10 @@ The lowest danger candidate becomes a `GoToSurfDecision`.
 
 ### Bullet Shadow Approximation
 
-`ShadowBullet` records our bullet path. If our bullet intersects a confirmed
-enemy wave near a guess-factor bin, that bin danger is reduced:
+`ShadowBullet` records our bullet path from the actual `BulletFiredEvent`
+bullet state: source position, direction, speed, and fire turn. If our bullet
+intersects a confirmed enemy wave near a guess-factor bin, that bin danger is
+reduced:
 
 ```text
 danger *= bullet_shadow_danger_multiplier

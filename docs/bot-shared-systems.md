@@ -196,7 +196,12 @@ profile bins, danger scoring, and go-to surfing are split into
 `MovementWaveStore`, `MovementProfile`, `MovementDangerModel`, and
 `SurfingPlanner`. Movement command output can be represented as
 `MovementCommand` so strategy selection can be tested separately from live bot
-API calls.
+API calls. Go-to surfing uses a Tank Royale order movement predictor, and
+bullet shadows use the real bullet state from `BulletFiredEvent` instead of the
+bot position at callback time. Wall-limited escape-angle calculations use the
+same predictor with the target's current direction and speed, so movement-wave
+normalization sees the same acceleration, turn-rate, and wall-stop constraints
+as surfing simulations.
 
 ## Minimum Risk Movement
 
@@ -228,7 +233,10 @@ Telemetry is JSONL. Common event names:
   traditional-GF aim/error diagnostics.
 - `gun.eval_wave_visit`: optional neutral gun-evaluation result. These visits
   are separate from production switcher stats.
-- `enemy.fire_detected`: confirmed enemy fire.
+- `gun.fire_drift`: planned production wave compared with the actual
+  `BulletFiredEvent` bullet state.
+- `enemy.fire_detected`: confirmed enemy fire, including optional inferred fire
+  turn and source-position diagnostics.
 - `enemy.gun_heat_wave`: expected enemy fire.
 - `movement.profile_visit`: movement wave learning.
 - `movement.flatten`: lateral direction flip.

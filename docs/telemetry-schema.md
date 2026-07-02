@@ -36,7 +36,7 @@ The browser viewer and telemetry audit normalize bot-specific fields into a comm
 | Event | Required Fields | Optional Fields | Aliases |
 | --- | --- | --- | --- |
 | `enemy.energy_drop_ignored` | `reason` | `bot_id`, `raw_drop`, `corrected_drop`, `correction`, `scan_gap`, `distance` | `target` from `bot_id` |
-| `enemy.fire_detected` | `power`, `distance`, `evasion` | `bot_id`, `raw_drop`, `corrected_drop`, `correction`, `scan_gap`, `bullet_travel_ticks`, `evading`, `evade_direction`, `move_direction`, `evade_until`, `movement_wave`, `predicted_power`, `prediction_confidence`, `prediction_reason`, `prediction_error`, `power_samples`, `power_mae` | `target` from `bot_id` |
+| `enemy.fire_detected` | `power`, `distance`, `evasion` | `bot_id`, `raw_drop`, `corrected_drop`, `correction`, `scan_gap`, `bullet_travel_ticks`, `evading`, `evade_direction`, `move_direction`, `evade_until`, `movement_wave`, `predicted_power`, `prediction_confidence`, `prediction_reason`, `prediction_error`, `power_samples`, `power_mae`, `inferred_fire_turn`, `fire_source_x`, `fire_source_y`, `fire_source_offset` | `target` from `bot_id` |
 | `enemy.gun_heat_wave` | `power`, `distance`, `reason` | `bot_id`, `confidence`, `samples`, `power_mae`, `target_age`, `movement_wave` | `target` from `bot_id` |
 
 ### Fire
@@ -45,6 +45,7 @@ The browser viewer and telemetry audit normalize bot-specific fields into a comm
 | --- | --- | --- | --- |
 | `bullet.fired` | `bullet_id`, `power`, `aim_mode` | `target`, `direction`, `energy`, `gun_waves`, `gun_samples`, `gun_confidence`, `gun_confidence_visits`, `selected_gun_confidence`, `selected_gun_confidence_visits`, `target_age`, `target_x`, `target_y`, `wave`, `shadow_bullets` | - |
 | `bullet.hit_bot` | `bullet_id`, `power`, `damage`, `energy` | `victim`, `target`, `aim_mode` | `target` from `victim` |
+| `gun.fire_drift` | `bullet_id` | `target`, `aim_mode`, `planned_x`, `planned_y`, `actual_x`, `actual_y`, `source_error`, `planned_direction`, `actual_direction`, `direction_error`, `abs_direction_error`, `planned_power`, `actual_power`, `power_error`, `planned_speed`, `actual_speed`, `speed_error` | - |
 | `gun.eval_wave_visit` | - | `target`, `guess_factor`, `samples`, `traveled`, `distance`, `selected_gun`, `virtual_scores`, `gun_scores`, `traditional_gf_guess_factor`, `traditional_gf_error`, `traditional_gf_abs_error` | `aim_mode` from `selected_gun`<br>`gun_mode` from `selected_gun` |
 | `gun.switch` | `selected` | `target`, `previous`, `scores` | `aim_mode` from `selected`<br>`gun_mode` from `selected` |
 | `gun.switch_decision` | `selected` | `target`, `previous`, `changed`, `candidates` | `aim_mode` from `selected`<br>`gun_mode` from `selected` |

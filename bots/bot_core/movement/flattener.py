@@ -38,16 +38,34 @@ class MovementFlattener:
         fire_power: float,
         direction: float,
     ) -> None:
+        self.record_shadow_bullet_state(
+            bullet_id,
+            bot.x,
+            bot.y,
+            direction,
+            bullet_speed_for_power(fire_power),
+            bot.turn_number,
+        )
+
+    def record_shadow_bullet_state(
+        self,
+        bullet_id: object,
+        source_x: float,
+        source_y: float,
+        direction: float,
+        bullet_speed: float,
+        fired_turn: int,
+    ) -> None:
         if not self.config.bullet_shadow_enabled:
             return
         self._shadow_bullets.append(
             ShadowBullet(
                 bullet_id=self._shadow_bullet_key(bullet_id),
-                source_x=bot.x,
-                source_y=bot.y,
+                source_x=source_x,
+                source_y=source_y,
                 direction=direction,
-                bullet_speed=bullet_speed_for_power(fire_power),
-                fired_turn=bot.turn_number,
+                bullet_speed=bullet_speed,
+                fired_turn=fired_turn,
             )
         )
 
@@ -107,6 +125,8 @@ class MovementFlattener:
                 bot.y,
                 bullet_speed,
                 wave_lateral_direction,
+                start_direction=bot.direction,
+                start_speed=bot.speed,
             ),
             max_escape_angle_negative=wall_limited_escape_angle_from_state(
                 bot.arena_width,
@@ -117,6 +137,8 @@ class MovementFlattener:
                 bot.y,
                 bullet_speed,
                 -wave_lateral_direction,
+                start_direction=bot.direction,
+                start_speed=bot.speed,
             ),
             fired_turn=bot.turn_number if fired_turn is None else fired_turn,
             distance_bucket=self._distance_bucket(distance),

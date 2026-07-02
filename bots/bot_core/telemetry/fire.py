@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import cast
 
 from bot_core.energy import FireDecision
+from bot_core.geometry.angles import relative_bearing
 from bot_core.gun import AimSolution, GunSwitchCandidate, WaveVisit
 from bot_core.movement import FlatteningDecision
 from bot_core.radar import RadarCommand
@@ -123,6 +124,41 @@ class FireTelemetry:
                 shadow_bullets=shadow_bullets,
                 selected_gun_confidence=selected_gun_confidence,
                 selected_gun_confidence_visits=selected_gun_confidence_visits,
+            ),
+        )
+
+    def record_fire_drift(
+        self,
+        bullet_id: int,
+        target_id: int | None,
+        aim_mode: str | None,
+        planned_x: float,
+        planned_y: float,
+        planned_direction: float,
+        planned_power: float,
+        planned_speed: float,
+        actual_x: float,
+        actual_y: float,
+        actual_direction: float,
+        actual_power: float,
+        actual_speed: float,
+    ) -> None:
+        self._sink.log(
+            "gun.fire_drift",
+            **_fire_drift_fields(
+                bullet_id,
+                target_id,
+                aim_mode,
+                planned_x,
+                planned_y,
+                planned_direction,
+                planned_power,
+                planned_speed,
+                actual_x,
+                actual_y,
+                actual_direction,
+                actual_power,
+                actual_speed,
             ),
         )
 
@@ -313,6 +349,46 @@ def _bullet_fired_fields(
         fields["selected_gun_confidence_visits"] = cast(int, selected_gun_confidence_visits)
     fields.update(tracked_fields)
     return fields
+
+
+def _fire_drift_fields(
+    bullet_id: int,
+    target_id: int | None,
+    aim_mode: str | None,
+    planned_x: float,
+    planned_y: float,
+    planned_direction: float,
+    planned_power: float,
+    planned_speed: float,
+    actual_x: float,
+    actual_y: float,
+    actual_direction: float,
+    actual_power: float,
+    actual_speed: float,
+) -> dict[str, object]:
+    direction_error = relative_bearing(actual_direction, planned_direction)
+    source_dx = actual_x - planned_x
+    source_dy = actual_y - planned_y
+    return {
+        "bullet_id": bullet_id,
+        "target": target_id,
+        "aim_mode": aim_mode,
+        "planned_x": round(planned_x, 2),
+        "planned_y": round(planned_y, 2),
+        "actual_x": round(actual_x, 2),
+        "actual_y": round(actual_y, 2),
+        "source_error": round((source_dx * source_dx + source_dy * source_dy) ** 0.5, 3),
+        "planned_direction": round(planned_direction, 3),
+        "actual_direction": round(actual_direction, 3),
+        "direction_error": round(direction_error, 3),
+        "abs_direction_error": round(abs(direction_error), 3),
+        "planned_power": round(planned_power, 3),
+        "actual_power": round(actual_power, 3),
+        "power_error": round(actual_power - planned_power, 3),
+        "planned_speed": round(planned_speed, 3),
+        "actual_speed": round(actual_speed, 3),
+        "speed_error": round(actual_speed - planned_speed, 3),
+    }
 
 
 def _wave_visit_fields(visit: WaveVisit) -> dict[str, object]:

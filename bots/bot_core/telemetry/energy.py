@@ -42,6 +42,10 @@ class EnergyTelemetry:
         move_direction: int | None = None,
         known_targets: int | None = None,
         heat_state: GunHeatState | None | object = _UNSET,
+        inferred_fire_turn: int | None = None,
+        fire_source_x: float | None = None,
+        fire_source_y: float | None = None,
+        fire_source_offset: float | None = None,
     ) -> None:
         self._sink.log(
             "enemy.fire_detected",
@@ -63,6 +67,10 @@ class EnergyTelemetry:
                 move_direction=move_direction,
                 known_targets=known_targets,
                 heat_state=heat_state,
+                inferred_fire_turn=inferred_fire_turn,
+                fire_source_x=fire_source_x,
+                fire_source_y=fire_source_y,
+                fire_source_offset=fire_source_offset,
             ),
         )
 
@@ -124,6 +132,10 @@ def _enemy_fire_detected_fields(
     move_direction: int | None = None,
     known_targets: int | None = None,
     heat_state: GunHeatState | None | object = _UNSET,
+    inferred_fire_turn: int | None = None,
+    fire_source_x: float | None = None,
+    fire_source_y: float | None = None,
+    fire_source_offset: float | None = None,
 ) -> dict[str, object]:
     actual_fire_power = signal.fire_power or 1.5
     fields: dict[str, object] = {
@@ -160,6 +172,14 @@ def _enemy_fire_detected_fields(
     if heat_state is not _UNSET:
         narrowed_heat_state = cast(GunHeatState | None, heat_state)
         fields["gun_heat"] = round(narrowed_heat_state.heat, 2) if narrowed_heat_state is not None else None
+    if inferred_fire_turn is not None:
+        fields["inferred_fire_turn"] = inferred_fire_turn
+    if fire_source_x is not None:
+        fields["fire_source_x"] = round(fire_source_x, 1)
+    if fire_source_y is not None:
+        fields["fire_source_y"] = round(fire_source_y, 1)
+    if fire_source_offset is not None:
+        fields["fire_source_offset"] = round(fire_source_offset, 2)
     if previous_prediction is not None and evading is not None:
         fields["prediction_confidence"] = round(previous_prediction.confidence, 3)
         fields["prediction_reason"] = previous_prediction.reason

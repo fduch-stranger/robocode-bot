@@ -9,6 +9,7 @@ from bot_core.physics import (
     bullet_damage_for_power,
     bullet_hit_bonus_for_power,
     bullet_speed_for_power,
+    calc_new_bot_speed,
     gun_heat_for_power,
     max_robot_turn_rate_for_speed,
     next_robot_speed,
@@ -54,10 +55,10 @@ class PhysicsTest(unittest.TestCase):
 
         next_state = predict_robot_movement(state, move_bearing=90.0, max_speed=8.0)
 
-        self.assertAlmostEqual(10.0, next_state.direction)
+        self.assertAlmostEqual(9.25, next_state.direction)
         self.assertAlmostEqual(1.0, next_state.speed)
-        self.assertAlmostEqual(100.98, next_state.x, places=2)
-        self.assertAlmostEqual(100.17, next_state.y, places=2)
+        self.assertAlmostEqual(101.0, next_state.x)
+        self.assertAlmostEqual(100.0, next_state.y)
 
     def test_robot_movement_predictor_limits_turn_at_high_speed(self) -> None:
         state = RobotMovementState(x=100.0, y=100.0, direction=0.0, speed=8.0)
@@ -66,15 +67,22 @@ class PhysicsTest(unittest.TestCase):
 
         self.assertAlmostEqual(4.0, next_state.direction)
         self.assertAlmostEqual(8.0, next_state.speed)
+        self.assertAlmostEqual(108.0, next_state.x)
+        self.assertAlmostEqual(100.0, next_state.y)
 
-    def test_robot_movement_predictor_reverses_by_decelerating_first(self) -> None:
+    def test_calc_new_bot_speed_matches_tank_royale_zero_crossing(self) -> None:
+        self.assertAlmostEqual(3.0, calc_new_bot_speed(8.0, -8.0))
+        self.assertAlmostEqual(0.5, calc_new_bot_speed(3.0, -8.0))
+        self.assertAlmostEqual(-0.75, calc_new_bot_speed(0.5, -8.0))
+
+    def test_robot_movement_predictor_uses_tank_royale_reversal_math(self) -> None:
         state = RobotMovementState(x=100.0, y=100.0, direction=0.0, speed=8.0)
 
         next_state = predict_robot_movement(state, move_bearing=180.0, max_speed=8.0)
 
         self.assertAlmostEqual(0.0, next_state.direction)
-        self.assertAlmostEqual(6.0, next_state.speed)
-        self.assertAlmostEqual(106.0, next_state.x)
+        self.assertAlmostEqual(3.0, next_state.speed)
+        self.assertAlmostEqual(103.0, next_state.x)
 
     def test_robot_movement_predictor_clamps_to_battlefield(self) -> None:
         state = RobotMovementState(x=780.0, y=300.0, direction=0.0, speed=8.0)
@@ -90,6 +98,7 @@ class PhysicsTest(unittest.TestCase):
 
         self.assertEqual(782.0, next_state.x)
         self.assertEqual(300.0, next_state.y)
+        self.assertEqual(0.0, next_state.speed)
 
     def test_next_robot_speed_uses_distance_remaining_to_stop_precisely(self) -> None:
         self.assertAlmostEqual(3.0, next_robot_speed(4.0, 8.0, distance_remaining=3.0))

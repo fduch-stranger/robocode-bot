@@ -34,6 +34,11 @@ Gun architecture context:
 - `displacement` is force-testable but not live-selectable. Force env vars: `ROBOCODE_ADAPTIVE_GUN_MODE`, `ROBOCODE_CHASE_GUN_MODE`, `ROBOCODE_CIRCLE_GUN_MODE`, and `ROBOCODE_SWEEP_GUN_MODE`.
 - Eval-wave env vars: `ROBOCODE_ADAPTIVE_GUN_EVAL`, `ROBOCODE_CHASE_GUN_EVAL`, `ROBOCODE_CIRCLE_GUN_EVAL`, `ROBOCODE_SWEEP_GUN_EVAL`, plus matching `_INTERVAL` vars.
 
-Telemetry event examples: `track`, `gun.switch`, `gun.switch_decision`, `gun.wave_visit`, `gun.eval_wave_visit`, `enemy.fire_detected`, `enemy.gun_heat_wave`, `movement.profile_visit`, `movement.flatten`, `movement.minimum_risk`, `bullet.fired`, `bullet.hit_bot`, `hit.bullet`.
+Telemetry event examples: `track`, `gun.switch`, `gun.switch_decision`, `gun.wave_visit`, `gun.eval_wave_visit`, `gun.fire_drift`, `enemy.fire_detected`, `enemy.gun_heat_wave`, `movement.profile_visit`, `movement.flatten`, `movement.minimum_risk`, `bullet.fired`, `bullet.hit_bot`, `hit.bullet`.
+
+Engine-assumption notes:
+- Shared movement prediction follows Tank Royale target-speed order: update speed, move on previous direction, turn by new-speed turn limit, line-preserving wall clip, and zero speed after a wall hit.
+- `distance_remaining` in the predictor is a local go-to/surf planning approximation; Tank Royale server intent processing is target-speed based.
+- Bullet shadows should be recorded from actual `BulletFiredEvent.bullet` state, and `gun.fire_drift` audits production wave source/direction/power/speed against that event.
 
 Do not duplicate formulas across docs. Keep exact math in `docs/bot-core-data-structures.md`; overview docs should link there.

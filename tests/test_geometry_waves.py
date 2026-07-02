@@ -83,6 +83,8 @@ class GeometryWavesTest(unittest.TestCase):
                 bot.y,
                 bullet_speed,
                 wave.lateral_direction,
+                start_direction=bot.direction,
+                start_speed=bot.speed,
             ),
             wave.max_escape_angle_positive,
         )
@@ -96,6 +98,8 @@ class GeometryWavesTest(unittest.TestCase):
                 bot.y,
                 bullet_speed,
                 -wave.lateral_direction,
+                start_direction=bot.direction,
+                start_speed=bot.speed,
             ),
             wave.max_escape_angle_negative,
         )

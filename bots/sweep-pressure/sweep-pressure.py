@@ -315,6 +315,10 @@ class SweepPressure(Bot):
             power_mae,
             evading=active_evasion,
             move_direction=self._move_direction,
+            inferred_fire_turn=estimated_fire_turn,
+            fire_source_x=fire_source.x,
+            fire_source_y=fire_source.y,
+            fire_source_offset=distance_to(fire_source, current_target.x, current_target.y),
         )
         return True
 
@@ -607,11 +611,13 @@ class SweepPressure(Bot):
             if target_id is not None and wave is not None
             else (0.0, 0)
         )
-        self._movement.record_shadow_bullet(
-            self,
+        self._movement.record_shadow_bullet_state(
             event.bullet.bullet_id,
-            event.bullet.power,
+            event.bullet.x,
+            event.bullet.y,
             event.bullet.direction,
+            event.bullet.speed,
+            self.turn_number,
         )
         bullet_fields = self._fired_bullets.record(
             event.bullet.bullet_id,
@@ -636,6 +642,22 @@ class SweepPressure(Bot):
             selected_gun_confidence=selected_gun_score,
             selected_gun_confidence_visits=selected_gun_visits,
         )
+        if wave is not None:
+            self._fire_telemetry.record_fire_drift(
+                event.bullet.bullet_id,
+                target_id,
+                wave.aim_mode,
+                wave.source_x,
+                wave.source_y,
+                wave.virtual_bearings.get(wave.aim_mode, wave.fire_bearing),
+                wave.bullet_power,
+                wave.bullet_speed,
+                event.bullet.x,
+                event.bullet.y,
+                event.bullet.direction,
+                event.bullet.power,
+                event.bullet.speed,
+            )
 
     def _log(self, event: str, **fields: object) -> None:
         self._debug.log(event, **fields)
