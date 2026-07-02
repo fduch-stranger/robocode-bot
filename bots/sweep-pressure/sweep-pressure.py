@@ -39,7 +39,8 @@ from bot_core.motion import OwnMotionTracker
 from bot_core.radar import RadarLockConfig, lock_priority_radar
 from bot_core.geometry.angles import body_bearing_to
 from bot_core.geometry.numeric import clamp
-from bot_core.geometry.position import distance_to, drive_to_destination
+from bot_core.geometry.position import distance_to
+from bot_core.movement.navigation import drive_to_destination
 from bot_core.target_snapshot import TargetSnapshot, interpolate_target, target_from_hit_bot, target_from_scan
 from bot_core.telemetry.energy import EnergyTelemetry
 from bot_core.telemetry.fire import (

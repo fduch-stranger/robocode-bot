@@ -1,7 +1,7 @@
 from bot_core.geometry.angles import absolute_bearing_between
-from bot_core.geometry.position import predicted_position
 from bot_core.gun.config import GunModePolicy
 from bot_core.gun.context import AimContext, GunBearing, GunVisit
+from bot_core.gun.prediction import predicted_position
 
 
 class LinearGun:

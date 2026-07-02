@@ -20,6 +20,7 @@ from bot_core.gun.models import (
     TargetPosition,
     WaveVisit,
 )
+from bot_core.gun.prediction import predicted_position
 from bot_core.gun.scoring import VirtualGunScorer
 from bot_core.gun.system import VirtualGunSystem
 from bot_core.gun.utils import (
@@ -66,6 +67,7 @@ __all__ = [
     "guess_factor_to_bin",
     "lateral_direction",
     "point_on_bearing",
+    "predicted_position",
     "segment_features",
     "should_log_switch_decision",
     "signed_bucket",

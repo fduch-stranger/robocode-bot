@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 
 from robocode_tank_royale.bot_api import Bot
 
-from bot_core.geometry.position import drive_command_to_destination
+from bot_core.movement.navigation import drive_command_to_destination
 
 
 @dataclass(frozen=True)

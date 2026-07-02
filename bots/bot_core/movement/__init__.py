@@ -4,6 +4,7 @@ from bot_core.movement.danger import MovementDangerModel
 from bot_core.movement.decisions import FlatteningDecision, GoToSurfDecision, MovementDangerBreakdown, MovementProfileVisit
 from bot_core.movement.flattener import MovementFlattener
 from bot_core.movement.minimum_risk import MinimumRiskConfig, MinimumRiskDecision, MinimumRiskMovement
+from bot_core.movement.navigation import drive_command_to_destination, drive_to_destination
 from bot_core.movement.profile import MovementProfile, MovementStatsBuffer, MovementStatsBufferDanger, MovementStatsBufferSet, MovementStatsBufferSpec
 from bot_core.movement.surfing import SurfingPlanner
 from bot_core.movement.waves import MovementWave, MovementWaveFeatures, MovementWaveStore, ShadowBullet
@@ -30,4 +31,6 @@ __all__ = [
     "MovementWaveStore",
     "ShadowBullet",
     "SurfingPlanner",
+    "drive_command_to_destination",
+    "drive_to_destination",
 ]

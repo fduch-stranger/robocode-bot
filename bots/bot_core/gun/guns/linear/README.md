@@ -11,7 +11,7 @@ its current velocity. It is the default practical baseline for moving targets.
 
 ## Runtime Behavior
 
-`LinearGun` calls the shared position predictor with the current bot snapshot,
+`LinearGun` calls the shared gun predictor with the current bot snapshot,
 target snapshot, firepower, and field margin, then returns the absolute bearing
 to the predicted point. It has no private learner or per-target state.
 

@@ -1,6 +1,6 @@
 import unittest
 
-from bot_core.geometry.position import drive_to_destination
+from bot_core.movement.navigation import drive_to_destination
 
 
 class FakeBot:
@@ -15,7 +15,7 @@ class FakeBot:
         self.turn_left = turn
 
 
-class GeometryPositionTest(unittest.TestCase):
+class MovementNavigationTest(unittest.TestCase):
     def test_drive_to_destination_drives_forward_when_bearing_is_ahead(self) -> None:
         bot = FakeBot(x=100.0, y=100.0, direction=0.0)
 
