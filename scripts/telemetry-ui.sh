@@ -10,6 +10,7 @@ telemetry_dir="${ROBOCODE_TELEMETRY_DIR:-$ROOT_DIR/battle-results/telemetry/live
 host="${ROBOCODE_TELEMETRY_HOST:-127.0.0.1}"
 port="${ROBOCODE_TELEMETRY_PORT:-8765}"
 switch_file="$ROOT_DIR/.telemetry-enabled"
+suppression_file="$ROOT_DIR/.telemetry-cli-suppressed"
 
 usage() {
   cat <<EOF
@@ -220,6 +221,43 @@ print_gui_autostart_hint() {
   fi
 }
 
+scripted_battle_active() {
+  local command
+  while IFS= read -r command; do
+    case "$command" in
+      *"$ROOT_DIR/scripts/run-battle.sh"*|*"$ROOT_DIR/tools/run_ab.py"*)
+        return 0
+        ;;
+    esac
+  done < <(ps -axo command= 2>/dev/null || true)
+  return 1
+}
+
+clear_stale_suppression() {
+  if [[ ! -f "$suppression_file" ]]; then
+    return 0
+  fi
+  if scripted_battle_active; then
+    echo "GUI telemetry writes are currently suppressed by an active scripted battle."
+    return 0
+  fi
+  rm -f "$suppression_file"
+  echo "Removed stale GUI telemetry suppression marker."
+}
+
+print_suppression_status() {
+  if [[ ! -f "$suppression_file" ]]; then
+    echo "GUI telemetry writes: allowed"
+    return 0
+  fi
+  if scripted_battle_active; then
+    echo "GUI telemetry writes: suppressed by active scripted battle"
+  else
+    echo "GUI telemetry writes: blocked by stale suppression marker"
+    echo "Run scripts/telemetry-ui.sh enable or start to clear it."
+  fi
+}
+
 stop_viewer() {
   local dir="$1"
   local lock_file="$dir/telemetry-viewer.lock"
@@ -261,6 +299,7 @@ case "$action" in
   start)
     mkdir -p "$telemetry_dir"
     touch "$switch_file"
+    clear_stale_suppression
     echo "Telemetry enabled for GUI-launched bots."
     echo "Telemetry dir: $telemetry_dir"
     args=(--dir "$telemetry_dir" --host "$host" --port "$port" --fallback-port)
@@ -290,6 +329,7 @@ case "$action" in
   enable)
     mkdir -p "$telemetry_dir"
     touch "$switch_file"
+    clear_stale_suppression
     echo "Telemetry enabled for GUI-launched bots."
     echo "Start the viewer with: scripts/telemetry-ui.sh start"
     ;;
@@ -303,6 +343,7 @@ case "$action" in
     else
       echo "GUI telemetry: disabled"
     fi
+    print_suppression_status
     echo "Telemetry dir: $telemetry_dir"
     if [[ -f "$telemetry_dir/telemetry-viewer.url" ]]; then
       printf 'Viewer URL: '

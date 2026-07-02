@@ -228,7 +228,8 @@ Command behavior:
 - `list`: show discovered viewers, process state, health, URL, and directory.
 - `stop`: stop viewer for selected telemetry directory.
 - `stop-all`: stop all discovered viewers.
-- `status`: show GUI telemetry switch and known viewers.
+- `status`: show GUI telemetry switch, whether GUI writes are allowed or
+  suppressed, and known viewers.
 
 Important distinction:
 
@@ -236,6 +237,12 @@ Important distinction:
 stop-all stops viewer processes.
 disable prevents GUI-launched bots from starting a new viewer later.
 ```
+
+Scripted no-telemetry battles temporarily suppress GUI-launched bot telemetry so
+benchmark runs are not polluted by live logging. If a previous run left a stale
+suppression marker, `scripts/telemetry-ui.sh status` reports it and
+`scripts/telemetry-ui.sh enable` or `start` clears it when no scripted battle is
+active.
 
 ### Telemetry Viewer Server
 
