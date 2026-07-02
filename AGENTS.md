@@ -79,19 +79,20 @@ off for A/B benchmarking unless the task is specifically about telemetry.
   approximations, or math change.
 - Avoid duplicating formulas and command references across docs; link to the
   canonical doc instead.
-- Use `apply_patch` for manual edits.
 - Do not revert unrelated user changes in the working tree.
 
-## Bot Behavior Notes
+### Semantic Tooling
 
-- `Adaptive Prime` is optimized for 1v1 first. When improving it, validate with
-  1v1 A/B runs before spending time on melee behavior.
-- `Chase Lock`, `Circle Strafer`, and `Sweep Pressure` should get shared-system
-  improvements only when they fit their strategy.
-- Fire decisions should be tied to fresh scans, gun bearing error, energy, range,
-  and gun confidence.
-- Movement work should be validated with battle results and telemetry, not only
-  code inspection.
+**Important:** Use semantic tooling when it can improve accuracy or reduce broad
+text scans.
+
+- Prefer Serena and JetBrains/IDE MCP tools for symbol lookup, references,
+  renames, moves, safe deletes, and inspections.
+- Before behavior, tooling, or architecture changes, list Serena memories and
+  read the project memories that match the task.
+- Update Serena project memories when durable architecture, tooling, workflow,
+  or tuning context changes; keep them concise and remove or rewrite stale
+  project records.
 
 ## Verification Expectations
 

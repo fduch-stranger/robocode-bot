@@ -19,6 +19,7 @@ debug=0
 debug_log_dir=""
 telemetry=0
 telemetry_dir=""
+telemetry_viewer=0
 telemetry_open=0
 record=0
 record_file=""
@@ -134,6 +135,11 @@ while [[ $# -gt 0 ]]; do
       telemetry=1
       shift
       ;;
+    --telemetry-viewer)
+      telemetry=1
+      telemetry_viewer=1
+      shift
+      ;;
     --telemetry-dir)
       if [[ $# -lt 2 ]]; then
         echo "--telemetry-dir requires a directory path." >&2
@@ -145,6 +151,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     --telemetry-open)
       telemetry=1
+      telemetry_viewer=1
       telemetry_open=1
       shift
       ;;
@@ -203,7 +210,7 @@ while [[ $# -gt 0 ]]; do
       exit 0
       ;;
     --help|-h)
-      echo "Usage: scripts/run-battle.sh [--rounds N] [--run-dir DIR] [--results FILE] [--runner-log FILE] [--process-log FILE] [--debug] [--debug-log-dir DIR] [--telemetry] [--telemetry-dir DIR] [--telemetry-open] [--record] [--record-file DIR] [--intent-diagnostics] [--intents FILE] [--tick-sample N] [--legacy NAME|all] [--legacy-root DIR] [--list-legacy] [bot-dir...]"
+      echo "Usage: scripts/run-battle.sh [--rounds N] [--run-dir DIR] [--results FILE] [--runner-log FILE] [--process-log FILE] [--debug] [--debug-log-dir DIR] [--telemetry] [--telemetry-dir DIR] [--telemetry-viewer] [--telemetry-open] [--record] [--record-file DIR] [--intent-diagnostics] [--intents FILE] [--tick-sample N] [--legacy NAME|all] [--legacy-root DIR] [--list-legacy] [bot-dir...]"
       exit 0
       ;;
     --)
@@ -342,27 +349,29 @@ if [[ "$telemetry" -eq 1 ]]; then
   export ROBOCODE_TELEMETRY_DIR="$telemetry_dir"
   export ROBOCODE_TELEMETRY_AUTOSTART=0
   export ROBOCODE_TELEMETRY_PORT="${ROBOCODE_TELEMETRY_PORT:-8765}"
-  viewer_args=(--dir "$telemetry_dir" --host "${ROBOCODE_TELEMETRY_HOST:-127.0.0.1}" --port "$ROBOCODE_TELEMETRY_PORT" --fallback-port)
-  if [[ "$telemetry_open" -eq 1 ]]; then
-    viewer_args+=(--open)
-  fi
   echo "Telemetry dir: $telemetry_dir"
-  "$RUNTIME_PYTHON_BIN" "$ROOT_DIR/tools/telemetry_viewer/server.py" \
-    "${viewer_args[@]}" \
-    --daemon \
-    --pid-file "$telemetry_dir/telemetry-viewer.lock" \
-    --log-file "$telemetry_dir/telemetry-viewer.log"
-  for _ in {1..30}; do
-    if [[ -f "$telemetry_dir/telemetry-viewer.url" ]]; then
-      break
+  if [[ "$telemetry_viewer" -eq 1 ]]; then
+    viewer_args=(--dir "$telemetry_dir" --host "${ROBOCODE_TELEMETRY_HOST:-127.0.0.1}" --port "$ROBOCODE_TELEMETRY_PORT" --fallback-port)
+    if [[ "$telemetry_open" -eq 1 ]]; then
+      viewer_args+=(--open)
     fi
-    sleep 0.1
-  done
-  if [[ -f "$telemetry_dir/telemetry-viewer.url" ]]; then
-    printf 'Telemetry viewer: '
-    cat "$telemetry_dir/telemetry-viewer.url"
-  else
-    echo "Telemetry viewer: starting; see $telemetry_dir/telemetry-viewer.log"
+    "$RUNTIME_PYTHON_BIN" "$ROOT_DIR/tools/telemetry_viewer/server.py" \
+      "${viewer_args[@]}" \
+      --daemon \
+      --pid-file "$telemetry_dir/telemetry-viewer.lock" \
+      --log-file "$telemetry_dir/telemetry-viewer.log"
+    for _ in {1..30}; do
+      if [[ -f "$telemetry_dir/telemetry-viewer.url" ]]; then
+        break
+      fi
+      sleep 0.1
+    done
+    if [[ -f "$telemetry_dir/telemetry-viewer.url" ]]; then
+      printf 'Telemetry viewer: '
+      cat "$telemetry_dir/telemetry-viewer.url"
+    else
+      echo "Telemetry viewer: starting; see $telemetry_dir/telemetry-viewer.log"
+    fi
   fi
 else
   if [[ ! -f "$TELEMETRY_SUPPRESSION_FILE" ]]; then

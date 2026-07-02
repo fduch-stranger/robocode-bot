@@ -112,9 +112,10 @@ Common options:
 | `--process-log FILE` | Override raw process log path. |
 | `--debug` | Enable bot text decision logs. |
 | `--debug-log-dir DIR` | Override debug log directory. |
-| `--telemetry` | Enable telemetry JSONL and start viewer daemon. |
+| `--telemetry` | Enable telemetry JSONL without starting a viewer. |
 | `--telemetry-dir DIR` | Override telemetry JSONL directory. |
-| `--telemetry-open` | Open telemetry viewer in browser. |
+| `--telemetry-viewer` | Start telemetry viewer daemon for this run. |
+| `--telemetry-open` | Start telemetry viewer daemon and open it in browser. |
 | `--record` | Write `.battle.gz` recording files. |
 | `--intent-diagnostics` | Capture bot intent diagnostics. |
 | `--tick-sample N` | Sample runner ticks every N turns. |
@@ -183,9 +184,13 @@ CLI battle telemetry:
 
 ```sh
 scripts/run-battle.sh --telemetry bots/adaptive-prime bots/chase-lock
+scripts/run-battle.sh --telemetry --telemetry-viewer bots/adaptive-prime bots/chase-lock
 scripts/run-battle.sh --telemetry --telemetry-open bots/adaptive-prime bots/chase-lock
 scripts/run-battle.sh --telemetry --rounds 3 bots/adaptive-prime bots/chase-lock bots/circle-strafer bots/sweep-pressure
 ```
+
+`--telemetry` writes JSONL only. Add `--telemetry-viewer` to start the browser
+viewer daemon, or `--telemetry-open` to start and open it.
 
 Telemetry and debug logs are buffered through bounded background writers by
 default. When a queue fills, events or log lines are dropped instead of blocking
@@ -304,13 +309,13 @@ For an end-to-end telemetry health check across all local bots, run:
 scripts/verify-telemetry.sh --rounds 3
 ```
 
-The script runs a telemetry battle, audits the JSONL files, and checks the
-viewer health endpoint.
+The script runs a telemetry battle with an explicit viewer daemon, audits the
+JSONL files, and checks the viewer health endpoint.
 
 The equivalent manual commands are:
 
 ```sh
-scripts/run-battle.sh --telemetry --rounds 3 bots/adaptive-prime bots/chase-lock bots/circle-strafer bots/sweep-pressure
+scripts/run-battle.sh --telemetry --telemetry-viewer --rounds 3 bots/adaptive-prime bots/chase-lock bots/circle-strafer bots/sweep-pressure
 tools/telemetry_audit.py battle-results/runs/<run>/telemetry \
   --require-bot adaptive-prime \
   --require-bot chase-lock \
@@ -453,7 +458,7 @@ scripts/run-battle.sh --rounds 1 bots/adaptive-prime bots/chase-lock
 ### Debug A Behavior
 
 ```sh
-scripts/run-battle.sh --rounds 3 --debug --telemetry --telemetry-open bots/adaptive-prime bots/chase-lock
+scripts/run-battle.sh --rounds 3 --debug --telemetry --telemetry-viewer bots/adaptive-prime bots/chase-lock
 tools/telemetry_audit.py battle-results/runs/<run>/telemetry --require-bot adaptive-prime --require-bot chase-lock
 ```
 

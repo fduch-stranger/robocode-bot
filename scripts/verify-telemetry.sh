@@ -48,6 +48,7 @@ trap cleanup EXIT
 
 scripts/run-battle.sh \
   --telemetry \
+  --telemetry-viewer \
   --rounds "$rounds" \
   bots/adaptive-prime \
   bots/chase-lock \
