@@ -36,6 +36,10 @@ class GunEvalSummaryTest(unittest.TestCase):
         self.assertEqual({"dynamic_cluster": 1}, summary["eval_selected"])
         self.assertEqual({"dynamic_cluster": 0.25, "linear": 0.5}, summary["wave_avg"])
         self.assertEqual({"dynamic_cluster": 1.0, "linear": 0.0}, summary["eval_avg"])
+        self.assertEqual({"linear": 0.5}, summary["wave_selected_avg"])
+        self.assertEqual({"dynamic_cluster": 0.25}, summary["wave_non_selected_avg"])
+        self.assertEqual({"dynamic_cluster": 1.0}, summary["eval_selected_avg"])
+        self.assertEqual({"linear": 0.0}, summary["eval_non_selected_avg"])
 
     def test_summarizes_post_switch_calibration_by_target_and_mode(self) -> None:
         summary = summarize_events(
@@ -220,6 +224,10 @@ class GunEvalSummaryTest(unittest.TestCase):
             "eval_selected": {"dynamic_cluster": 3},
             "wave_avg": {},
             "eval_avg": {},
+            "wave_selected_avg": {},
+            "wave_non_selected_avg": {},
+            "eval_selected_avg": {},
+            "eval_non_selected_avg": {},
             "wave_count": {},
             "eval_count": {},
             "traditional_gf_diagnostics": {},
@@ -233,6 +241,8 @@ class GunEvalSummaryTest(unittest.TestCase):
         output = stream.getvalue()
         self.assertIn("wave_selected: {'linear': 2}", output)
         self.assertIn("eval_selected: {'dynamic_cluster': 3}", output)
+        self.assertIn("wave_selected_avg:", output)
+        self.assertIn("eval_non_selected_avg:", output)
         self.assertIn("traditional_gf_diagnostics:", output)
         self.assertIn("traditional_gf_error:", output)
         self.assertIn("calibration:", output)

@@ -13,12 +13,12 @@ def _env_flag(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _env_int(name: str, default: int) -> int:
+def _env_int(name: str, default: int, *, minimum: int = 1) -> int:
     raw = os.environ.get(name, "").strip()
     if not raw:
         return default
     try:
-        return max(1, int(raw))
+        return max(minimum, int(raw))
     except ValueError:
         return default
 
@@ -79,10 +79,12 @@ class GunPolicy:
     traditional_gf_coarse_segment_min_samples: int = _env_int(
         "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_COARSE_SEGMENT_MIN_SAMPLES",
         8,
+        minimum=0,
     )
     traditional_gf_coarse_segment_full_weight_samples: int = _env_int(
         "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_COARSE_SEGMENT_FULL_WEIGHT_SAMPLES",
         36,
+        minimum=0,
     )
     anti_surfer_min_switch_visits: int = 95
     anti_surfer_min_switch_score: float = 0.28

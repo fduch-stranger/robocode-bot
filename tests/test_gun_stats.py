@@ -137,6 +137,30 @@ class GunStatsTest(unittest.TestCase):
         self.assertAlmostEqual(1.0, diagnostics.selected_guess_factor or 0.0)
         self.assertEqual(4.0, diagnostics.segment_weight)
 
+    def test_traditional_gf_ignores_coarse_profile_when_segmentation_disabled(self) -> None:
+        config = GunConfig(
+            traditional_gf_min_samples=1,
+            traditional_gf_segment_min_samples=0,
+            traditional_gf_coarse_segment_min_samples=2,
+        )
+        gun = VirtualGunSystem(config)
+        target_id = 1
+        segment_key = (0, 1, 2, 0, 1, 2)
+        global_profile = GuessFactorProfile(visits=4, effective_weight=4.0, bins=[0.0] * config.guess_factor_bins)
+        global_profile.bins[config.guess_factor_bins // 2] = 4.0
+        coarse_profile = GuessFactorProfile(visits=4, effective_weight=4.0, bins=[0.0] * config.guess_factor_bins)
+        coarse_profile.bins[-1] = 4.0
+        gun._traditional_profiles[target_id] = global_profile
+        gun._traditional_coarse_segment_profiles[
+            (target_id, VirtualGunSystem._traditional_coarse_segment_key(segment_key))
+        ] = coarse_profile
+
+        diagnostics = gun._traditional_guess_factor_diagnostics(target_id, segment_key)
+
+        self.assertIsNotNone(diagnostics)
+        self.assertEqual("global", diagnostics.source)
+        self.assertAlmostEqual(0.0, diagnostics.selected_guess_factor or 0.0)
+
     def test_aim_mode_selector_respects_visit_and_score_thresholds(self) -> None:
         config = GunConfig(min_visits=2, min_switch_score=0.25, switch_margin=0.05)
         stats = {

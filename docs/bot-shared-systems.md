@@ -91,13 +91,14 @@ floor, margin, or a better superseding candidate.
 virtual-gun scoring, and aim-mode switching are isolated in `GunWaveTracker`,
 `VirtualGunScorer`, and `AimModeSelector`.
 
-Traditional guess-factor aiming always keeps a global profile per target and
-uses coarse segmented fallback by default. When enough samples exist in the
-current exact segment, the aim model blends normalized global and segment
-profile peaks. If the exact segment is sparse, the coarse segment can blend
-distance, lateral-speed, and wall-margin context before falling back to the
-global profile. Track telemetry can include `traditional_gf_*` fields showing
-global/segment peaks, profile weights, selected GF, blend, and source.
+Traditional guess-factor aiming always keeps a global profile per target; that
+global profile is the shared default. Bots that enable segmented traditional GF
+can blend normalized global and exact-segment profile peaks when enough samples
+exist in the current exact segment. If the exact segment is sparse, the coarse
+segment can blend distance, lateral-speed, and wall-margin context before
+falling back to the global profile. Track telemetry can include
+`traditional_gf_*` fields showing global/segment peaks, profile weights,
+selected GF, blend, and source.
 `gun.traditional_gf_profile` records the same model diagnostics as a sampled
 model event, which keeps scripted telemetry useful even when selector or `track`
 samples are sparse.

@@ -61,6 +61,10 @@ def summarize_events(events: list[dict[str, Any]], *, post_switch_shots: int = 6
     eval_selected: Counter[str] = Counter()
     wave_scores: dict[str, list[float]] = defaultdict(list)
     eval_scores: dict[str, list[float]] = defaultdict(list)
+    wave_selected_scores: dict[str, list[float]] = defaultdict(list)
+    wave_non_selected_scores: dict[str, list[float]] = defaultdict(list)
+    eval_selected_scores: dict[str, list[float]] = defaultdict(list)
+    eval_non_selected_scores: dict[str, list[float]] = defaultdict(list)
     wave_scores_by_target: dict[tuple[str, str], list[float]] = defaultdict(list)
     eval_scores_by_target: dict[tuple[str, str], list[float]] = defaultdict(list)
     traditional_gf_sources: Counter[str] = Counter()
@@ -119,12 +123,26 @@ def summarize_events(events: list[dict[str, Any]], *, post_switch_shots: int = 6
             if bullet_id is not None and bullet_id in shot_to_switch_window:
                 switch_windows[shot_to_switch_window[bullet_id]].hits += 1
         elif name == "gun.wave_visit":
-            _record_wave(fields, wave_selected, wave_scores, wave_scores_by_target)
+            _record_wave(
+                fields,
+                wave_selected,
+                wave_scores,
+                wave_scores_by_target,
+                wave_selected_scores,
+                wave_non_selected_scores,
+            )
             _record_traditional_gf_error(fields, traditional_gf_error_values["production"])
             if fields.get("selected_gun") == "traditional_gf":
                 _record_traditional_gf_error(fields, traditional_gf_error_values["production_selected"])
         elif name == "gun.eval_wave_visit":
-            _record_wave(fields, eval_selected, eval_scores, eval_scores_by_target)
+            _record_wave(
+                fields,
+                eval_selected,
+                eval_scores,
+                eval_scores_by_target,
+                eval_selected_scores,
+                eval_non_selected_scores,
+            )
             _record_traditional_gf_error(fields, traditional_gf_error_values["eval"])
             if fields.get("selected_gun") == "traditional_gf":
                 _record_traditional_gf_error(fields, traditional_gf_error_values["eval_selected"])
@@ -148,6 +166,10 @@ def summarize_events(events: list[dict[str, Any]], *, post_switch_shots: int = 6
         "eval_selected": dict(eval_selected),
         "wave_avg": _averages(wave_scores),
         "eval_avg": _averages(eval_scores),
+        "wave_selected_avg": _averages(wave_selected_scores),
+        "wave_non_selected_avg": _averages(wave_non_selected_scores),
+        "eval_selected_avg": _averages(eval_selected_scores),
+        "eval_non_selected_avg": _averages(eval_non_selected_scores),
         "wave_count": {mode: len(scores) for mode, scores in sorted(wave_scores.items())},
         "eval_count": {mode: len(scores) for mode, scores in sorted(eval_scores.items())},
         "traditional_gf_diagnostics": _traditional_gf_diagnostics_summary(
@@ -171,9 +193,12 @@ def _record_wave(
     selected: Counter[str],
     scores_by_mode: dict[str, list[float]],
     scores_by_target: dict[tuple[str, str], list[float]],
+    selected_scores_by_mode: dict[str, list[float]],
+    non_selected_scores_by_mode: dict[str, list[float]],
 ) -> None:
-    if fields.get("selected_gun"):
-        selected[str(fields["selected_gun"])] += 1
+    selected_mode = str(fields["selected_gun"]) if fields.get("selected_gun") else None
+    if selected_mode is not None:
+        selected[selected_mode] += 1
     scores = fields.get("virtual_scores") if isinstance(fields.get("virtual_scores"), dict) else {}
     target = str(fields.get("target"))
     for mode, score in scores.items():
@@ -181,6 +206,10 @@ def _record_wave(
         score_value = float(score)
         scores_by_mode[mode_name].append(score_value)
         scores_by_target[(target, mode_name)].append(score_value)
+        if mode_name == selected_mode:
+            selected_scores_by_mode[mode_name].append(score_value)
+        else:
+            non_selected_scores_by_mode[mode_name].append(score_value)
 
 
 def _record_traditional_gf_diagnostics(
@@ -362,6 +391,10 @@ def _print_summary(summary: dict[str, object]) -> None:
         "eval_selected",
         "wave_avg",
         "eval_avg",
+        "wave_selected_avg",
+        "wave_non_selected_avg",
+        "eval_selected_avg",
+        "eval_non_selected_avg",
         "wave_count",
         "eval_count",
         "traditional_gf_diagnostics",
