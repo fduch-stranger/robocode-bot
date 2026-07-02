@@ -43,7 +43,7 @@ The browser viewer and telemetry audit normalize bot-specific fields into a comm
 
 | Event | Required Fields | Optional Fields | Aliases |
 | --- | --- | --- | --- |
-| `bullet.fired` | `bullet_id`, `power`, `aim_mode` | `target`, `direction`, `energy`, `gun_waves`, `gun_samples`, `gun_confidence`, `gun_confidence_visits` | - |
+| `bullet.fired` | `bullet_id`, `power`, `aim_mode` | `target`, `direction`, `energy`, `gun_waves`, `gun_samples`, `gun_confidence`, `gun_confidence_visits`, `target_age`, `target_x`, `target_y`, `wave`, `shadow_bullets` | - |
 | `bullet.hit_bot` | `bullet_id`, `power`, `damage`, `energy` | `victim`, `target`, `aim_mode` | `target` from `victim` |
 | `gun.eval_wave_visit` | - | `target`, `guess_factor`, `samples`, `traveled`, `distance`, `selected_gun`, `virtual_scores`, `gun_scores`, `traditional_gf_guess_factor`, `traditional_gf_error`, `traditional_gf_abs_error` | `aim_mode` from `selected_gun`<br>`gun_mode` from `selected_gun` |
 | `gun.switch` | `selected` | `target`, `previous`, `scores` | `aim_mode` from `selected`<br>`gun_mode` from `selected` |

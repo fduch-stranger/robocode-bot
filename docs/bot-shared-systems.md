@@ -103,6 +103,11 @@ selected GF, blend, and source.
 model event, which keeps scripted telemetry useful even when selector or `track`
 samples are sparse.
 
+The current repo bots enable live `traditional_gf` bearings only in 1v1, where
+segmented gun stats are also enabled. In melee, `traditional_gf` remains a
+selectable policy mode but is reported as unavailable because the bots do not
+produce that bearing.
+
 ## Gun Learning
 
 ```mermaid

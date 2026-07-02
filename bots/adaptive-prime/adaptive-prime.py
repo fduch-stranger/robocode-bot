@@ -817,6 +817,7 @@ class AdaptivePrime(Bot):
 
     def _drop_lost_target(self, target: TargetSnapshot, age: int, distance: float) -> None:
         self._targets.pop(target.bot_id, None)
+        self._gun.remove_target(target.bot_id)
         self._movement.remove_target(target.bot_id, clear_profile=False)
         self._enemy_fire_detector.remove_target(target.bot_id)
         if self._target_id == target.bot_id:
@@ -829,6 +830,7 @@ class AdaptivePrime(Bot):
         for bot_id in stale_ids:
             self._log("target.stale", bot_id=bot_id)
             del self._targets[bot_id]
+            self._gun.remove_target(bot_id)
             self._movement.remove_target(bot_id, clear_profile=False)
         if self._target_id not in self._targets:
             self._target_id = None

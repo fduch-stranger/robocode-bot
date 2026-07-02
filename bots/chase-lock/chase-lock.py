@@ -699,6 +699,7 @@ class ChaseLock(Bot):
 
     def _drop_lost_target(self, target: TargetSnapshot, age: int, distance: float) -> None:
         self._targets.pop(target.bot_id, None)
+        self._gun.remove_target(target.bot_id)
         self._movement.remove_target(target.bot_id, clear_profile=False)
         self._enemy_gun_heat.remove_target(target.bot_id)
         self._last_enemy_power_prediction.pop(target.bot_id, None)
@@ -716,6 +717,7 @@ class ChaseLock(Bot):
         for bot_id in stale_ids:
             self._log("target.stale", bot_id=bot_id)
             del self._targets[bot_id]
+            self._gun.remove_target(bot_id)
             self._movement.remove_target(bot_id, clear_profile=False)
             self._enemy_gun_heat.remove_target(bot_id)
             self._last_enemy_power_prediction.pop(bot_id, None)

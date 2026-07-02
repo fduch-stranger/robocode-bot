@@ -165,7 +165,20 @@ EVENT_SPECS: dict[str, TelemetryEventSpec] = {
     "bullet.fired": TelemetryEventSpec(
         "fire",
         required_fields=("bullet_id", "power", "aim_mode"),
-        optional_fields=("target", "direction", "energy", "gun_waves", "gun_samples", "gun_confidence", "gun_confidence_visits"),
+        optional_fields=(
+            "target",
+            "direction",
+            "energy",
+            "gun_waves",
+            "gun_samples",
+            "gun_confidence",
+            "gun_confidence_visits",
+            "target_age",
+            "target_x",
+            "target_y",
+            "wave",
+            "shadow_bullets",
+        ),
     ),
     "bullet.hit_bot": TelemetryEventSpec(
         "fire",

@@ -129,12 +129,14 @@ less linear-biased than the shared defaults:
 - `dynamic_cluster` can warm up earlier through lower KNN sample, score, and
   switch visit thresholds.
 - `traditional_gf` has an Adaptive-specific activation path so it can replace
-  `linear` when virtual scoring shows a clear advantage.
+  `linear` in 1v1 when virtual scoring shows a clear advantage.
 - `traditional_gf` uses exact and coarse segmented guess-factor profile
   blending with global fallback so the actual bearing can track current
   movement context without waiting too long for exact-segment samples. Coarse
   min/full `8/36` is the shared traditional-GF default; Adaptive keeps env
   knobs for isolated sweeps.
+- Melee keeps segmented gun stats and live `traditional_gf` bearings disabled;
+  `traditional_gf` candidates can appear as unavailable in switch diagnostics.
 - `displacement` is force-testable but not live-selectable yet; BasicGFSurfer
   telemetry showed high virtual scores but poor real hit rate and noisy
   switching.

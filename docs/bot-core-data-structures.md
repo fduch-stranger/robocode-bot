@@ -248,10 +248,12 @@ flowchart LR
     E --> F["best guess factor"]
 ```
 
-Feature distance is normalized Euclidean distance over the feature tuple:
+Feature distance is weighted normalized Euclidean distance over the feature
+tuple:
 
 ```text
-distance = sqrt(sum((left_i - right_i)^2))
+weights = (2.0, 1.2, 1.8, 1.3, 0.8, 0.7, 0.9)
+distance = sqrt(sum(weight_i * (left_i - right_i)^2))
 ```
 
 The selected dynamic-cluster guess factor is the candidate with highest kernel
