@@ -69,6 +69,76 @@ class TelemetryAuditTest(unittest.TestCase):
 
         self.assertEqual([], issues)
 
+    def test_reports_later_fired_mismatch_when_hit_appears_first(self) -> None:
+        issues = _audit(
+            [
+                {
+                    "bot": "adaptive-prime",
+                    "event": "bullet.hit_bot",
+                    "fields": {"bullet_id": 1, "power": 1.2, "damage": 4.0, "energy": 50.0, "aim_mode": "linear"},
+                    "file": "adaptive.jsonl",
+                    "line": 1,
+                },
+                {
+                    "bot": "adaptive-prime",
+                    "event": "bullet.fired",
+                    "fields": {"bullet_id": 1, "power": 1.2, "aim_mode": "dynamic_cluster"},
+                    "file": "adaptive.jsonl",
+                    "line": 2,
+                },
+            ],
+            [],
+        )
+
+        self.assertEqual(
+            ["adaptive.jsonl:1 adaptive-prime bullet.hit_bot aim_mode=linear does not match fired aim_mode=dynamic_cluster"],
+            issues,
+        )
+
+    def test_does_not_compare_reused_bullet_ids_across_rounds(self) -> None:
+        issues = _audit(
+            [
+                {
+                    "bot": "adaptive-prime",
+                    "event": "bullet.fired",
+                    "fields": {"bullet_id": 1, "power": 1.2, "aim_mode": "linear"},
+                    "file": "adaptive.jsonl",
+                    "line": 1,
+                },
+                {
+                    "bot": "adaptive-prime",
+                    "event": "bullet.hit_bot",
+                    "fields": {"bullet_id": 1, "power": 1.2, "damage": 4.0, "energy": 50.0, "aim_mode": "linear"},
+                    "file": "adaptive.jsonl",
+                    "line": 2,
+                },
+                {
+                    "bot": "adaptive-prime",
+                    "event": "round.reset",
+                    "fields": {"previous_turn": 120, "current_turn": 1},
+                    "file": "adaptive.jsonl",
+                    "line": 3,
+                },
+                {
+                    "bot": "adaptive-prime",
+                    "event": "bullet.fired",
+                    "fields": {"bullet_id": 1, "power": 1.2, "aim_mode": "dynamic_cluster"},
+                    "file": "adaptive.jsonl",
+                    "line": 4,
+                },
+                {
+                    "bot": "adaptive-prime",
+                    "event": "bullet.hit_bot",
+                    "fields": {"bullet_id": 1, "power": 1.2, "damage": 4.0, "energy": 50.0, "aim_mode": "dynamic_cluster"},
+                    "file": "adaptive.jsonl",
+                    "line": 5,
+                },
+            ],
+            [],
+        )
+
+        self.assertEqual([], issues)
+
     def test_reports_unattributed_bullet_hit_without_hit_or_fired_mode(self) -> None:
         issues = _audit(
             [

@@ -11,7 +11,7 @@ Shared systems are documented in:
 - [Bot Core Data Structures](../../docs/bot-core-data-structures.md)
 
 Adaptive Prime keeps its personality in small module-level policy dataclasses:
-`FirePolicy`, `TargetPolicy`, `RadarPolicy`, `MovementPolicy`, and
+`GunPolicy`, `FirePolicy`, `TargetPolicy`, `RadarPolicy`, `MovementPolicy`, and
 `DuelMovementPolicy`. These group tuning values by responsibility without moving
 bot-specific thresholds into shared `bot_core`.
 
@@ -121,6 +121,45 @@ far:
   p = 0.8
 ```
 
+## Gun Policy
+
+Adaptive Prime uses a bot-specific `GunPolicy` to make virtual-gun switching
+less linear-biased than the shared defaults:
+
+- `dynamic_cluster` can warm up earlier through lower KNN sample, score, and
+  switch visit thresholds.
+- `traditional_gf` has an Adaptive-specific activation path so it can replace
+  `linear` when virtual scoring shows a clear advantage.
+- `displacement` is force-testable but not live-selectable yet; BasicGFSurfer
+  telemetry showed high virtual scores but poor real hit rate and noisy
+  switching.
+- `anti_surfer` stays conservative because it intentionally aims at
+  under-visited guess-factor bins; select it only after its virtual score has
+  enough evidence.
+
+For isolated gun testing, set:
+
+```sh
+ROBOCODE_ADAPTIVE_GUN_MODE=traditional_gf scripts/run-battle.sh --rounds 8 bots/adaptive-prime bots/chase-lock
+```
+
+Valid values are `linear`, `displacement`, `traditional_gf`,
+`dynamic_cluster`, and `anti_surfer`. A forced gun is used only on ticks where
+that gun has enough data to produce an aim bearing; otherwise the selector
+falls back to an available mode. `displacement` is included here for isolated
+experiments even though it is not part of normal live switching.
+
+For neutral gun-evaluation telemetry, set:
+
+```sh
+ROBOCODE_ADAPTIVE_GUN_EVAL=1 scripts/run-battle.sh --telemetry --rounds 24 bots/adaptive-prime --legacy basic-gf-surfer
+```
+
+This emits `gun.eval_wave_visit` at fresh, gun-ready opportunities. Eval-wave
+stats are separate from production `gun.wave_visit` stats and do not influence
+virtual-gun switching. Use `ROBOCODE_ADAPTIVE_GUN_EVAL_INTERVAL=1` for denser
+analysis when telemetry volume is acceptable.
+
 ## Key Telemetry
 
 - `movement.goto_surf`: selected destination and danger breakdown.
@@ -129,6 +168,8 @@ far:
   branch appears as movement mode `melee_minimum_risk`.
 - `enemy.gun_heat_wave`: expected enemy fire wave.
 - `enemy.fire_detected`: confirmed enemy energy-drop fire.
+- `gun.switch_decision`: sampled selector diagnostics, including candidate
+  scores, visits, thresholds, margin, and rejection reason.
 - `track`: selected target, aim mode, movement mode, radar mode, and fire hold
   state.
 

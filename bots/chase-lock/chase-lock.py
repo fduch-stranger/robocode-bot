@@ -617,6 +617,7 @@ class ChaseLock(Bot):
             self._movement.clear_round_state()
             self._minimum_risk.clear_round_state()
             self._enemy_gun_heat.clear_round_state()
+            self._fired_bullets.clear()
             self._target_accel.clear()
             self._last_velocity_change_turn.clear()
             self._own_motion.reset(self.turn_number)

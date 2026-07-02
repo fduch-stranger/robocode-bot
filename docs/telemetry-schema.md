@@ -45,7 +45,9 @@ The browser viewer and telemetry audit normalize bot-specific fields into a comm
 | --- | --- | --- | --- |
 | `bullet.fired` | `bullet_id`, `power`, `aim_mode` | `target`, `direction`, `energy`, `gun_waves`, `gun_samples`, `gun_confidence`, `gun_confidence_visits` | - |
 | `bullet.hit_bot` | `bullet_id`, `power`, `damage`, `energy` | `victim`, `target`, `aim_mode` | `target` from `victim` |
+| `gun.eval_wave_visit` | - | `target`, `guess_factor`, `samples`, `traveled`, `distance`, `selected_gun`, `virtual_scores`, `gun_scores` | `aim_mode` from `selected_gun`<br>`gun_mode` from `selected_gun` |
 | `gun.switch` | `selected` | `target`, `previous`, `scores` | `aim_mode` from `selected`<br>`gun_mode` from `selected` |
+| `gun.switch_decision` | `selected` | `target`, `previous`, `changed`, `candidates` | `aim_mode` from `selected`<br>`gun_mode` from `selected` |
 | `gun.wave_visit` | - | `target`, `guess_factor`, `samples`, `traveled`, `distance`, `selected_gun`, `virtual_scores`, `gun_scores` | `aim_mode` from `selected_gun`<br>`gun_mode` from `selected_gun` |
 | `track` | `target`, `distance`, `gun_bearing`, `aim_mode` | `age`, `radar_bearing`, `radar_turn`, `radar_mode`, `radar_target`, `radar_age`, `predicted_x`, `predicted_y`, `aim_guess_factor`, `gun_samples`, `gun_scores`, `firepower`, `hold_reason`, `fire_alignment_limit`, `movement_mode`, `known_targets` | `power` from `firepower`<br>`reason` from `hold_reason` |
 

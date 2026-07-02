@@ -1,16 +1,20 @@
 import unittest
+from types import SimpleNamespace
 
 from bot_core.gun import (
+    AimSolution,
     AimModeSelector,
     GunConfig,
     GunSample,
     GunStats,
+    GunSwitchCandidate,
     GunWave,
     GunWaveTracker,
     RollingKnnBuffer,
     VirtualGunScorer,
     VirtualGunSystem,
 )
+from bot_core.target_snapshot import TargetSnapshot
 
 
 def make_wave(target_id: int = 1, fire_turn: int = 0, aim_mode: str = "linear") -> GunWave:
@@ -107,6 +111,178 @@ class GunStatsTest(unittest.TestCase):
         self.assertEqual("dynamic_cluster", selected)
         self.assertEqual("linear", previous)
         self.assertTrue(changed)
+
+    def test_aim_mode_selector_reports_blocked_candidate_reasons(self) -> None:
+        config = GunConfig(
+            min_visits=2,
+            min_switch_score=0.25,
+            switch_margin=0.05,
+            selectable_modes=frozenset({"linear", "dynamic_cluster", "traditional_gf"}),
+        )
+        stats = {
+            (1, "linear"): GunStats(visits=3, hits=1, rolling_score=0.2),
+            (1, "dynamic_cluster"): GunStats(visits=1, hits=1, rolling_score=1.0),
+        }
+        scorer = VirtualGunScorer(config, stats, {})
+        selector = AimModeSelector(config, scorer, {1: "linear"}, stats)
+
+        selected, _, _, candidates = selector.select_with_diagnostics(1, {"linear": 0.0, "dynamic_cluster": 1.0}, None)
+
+        self.assertEqual("linear", selected)
+        reasons = {candidate.mode: candidate.reason for candidate in candidates}
+        self.assertEqual("current", reasons["linear"])
+        self.assertEqual("visits", reasons["dynamic_cluster"])
+        self.assertEqual("unavailable", reasons["traditional_gf"])
+
+    def test_aim_mode_selector_reports_superseded_candidate_reason(self) -> None:
+        config = GunConfig(
+            min_visits=2,
+            min_switch_score=0.1,
+            switch_margin=0.05,
+            selectable_modes=frozenset({"linear", "dynamic_cluster", "traditional_gf"}),
+            traditional_gf_min_switch_visits=2,
+            traditional_gf_min_switch_score=0.1,
+        )
+        stats = {
+            (1, "linear"): GunStats(visits=10, hits=1, rolling_score=0.2),
+            (1, "dynamic_cluster"): GunStats(visits=10, hits=3, rolling_score=0.6),
+            (1, "traditional_gf"): GunStats(visits=10, hits=2, rolling_score=0.4),
+        }
+        scorer = VirtualGunScorer(config, stats, {})
+        selector = AimModeSelector(config, scorer, {1: "linear"}, stats)
+
+        selected, _, _, candidates = selector.select_with_diagnostics(
+            1,
+            {"linear": 0.0, "dynamic_cluster": 1.0, "traditional_gf": -1.0},
+            None,
+        )
+
+        self.assertEqual("dynamic_cluster", selected)
+        reasons = {candidate.mode: candidate.reason for candidate in candidates}
+        self.assertEqual("selected", reasons["dynamic_cluster"])
+        self.assertEqual("superseded", reasons["traditional_gf"])
+
+    def test_aim_mode_selector_uses_displacement_specific_thresholds(self) -> None:
+        config = GunConfig(
+            selectable_modes=frozenset({"linear", "displacement"}),
+            displacement_min_switch_visits=5,
+            displacement_min_switch_score=0.10,
+            switch_margin=0.03,
+        )
+        stats = {
+            (1, "linear"): GunStats(visits=10, hits=1, rolling_score=0.1),
+            (1, "displacement"): GunStats(visits=4, hits=4, rolling_score=0.7),
+        }
+        scorer = VirtualGunScorer(config, stats, {})
+        selector = AimModeSelector(config, scorer, {1: "linear"}, stats)
+
+        selected, _, _, candidates = selector.select_with_diagnostics(1, {"linear": 0.0, "displacement": 0.5}, None)
+        self.assertEqual("linear", selected)
+        self.assertEqual("visits", {candidate.mode: candidate.reason for candidate in candidates}["displacement"])
+
+        stats[(1, "displacement")].visits = 5
+        selected, _, changed, candidates = selector.select_with_diagnostics(1, {"linear": 0.0, "displacement": 0.5}, None)
+        self.assertEqual("displacement", selected)
+        self.assertTrue(changed)
+        self.assertEqual("selected", {candidate.mode: candidate.reason for candidate in candidates}["displacement"])
+
+    def test_aim_mode_selector_honors_forced_available_mode(self) -> None:
+        config = GunConfig(
+            forced_mode="traditional_gf",
+            selectable_modes=frozenset({"linear", "traditional_gf"}),
+            traditional_gf_min_switch_visits=999,
+            traditional_gf_min_switch_score=0.99,
+        )
+        stats = {
+            (1, "linear"): GunStats(visits=3, hits=1, rolling_score=0.2),
+            (1, "traditional_gf"): GunStats(visits=1, hits=0, rolling_score=0.0),
+        }
+        scorer = VirtualGunScorer(config, stats, {})
+        active_modes = {1: "linear"}
+        selector = AimModeSelector(config, scorer, active_modes, stats)
+
+        selected, previous, changed = selector.select(1, {"linear": 0.0, "traditional_gf": 1.0}, None)
+
+        self.assertEqual("traditional_gf", selected)
+        self.assertEqual("linear", previous)
+        self.assertTrue(changed)
+
+    def test_aim_mode_selector_ignores_forced_unavailable_mode(self) -> None:
+        config = GunConfig(
+            forced_mode="dynamic_cluster",
+            selectable_modes=frozenset({"linear", "dynamic_cluster"}),
+        )
+        stats = {(1, "linear"): GunStats(visits=3, hits=1, rolling_score=0.2)}
+        scorer = VirtualGunScorer(config, stats, {})
+        active_modes = {1: "linear"}
+        selector = AimModeSelector(config, scorer, active_modes, stats)
+
+        selected, previous, changed = selector.select(1, {"linear": 0.0}, None)
+
+        self.assertEqual("linear", selected)
+        self.assertEqual("linear", previous)
+        self.assertFalse(changed)
+
+    def test_aim_mode_selector_allows_forced_non_selectable_mode(self) -> None:
+        config = GunConfig(
+            forced_mode="displacement",
+            selectable_modes=frozenset({"linear", "dynamic_cluster"}),
+        )
+        stats = {(1, "linear"): GunStats(visits=3, hits=1, rolling_score=0.2)}
+        scorer = VirtualGunScorer(config, stats, {})
+        selector = AimModeSelector(config, scorer, {1: "linear"}, stats)
+
+        selected, previous, changed = selector.select(1, {"linear": 0.0, "displacement": 1.0}, None)
+
+        self.assertEqual("displacement", selected)
+        self.assertEqual("linear", previous)
+        self.assertTrue(changed)
+
+    def test_eval_waves_keep_scores_separate_from_switching_stats(self) -> None:
+        gun = VirtualGunSystem(GunConfig(eval_waves_enabled=True, eval_wave_min_interval=8))
+        bot = SimpleNamespace(x=100.0, y=100.0, arena_width=800.0, arena_height=600.0, turn_number=0)
+        target = TargetSnapshot(1, 100.0, 100.0, 300.0, 90.0, 0.0, 0)
+        aim = AimSolution(
+            predicted_x=target.x,
+            predicted_y=target.y,
+            gun_bearing=0.0,
+            mode="linear",
+            guess_factor=None,
+            features=(0.0,) * 7,
+            segment_key=(0,) * 6,
+            virtual_bearings={"linear": 0.0, "dynamic_cluster": 25.0},
+            switch_candidates=(GunSwitchCandidate("linear", True, 0.0, 0.0, 0, 0, 0.0, 0.0, "current"),),
+        )
+
+        self.assertTrue(gun.maybe_add_eval_wave(bot, target, 1.0, aim))
+        self.assertEqual(1, gun.eval_wave_count)
+        self.assertEqual(0, gun.wave_count)
+
+        bot.turn_number = 30
+        visits = gun.update_eval_waves(bot, target)
+
+        self.assertEqual(1, len(visits))
+        self.assertEqual(0, gun.sample_count)
+        self.assertEqual({}, gun.score_summary(target.bot_id, aim.segment_key))
+        self.assertIn("linear", gun.eval_score_summary(target.bot_id, aim.segment_key))
+
+    def test_eval_waves_are_disabled_by_default(self) -> None:
+        gun = VirtualGunSystem()
+        bot = SimpleNamespace(x=100.0, y=100.0, arena_width=800.0, arena_height=600.0, turn_number=0)
+        target = TargetSnapshot(1, 100.0, 100.0, 300.0, 90.0, 0.0, 0)
+        aim = AimSolution(
+            predicted_x=target.x,
+            predicted_y=target.y,
+            gun_bearing=0.0,
+            mode="linear",
+            guess_factor=None,
+            features=(0.0,) * 7,
+            segment_key=(0,) * 6,
+            virtual_bearings={"linear": 0.0},
+        )
+
+        self.assertFalse(gun.maybe_add_eval_wave(bot, target, 1.0, aim))
+        self.assertEqual(0, gun.eval_wave_count)
 
     def test_dynamic_cluster_requires_recent_effective_samples(self) -> None:
         gun = VirtualGunSystem(

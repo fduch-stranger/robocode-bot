@@ -101,7 +101,18 @@ EVENT_SPECS: dict[str, TelemetryEventSpec] = {
         optional_fields=("target", "previous", "scores"),
         aliases={"aim_mode": ("selected",), "gun_mode": ("selected",)},
     ),
+    "gun.switch_decision": TelemetryEventSpec(
+        "fire",
+        required_fields=("selected",),
+        optional_fields=("target", "previous", "changed", "candidates"),
+        aliases={"aim_mode": ("selected",), "gun_mode": ("selected",)},
+    ),
     "gun.wave_visit": TelemetryEventSpec(
+        "fire",
+        optional_fields=("target", "guess_factor", "samples", "traveled", "distance", "selected_gun", "virtual_scores", "gun_scores"),
+        aliases={"aim_mode": ("selected_gun",), "gun_mode": ("selected_gun",)},
+    ),
+    "gun.eval_wave_visit": TelemetryEventSpec(
         "fire",
         optional_fields=("target", "guess_factor", "samples", "traveled", "distance", "selected_gun", "virtual_scores", "gun_scores"),
         aliases={"aim_mode": ("selected_gun",), "gun_mode": ("selected_gun",)},

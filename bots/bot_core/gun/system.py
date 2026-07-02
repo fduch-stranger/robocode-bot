@@ -10,6 +10,7 @@ from bot_core.gun.models import (
     GunConfig,
     GunSample,
     GunStats,
+    GunSwitchCandidate,
     GunWave,
     GuessFactorProfile,
     TargetMotion,
@@ -43,21 +44,27 @@ class VirtualGunSystem:
     config: GunConfig = field(default_factory=GunConfig)
     _knn_memory: RollingKnnBuffer = field(init=False)
     _waves: list[GunWave] = field(default_factory=list)
+    _eval_waves: list[GunWave] = field(default_factory=list)
     _stats: dict[tuple[int, str], GunStats] = field(default_factory=dict)
     _segment_stats: dict[tuple[int, str, tuple[int, ...]], GunStats] = field(default_factory=dict)
+    _eval_stats: dict[tuple[int, str], GunStats] = field(default_factory=dict)
+    _eval_segment_stats: dict[tuple[int, str, tuple[int, ...]], GunStats] = field(default_factory=dict)
     _active_modes: dict[int, str] = field(default_factory=dict)
     _target_history: dict[int, list[TargetPosition]] = field(default_factory=dict)
     _traditional_profiles: dict[int, GuessFactorProfile] = field(default_factory=dict)
     _anti_surfer_profiles: dict[int, GuessFactorProfile] = field(default_factory=dict)
     _wave_tracker: GunWaveTracker = field(init=False)
     _scorer: VirtualGunScorer = field(init=False)
+    _eval_scorer: VirtualGunScorer = field(init=False)
     _aim_selector: AimModeSelector = field(init=False)
     _knn_sequence: int = 0
+    _last_eval_wave_turn: dict[int, int] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         self._knn_memory = RollingKnnBuffer(self.config.max_samples, self.config.max_samples_per_target)
         self._wave_tracker = GunWaveTracker(self.config, self._waves)
         self._scorer = VirtualGunScorer(self.config, self._stats, self._segment_stats)
+        self._eval_scorer = VirtualGunScorer(self.config, self._eval_stats, self._eval_segment_stats)
         self._aim_selector = AimModeSelector(self.config, self._scorer, self._active_modes, self._stats)
 
     @property
@@ -67,6 +74,10 @@ class VirtualGunSystem:
     @property
     def wave_count(self) -> int:
         return len(self._waves)
+
+    @property
+    def eval_wave_count(self) -> int:
+        return len(self._eval_waves)
 
     def observe_target(self, target: TargetSnapshot) -> None:
         history = self._target_history.setdefault(target.bot_id, [])
@@ -127,7 +138,7 @@ class VirtualGunSystem:
                 cluster_guess_factor,
             )
 
-        mode, previous_mode, mode_changed = self._select_aim_mode(target.bot_id, virtual_bearings, scoring_segment)
+        mode, previous_mode, mode_changed, switch_candidates = self._select_aim_mode(target.bot_id, virtual_bearings, scoring_segment)
         aim_bearing = virtual_bearings[mode]
         predicted_x, predicted_y = point_on_bearing(bot, aim_bearing, distance, field_margin)
         selected_guess_factor = None
@@ -148,6 +159,7 @@ class VirtualGunSystem:
             virtual_bearings=virtual_bearings,
             previous_mode=previous_mode,
             mode_changed=mode_changed,
+            switch_candidates=switch_candidates,
         )
 
     @staticmethod
@@ -194,6 +206,19 @@ class VirtualGunSystem:
     def record_pending_fire(self) -> GunWave | None:
         return self._wave_tracker.record_pending_fire()
 
+    def maybe_add_eval_wave(self, bot: Bot, target: TargetSnapshot, firepower: float, aim: AimSolution) -> bool:
+        if not self.config.eval_waves_enabled:
+            return False
+        last_turn = self._last_eval_wave_turn.get(target.bot_id)
+        if last_turn is not None and bot.turn_number - last_turn < self.config.eval_wave_min_interval:
+            return False
+        wave = self.make_wave(bot, target, firepower, aim)
+        self._eval_waves.append(wave)
+        self._last_eval_wave_turn[target.bot_id] = bot.turn_number
+        while len(self._eval_waves) > self.config.max_eval_waves:
+            self._eval_waves.pop(0)
+        return True
+
     def update_waves(self, bot: Bot, target: TargetSnapshot) -> list[WaveVisit]:
         visits: list[WaveVisit] = []
         remaining_waves: list[GunWave] = []
@@ -237,20 +262,69 @@ class VirtualGunSystem:
         self._wave_tracker.replace(remaining_waves)
         return visits
 
+    def update_eval_waves(self, bot: Bot, target: TargetSnapshot) -> list[WaveVisit]:
+        visits: list[WaveVisit] = []
+        remaining_waves: list[GunWave] = []
+        for wave in self._eval_waves:
+            if wave.target_id != target.bot_id:
+                remaining_waves.append(wave)
+                continue
+
+            traveled = (bot.turn_number - wave.fire_turn) * wave.bullet_speed
+            target_distance = math.hypot(target.x - wave.source_x, target.y - wave.source_y)
+            if traveled + self.config.wave_visit_margin < target_distance:
+                remaining_waves.append(wave)
+                continue
+
+            actual_bearing = absolute_bearing_between(wave.source_x, wave.source_y, target.x, target.y)
+            bearing_offset = relative_bearing(actual_bearing, wave.fire_bearing)
+            guess_factor = guess_factor_from_offset(
+                bearing_offset,
+                wave.lateral_direction,
+                wave.max_escape_angle_positive,
+                wave.max_escape_angle_negative,
+            )
+            virtual_scores = self._eval_scorer.score_virtual_guns(wave, actual_bearing, target_distance)
+            visits.append(
+                WaveVisit(
+                    target_id=target.bot_id,
+                    guess_factor=guess_factor,
+                    samples=self._eval_target_visits(target.bot_id),
+                    traveled=traveled,
+                    distance=target_distance,
+                    selected_gun=wave.aim_mode,
+                    virtual_scores=virtual_scores,
+                    gun_scores=self.eval_score_summary(target.bot_id, wave.segment_key),
+                )
+            )
+
+        self._eval_waves = remaining_waves
+        return visits
+
     def score_summary(self, target_id: int, segment_key: tuple[int, ...] | None = None) -> dict[str, str]:
         return self._scorer.score_summary(target_id, segment_key)
+
+    def eval_score_summary(self, target_id: int, segment_key: tuple[int, ...] | None = None) -> dict[str, str]:
+        return self._eval_scorer.score_summary(target_id, segment_key)
 
     def target_confidence(self, target_id: int) -> tuple[float, int]:
         return self._scorer.target_confidence(target_id)
 
     def clear_round_state(self) -> None:
         self._wave_tracker.clear_round_state()
+        self._eval_waves.clear()
+        self._last_eval_wave_turn.clear()
         self._target_history.clear()
 
     def remove_target(self, target_id: int) -> None:
         self._wave_tracker.remove_target(target_id)
+        self._eval_waves = [wave for wave in self._eval_waves if wave.target_id != target_id]
+        self._last_eval_wave_turn.pop(target_id, None)
         self._active_modes.pop(target_id, None)
         self._target_history.pop(target_id, None)
+
+    def _eval_target_visits(self, target_id: int) -> int:
+        return max((stats.visits for (stats_target, _), stats in self._eval_stats.items() if stats_target == target_id), default=0)
 
     @staticmethod
     def _linear_aim_bearing(
@@ -310,8 +384,8 @@ class VirtualGunSystem:
         target_id: int,
         virtual_bearings: dict[str, float],
         segment_key: tuple[int, ...] | None,
-    ) -> tuple[str, str | None, bool]:
-        return self._aim_selector.select(target_id, virtual_bearings, segment_key)
+    ) -> tuple[str, str | None, bool, tuple[GunSwitchCandidate, ...]]:
+        return self._aim_selector.select_with_diagnostics(target_id, virtual_bearings, segment_key)
 
     @staticmethod
     def _gun_features(

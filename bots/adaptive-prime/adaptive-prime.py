@@ -18,7 +18,7 @@ from bot_core.energy import (
     EnemyFirePowerPredictor,
     GunHeatTracker,
 )
-from bot_core.gun import GunConfig, TargetMotion, VirtualGunSystem
+from bot_core.gun import AimSolution, GunConfig, TargetMotion, VirtualGunSystem
 from bot_core.movement import (
     FlatteningDecision,
     MinimumRiskConfig,
@@ -43,6 +43,7 @@ from adaptive_config import (
     ENERGY_DROP_CONFIG,
     FIRE_GATE,
     FIRE_POLICY,
+    GUN_POLICY,
     MOVEMENT_POLICY,
     RADAR_CONFIG,
     RADAR_POLICY,
@@ -88,7 +89,22 @@ class AdaptivePrime(Bot):
         )
         self._target_selector = TargetSelector(TARGET_POLICY.reacquire_turns)
         self._gun = VirtualGunSystem(
-            GunConfig(selectable_modes=frozenset({"linear", "traditional_gf", "dynamic_cluster", "anti_surfer"}))
+            GunConfig(
+                selectable_modes=GUN_POLICY.selectable_modes,
+                forced_mode=GUN_POLICY.forced_mode,
+                eval_waves_enabled=GUN_POLICY.eval_waves_enabled,
+                eval_wave_min_interval=GUN_POLICY.eval_wave_min_interval,
+                knn_min_samples=GUN_POLICY.knn_min_samples,
+                min_visits=GUN_POLICY.min_visits,
+                switch_margin=GUN_POLICY.switch_margin,
+                min_switch_score=GUN_POLICY.min_switch_score,
+                displacement_min_switch_visits=GUN_POLICY.displacement_min_switch_visits,
+                displacement_min_switch_score=GUN_POLICY.displacement_min_switch_score,
+                traditional_gf_min_switch_visits=GUN_POLICY.traditional_gf_min_switch_visits,
+                traditional_gf_min_switch_score=GUN_POLICY.traditional_gf_min_switch_score,
+                anti_surfer_min_switch_visits=GUN_POLICY.anti_surfer_min_switch_visits,
+                anti_surfer_min_switch_score=GUN_POLICY.anti_surfer_min_switch_score,
+            )
         )
         self._movement = MovementFlattener(
             MovementFlatteningConfig(
@@ -120,6 +136,7 @@ class AdaptivePrime(Bot):
         self._movement_telemetry = MovementTelemetry(self._debug)
         self._targeting_telemetry = TargetingTelemetry(self._debug)
         self._fired_bullets = FiredBulletTracker()
+        self._last_gun_decision_log_turn: dict[int, int] = {}
 
     def run(self) -> None:
         self.body_color = Color.from_rgb(60, 112, 180)
@@ -296,6 +313,7 @@ class AdaptivePrime(Bot):
         score_segment = aim.segment_key if use_segmented_gun_stats else None
         if aim.mode_changed:
             self._fire_telemetry.record_gun_switch(target.bot_id, aim, self._gun.score_summary(target.bot_id, score_segment))
+        self._maybe_log_gun_switch_decision(target.bot_id, aim)
         age = self.turn_number - target.seen_turn
 
         if age > TARGET_POLICY.reacquire_turns:
@@ -329,6 +347,8 @@ class AdaptivePrime(Bot):
         movement_mode, strafe_offset, flattening = self._set_adaptive_movement(target, distance, body_bearing)
 
         fire_decision = FIRE_GATE.decide(age, distance, aim.gun_bearing, firepower, self.energy)
+        if age <= 2 and self.gun_heat <= 0 and self.energy > firepower:
+            self._gun.maybe_add_eval_wave(self, target, firepower, aim)
         if fire_decision.can_fire:
             self._gun.set_pending_wave(self._gun.make_wave(self, target, firepower, aim))
             self.set_fire(firepower)
@@ -708,12 +728,30 @@ class AdaptivePrime(Bot):
             velocity_change_age=self.turn_number - self._last_velocity_change_turn.get(target.bot_id, self.turn_number),
         )
 
+    def _maybe_log_gun_switch_decision(self, target_id: int, aim: AimSolution) -> None:
+        if not aim.switch_candidates:
+            return
+        blocked_better = any(
+            candidate.available
+            and candidate.reason in {"visits", "score_floor", "margin"}
+            and candidate.score > candidate.current_score
+            for candidate in aim.switch_candidates
+        )
+        last_turn = self._last_gun_decision_log_turn.get(target_id, -100000)
+        should_sample = self.turn_number - last_turn >= GUN_POLICY.switch_diagnostics_interval
+        if not aim.mode_changed and not (blocked_better and should_sample):
+            return
+        self._fire_telemetry.record_gun_switch_decision(target_id, aim)
+        self._last_gun_decision_log_turn[target_id] = self.turn_number
+
     def _update_own_motion_stats(self) -> None:
         self._own_motion.update(self)
 
     def _log_wave_visits(self, target: TargetSnapshot) -> None:
         for visit in self._gun.update_waves(self, target):
             self._fire_telemetry.record_wave_visit(visit)
+        for visit in self._gun.update_eval_waves(self, target):
+            self._fire_telemetry.record_eval_wave_visit(visit)
 
     def _log_movement_profile_visits(self) -> None:
         for visit in self._movement.update(self):
@@ -753,6 +791,8 @@ class AdaptivePrime(Bot):
             self._movement.clear_round_state()
             self._minimum_risk.clear_round_state()
             self._enemy_gun_heat.clear_round_state()
+            self._fired_bullets.clear()
+            self._last_gun_decision_log_turn.clear()
             self._target_accel.clear()
             self._last_velocity_change_turn.clear()
             self._own_motion.reset(self.turn_number)

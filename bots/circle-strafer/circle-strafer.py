@@ -446,6 +446,7 @@ class CircleStrafer(Bot):
             self._gun.clear_round_state()
             self._movement.clear_round_state()
             self._minimum_risk.clear_round_state()
+            self._fired_bullets.clear()
             self._log(
                 "round.reset",
                 previous_turn=self._last_turn_number,

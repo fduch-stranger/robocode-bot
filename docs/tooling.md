@@ -279,6 +279,19 @@ The audit validates:
 Use it after changing telemetry fields, dashboard aggregation, or bot event
 logging.
 
+For gun-mode analysis, summarize fired bullets, real-fire wave scores, and
+neutral eval-wave scores:
+
+```sh
+tools/gun_eval_summary.py battle-results/runs/<run>/telemetry --bot adaptive-prime
+```
+
+`gun.wave_visit` reflects production virtual-gun switching evidence from real
+shots. `gun.eval_wave_visit` reflects optional neutral evaluation waves and
+must be interpreted separately. `gun.switch_decision` explains sampled selector
+choices, including candidates blocked by visits, score floor, margin, or a
+better superseding candidate.
+
 The browser viewer keeps raw JSONL fields available through the event API and
 source files. Its decision stream uses readable event summaries, while cards,
 charts, and performance summaries use normalized dashboard semantics derived

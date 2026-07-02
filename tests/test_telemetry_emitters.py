@@ -1,7 +1,7 @@
 import unittest
 
 from bot_core.energy import EnergyDropSignal, EnemyFirePowerPrediction, FireDecision, GunHeatState
-from bot_core.gun import AimSolution, WaveVisit
+from bot_core.gun import AimSolution, GunSwitchCandidate, WaveVisit
 from bot_core.movement import FlatteningDecision, GoToSurfDecision, MinimumRiskDecision, MovementCommand, MovementProfileVisit
 from bot_core.radar import RadarCommand
 from bot_core.target_snapshot import TargetSnapshot
@@ -116,7 +116,27 @@ class TelemetryEmitterTest(unittest.TestCase):
         telemetry.sample_track(
             SimpleTrackTick(target, 2, 321.98, self._aim("linear", None), radar, 1.2, "gun_alignment", 42, {"linear": "0.42/9"}, 3)
         )
+        telemetry.record_gun_switch_decision(
+            4,
+            AimSolution(
+                130.04,
+                170.05,
+                -2.345,
+                "linear",
+                None,
+                (0.0,) * 7,
+                (1, 2, 3),
+                {"linear": 0.0, "traditional_gf": 1.0},
+                switch_candidates=(
+                    GunSwitchCandidate("linear", True, 0.12, 0.12, 20, 55, 0.1, 0.045, "current"),
+                    GunSwitchCandidate("traditional_gf", True, 0.18, 0.12, 40, 85, 0.1, 0.045, "visits"),
+                ),
+            ),
+        )
         telemetry.record_wave_visit(WaveVisit(1, -0.2345, 17, 88.88, 199.99, "linear", {"linear": 0.5}, {"linear": "0.50/1"}))
+        telemetry.record_eval_wave_visit(
+            WaveVisit(1, -0.1234, 3, 44.44, 188.88, "dynamic_cluster", {"dynamic_cluster": 0.6}, {"dynamic_cluster": "0.60/3"})
+        )
         telemetry.record_bullet_hit_bot(4, 99, 1.234, 5.678, 44.44, {"aim_mode": "linear", "aim_guess_factor": 0.123})
         telemetry.record_bullet_fired(
             99,
@@ -136,7 +156,14 @@ class TelemetryEmitterTest(unittest.TestCase):
         )
 
         self.assertEqual(
-            [("sample", "track"), ("log", "gun.wave_visit"), ("log", "bullet.hit_bot"), ("log", "bullet.fired")],
+            [
+                ("sample", "track"),
+                ("log", "gun.switch_decision"),
+                ("log", "gun.wave_visit"),
+                ("log", "gun.eval_wave_visit"),
+                ("log", "bullet.hit_bot"),
+                ("log", "bullet.fired"),
+            ],
             [(kind, event) for kind, event, _ in sink.records],
         )
         self.assertEqual(
@@ -162,11 +189,13 @@ class TelemetryEmitterTest(unittest.TestCase):
             set(sink.records[0][2]),
         )
         self.assertIsNone(sink.records[0][2]["aim_guess_factor"])
-        self.assertEqual(-0.234, sink.records[1][2]["guess_factor"])
-        self.assertEqual(5.68, sink.records[2][2]["damage"])
-        self.assertIsNone(sink.records[3][2]["target_age"])
-        self.assertIsNone(sink.records[3][2]["target_x"])
-        self.assertEqual(120.0, sink.records[3][2]["target_y"])
+        self.assertEqual("visits", sink.records[1][2]["candidates"][1]["reason"])
+        self.assertEqual(-0.234, sink.records[2][2]["guess_factor"])
+        self.assertEqual("dynamic_cluster", sink.records[3][2]["selected_gun"])
+        self.assertEqual(5.68, sink.records[4][2]["damage"])
+        self.assertIsNone(sink.records[5][2]["target_age"])
+        self.assertIsNone(sink.records[5][2]["target_x"])
+        self.assertEqual(120.0, sink.records[5][2]["target_y"])
 
     def test_energy_telemetry_records_drop_fire_and_heat_wave_events(self) -> None:
         sink = RecordingSink()

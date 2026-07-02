@@ -1,7 +1,50 @@
+import os
 from dataclasses import dataclass
 
 from bot_core.energy import EnergyDropConfig, FireGate, FireGateConfig
 from bot_core.radar import RadarLockConfig
+
+
+ADAPTIVE_SELECTABLE_GUN_MODES = frozenset({"linear", "traditional_gf", "dynamic_cluster", "anti_surfer"})
+ADAPTIVE_FORCE_GUN_MODES = ADAPTIVE_SELECTABLE_GUN_MODES | frozenset({"displacement"})
+
+
+def _env_flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return default
+
+
+def _forced_gun_mode() -> str | None:
+    mode = os.environ.get("ROBOCODE_ADAPTIVE_GUN_MODE", "").strip()
+    return mode if mode in ADAPTIVE_FORCE_GUN_MODES else None
+
+
+@dataclass(frozen=True)
+class GunPolicy:
+    selectable_modes: frozenset[str] = ADAPTIVE_SELECTABLE_GUN_MODES
+    forced_mode: str | None = _forced_gun_mode()
+    eval_waves_enabled: bool = _env_flag("ROBOCODE_ADAPTIVE_GUN_EVAL")
+    eval_wave_min_interval: int = _env_int("ROBOCODE_ADAPTIVE_GUN_EVAL_INTERVAL", 8)
+    knn_min_samples: int = 55
+    min_visits: int = 65
+    switch_margin: float = 0.06
+    min_switch_score: float = 0.10
+    displacement_min_switch_visits: int = 150
+    displacement_min_switch_score: float = 0.16
+    traditional_gf_min_switch_visits: int = 160
+    traditional_gf_min_switch_score: float = 0.24
+    anti_surfer_min_switch_visits: int = 95
+    anti_surfer_min_switch_score: float = 0.28
+    switch_diagnostics_interval: int = 24
 
 
 @dataclass(frozen=True)
@@ -91,6 +134,7 @@ class DuelMovementPolicy:
     threat_repel_weight: float = 0.68
 
 
+GUN_POLICY = GunPolicy()
 FIRE_POLICY = FirePolicy()
 TARGET_POLICY = TargetPolicy()
 RADAR_POLICY = RadarPolicy()

@@ -77,9 +77,12 @@ Typical aim modes:
 
 The selected mode is reported as `aim_mode`.
 
-Gun selection is sticky. A different mode must have enough visits and beat the
-current score by a margin before the bot switches. A first `gun.switch` event
-with `previous=null` is an initial selection, not real churn.
+Gun selection is sticky. A different mode must have enough visits, clear its
+mode-specific score floor, and beat the current score by a margin before the
+bot switches. A first `gun.switch` event with `previous=null` is an initial
+selection, not real churn. `gun.switch_decision` records sampled candidate
+diagnostics so tuning can distinguish unavailable guns from candidates blocked
+by visits, score floor, margin, or a better superseding candidate.
 
 `VirtualGunSystem` remains the compatibility facade. Internally, wave storage,
 virtual-gun scoring, and aim-mode switching are isolated in `GunWaveTracker`,
@@ -195,7 +198,11 @@ Telemetry is JSONL. Common event names:
 
 - `track`: target, radar, aim, movement, fire gate.
 - `gun.switch`: selected gun mode changes or initial selection.
+- `gun.switch_decision`: sampled selector diagnostics for available and
+  unavailable candidate guns.
 - `gun.wave_visit`: virtual gun scoring result.
+- `gun.eval_wave_visit`: optional neutral gun-evaluation result. These visits
+  are separate from production switcher stats.
 - `enemy.fire_detected`: confirmed enemy fire.
 - `enemy.gun_heat_wave`: expected enemy fire.
 - `movement.profile_visit`: movement wave learning.

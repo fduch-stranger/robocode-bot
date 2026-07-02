@@ -41,6 +41,7 @@ class TelemetrySchemaTest(unittest.TestCase):
         for event_name in (
             "track",
             "gun.switch",
+            "gun.switch_decision",
             "bullet.fired",
             "bullet.hit_bot",
             "enemy.fire_detected",

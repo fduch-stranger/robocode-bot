@@ -6,7 +6,7 @@ from io import StringIO
 from pathlib import Path
 
 from bot_core.async_writer import AsyncItemWriter
-from bot_core.debug import DebugLogger
+from bot_core.debug import DebugLogger, FiredBulletTracker
 
 
 class _DummyBot:
@@ -73,6 +73,14 @@ class DebugLoggerTest(unittest.TestCase):
         os.environ.pop("ROBOCODE_DEBUG_QUEUE_SIZE", None)
 
         self.assertEqual(8192, DebugLogger._int_env("ROBOCODE_DEBUG_QUEUE_SIZE", 8192))
+
+    def test_fired_bullet_tracker_clear_removes_round_local_attribution(self) -> None:
+        tracker = FiredBulletTracker()
+        tracker.record(17, aim_mode="linear")
+
+        tracker.clear()
+
+        self.assertEqual({}, tracker.fields_for(17))
 
 
 if __name__ == "__main__":

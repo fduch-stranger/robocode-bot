@@ -15,11 +15,17 @@ class GunConfig:
     guess_factor_bins: int = 31
     guess_factor_bandwidth: float = 0.18
     default_mode: str = "linear"
+    forced_mode: str | None = None
+    eval_waves_enabled: bool = False
+    eval_wave_min_interval: int = 8
+    max_eval_waves: int = 80
     selectable_modes: frozenset[str] = frozenset({"linear", "traditional_gf", "dynamic_cluster"})
     min_visits: int = 90
     switch_margin: float = 0.08
     min_switch_score: float = 0.30
     head_on_min_switch_score: float = 0.45
+    displacement_min_switch_visits: int = 90
+    displacement_min_switch_score: float = 0.30
     score_alpha: float = 0.12
     virtual_hit_radius: float = 18
     max_target_history: int = 80
@@ -106,6 +112,20 @@ class AimSolution:
     virtual_bearings: dict[str, float]
     previous_mode: str | None = None
     mode_changed: bool = False
+    switch_candidates: tuple["GunSwitchCandidate", ...] = ()
+
+
+@dataclass(frozen=True)
+class GunSwitchCandidate:
+    mode: str
+    available: bool
+    score: float
+    current_score: float
+    visits: int
+    required_visits: int
+    min_score: float
+    margin: float
+    reason: str
 
 
 @dataclass

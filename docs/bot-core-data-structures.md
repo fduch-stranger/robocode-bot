@@ -101,10 +101,11 @@ Location: `bot_core.gun`
 | --- | --- |
 | `GunConfig` | Tuning constants for KNN, wave scoring, switch thresholds, and profiles. |
 | `GunSample` | One learned target escape sample for KNN: target id, turn, feature vector, guess factor. |
-| `GunWave` | A simulated bullet wave for a fired shot. Used to score virtual guns when it reaches the target. |
+| `GunWave` | A simulated bullet wave for a fired shot or optional neutral evaluation opportunity. Used to score virtual guns when it reaches the target. |
 | `GunStats` | Per-target/per-mode visits, hits, and rolling score. |
 | `GuessFactorProfile` | Decayed histogram for traditional and anti-surfer guess-factor aiming. |
 | `AimSolution` | Output of aiming: predicted point, bearing error, selected mode, features, and mode-change info. |
+| `GunSwitchCandidate` | Per-candidate selector diagnostic with score, visits, thresholds, margin, and rejection/selection reason. |
 | `WaveVisit` | Telemetry/learning result when a gun wave reaches the target. |
 | `RollingKnnBuffer` | Per-target bounded memory of `GunSample` records. |
 | `VirtualGunSystem` | The orchestrator for aiming, scoring, KNN memory, waves, and virtual gun selection. |
@@ -176,6 +177,11 @@ score = max(0, 1 - abs(virtual_bearing - actual_bearing) / hit_angle)
 rolling_score = (1 - alpha) * rolling_score + alpha * score
 ```
 
+Optional neutral evaluation waves use the same scoring math, but their stats
+are stored separately from the production switcher stats. They do not add KNN
+samples, update traditional/anti-surfer profiles, or affect `AimModeSelector`.
+They are intended for telemetry comparisons against forced-gun battles.
+
 The final raw gun score blends rolling score and hit rate:
 
 ```text
@@ -188,6 +194,22 @@ visits exist:
 ```text
 score = global_score * (1 - blend) + segment_score * blend
 ```
+
+### Gun Switch Diagnostics
+
+`AimModeSelector` evaluates only selectable guns that can currently produce a
+bearing. Missing selectable guns are reported as `unavailable`. Available
+candidates can be rejected for:
+
+- `visits`: not enough mode-specific virtual-wave visits.
+- `score_floor`: score below that mode's minimum switch score.
+- `margin`: score does not beat the current gun by the configured margin.
+- `superseded`: the candidate beats the current gun by the configured margin,
+  but another candidate passed the same gates with a better score.
+
+The selected candidate is reported as `selected`; the active gun is reported as
+`current` when no switch occurs. These diagnostics are surfaced through
+`gun.switch_decision` telemetry and do not change scoring by themselves.
 
 ### KNN Gun Memory
 

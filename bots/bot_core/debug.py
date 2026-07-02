@@ -114,6 +114,9 @@ class FiredBulletTracker:
             self._records.move_to_end(key)
         return dict(record)
 
+    def clear(self) -> None:
+        self._records.clear()
+
     @staticmethod
     def _key(bullet_id: object) -> str | None:
         if bullet_id is None:

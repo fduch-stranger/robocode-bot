@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import cast
 
 from bot_core.energy import FireDecision
-from bot_core.gun import AimSolution, WaveVisit
+from bot_core.gun import AimSolution, GunSwitchCandidate, WaveVisit
 from bot_core.movement import FlatteningDecision
 from bot_core.radar import RadarCommand
 from bot_core.target_snapshot import TargetSnapshot
@@ -58,8 +58,14 @@ class FireTelemetry:
     def record_gun_switch(self, target_id: int, aim: AimSolution, scores: dict[str, str]) -> None:
         self._sink.log("gun.switch", **_gun_switch_fields(target_id, aim, scores))
 
+    def record_gun_switch_decision(self, target_id: int, aim: AimSolution) -> None:
+        self._sink.log("gun.switch_decision", **_gun_switch_decision_fields(target_id, aim))
+
     def record_wave_visit(self, visit: WaveVisit) -> None:
         self._sink.log("gun.wave_visit", **_wave_visit_fields(visit))
+
+    def record_eval_wave_visit(self, visit: WaveVisit) -> None:
+        self._sink.log("gun.eval_wave_visit", **_wave_visit_fields(visit))
 
     def record_bullet_hit_bot(
         self,
@@ -170,6 +176,30 @@ def _gun_switch_fields(target_id: int, aim: AimSolution, scores: dict[str, str])
         "previous": aim.previous_mode,
         "selected": aim.mode,
         "scores": scores,
+    }
+
+
+def _gun_switch_decision_fields(target_id: int, aim: AimSolution) -> dict[str, object]:
+    return {
+        "target": target_id,
+        "previous": aim.previous_mode,
+        "selected": aim.mode,
+        "changed": aim.mode_changed,
+        "candidates": [_gun_switch_candidate_fields(candidate) for candidate in aim.switch_candidates],
+    }
+
+
+def _gun_switch_candidate_fields(candidate: GunSwitchCandidate) -> dict[str, object]:
+    return {
+        "mode": candidate.mode,
+        "available": candidate.available,
+        "score": round(candidate.score, 3),
+        "current_score": round(candidate.current_score, 3),
+        "visits": candidate.visits,
+        "required_visits": candidate.required_visits,
+        "min_score": round(candidate.min_score, 3),
+        "margin": round(candidate.margin, 3),
+        "reason": candidate.reason,
     }
 
 
