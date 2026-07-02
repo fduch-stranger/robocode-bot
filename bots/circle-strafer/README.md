@@ -91,10 +91,12 @@ far while energy is low, or gun bearing error is too large.
 ## Gun Policy
 
 Circle Strafer uses a defensive `GunPolicy` surface with shared-default switch
-thresholds. It live-selects `linear`, `traditional_gf`, and `dynamic_cluster`.
-Short A/B tuning rejected looser thresholds, so the current policy keeps shared
-switch gates while exposing switch-decision telemetry. `displacement` is
-available only for forced experiments:
+thresholds plus a shorter base visit gate for `dynamic_cluster` warmup. It
+live-selects `linear`, `traditional_gf`, and `dynamic_cluster`. Short A/B
+tuning rejected broadly looser thresholds and a lower base score floor, so the
+current policy only lowers the base visit gate while keeping traditional GF's
+separate conservative override. `displacement` is available only for forced
+experiments:
 
 ```sh
 ROBOCODE_CIRCLE_GUN_MODE=displacement scripts/run-battle.sh --rounds 8 bots/circle-strafer bots/sweep-pressure

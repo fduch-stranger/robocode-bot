@@ -68,7 +68,7 @@ class GunPolicy:
     eval_waves_enabled: bool = _env_flag("ROBOCODE_CIRCLE_GUN_EVAL")
     eval_wave_min_interval: int = _env_int("ROBOCODE_CIRCLE_GUN_EVAL_INTERVAL", 8)
     knn_min_samples: int = 60
-    min_visits: int = 90
+    min_visits: int = 75
     switch_margin: float = 0.08
     min_switch_score: float = 0.30
     traditional_gf_min_switch_visits: int = 260
