@@ -3,6 +3,7 @@
 General rules:
 - Before behavior, tooling, or architecture changes, list Serena memories and read the project memories that match the task.
 - Prefer Serena and JetBrains/IDE MCP tools for symbol lookup, references, renames, moves, safe deletes, and inspections when they can improve accuracy or reduce broad text scans.
+- For JetBrains-backed Serena symbol tools, use concrete file paths for file-oriented operations. Use directory scopes only for tools that explicitly support them, such as symbol search.
 - Do not revert unrelated user changes in the working tree.
 - Avoid committing generated artifacts: `.venv/`, `.env`, `dist/`, `battle-results/`, `legacy-bots/`, caches, `.DS_Store`.
 - Do not add absolute local paths, usernames, or machine-specific internals to public docs/defaults.
