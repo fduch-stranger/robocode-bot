@@ -100,6 +100,15 @@ available only for forced experiments:
 ROBOCODE_CIRCLE_GUN_MODE=displacement scripts/run-battle.sh --rounds 8 bots/circle-strafer bots/sweep-pressure
 ```
 
+For neutral gun-evaluation telemetry, set:
+
+```sh
+ROBOCODE_CIRCLE_GUN_EVAL=1 scripts/run-battle.sh --telemetry --rounds 12 bots/circle-strafer bots/sweep-pressure
+```
+
+Use `ROBOCODE_CIRCLE_GUN_EVAL_INTERVAL=1` only for denser diagnostic runs where
+extra telemetry volume is acceptable.
+
 ## Key Telemetry
 
 - `wall.avoid`: wall escape.
@@ -108,6 +117,8 @@ ROBOCODE_CIRCLE_GUN_MODE=displacement scripts/run-battle.sh --rounds 8 bots/circ
 - `movement.flatten`: orbit direction changes.
 - `gun.switch_decision`: sampled virtual-gun candidate scores and rejection
   reasons.
+- `gun.eval_wave_visit`: optional neutral gun-evaluation result when
+  `ROBOCODE_CIRCLE_GUN_EVAL=1`.
 - `track`: target, radar, aim mode, fire hold reason.
 
 Use [Tooling: Telemetry Viewer](../../docs/tooling.md#telemetry-viewer) for

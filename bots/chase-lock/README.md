@@ -112,6 +112,15 @@ ROBOCODE_CHASE_GUN_MODE=displacement scripts/run-battle.sh --rounds 8 bots/chase
 Short A/B tuning rejected looser thresholds, so the current policy keeps shared
 switch gates while exposing switch-decision telemetry for the next tuning pass.
 
+For neutral gun-evaluation telemetry, set:
+
+```sh
+ROBOCODE_CHASE_GUN_EVAL=1 scripts/run-battle.sh --telemetry --rounds 12 bots/chase-lock bots/circle-strafer
+```
+
+Use `ROBOCODE_CHASE_GUN_EVAL_INTERVAL=1` only for denser diagnostic runs where
+extra telemetry volume is acceptable.
+
 ## Key Telemetry
 
 - `target.select`: target switching evidence.
@@ -122,6 +131,8 @@ switch gates while exposing switch-decision telemetry for the next tuning pass.
   branch appears as movement mode `melee_minimum_risk`.
 - `gun.switch_decision`: sampled virtual-gun candidate scores and rejection
   reasons.
+- `gun.eval_wave_visit`: optional neutral gun-evaluation result when
+  `ROBOCODE_CHASE_GUN_EVAL=1`.
 - `track`: current target, aim mode, movement mode, radar mode, fire hold
   reason.
 

@@ -366,6 +366,20 @@ not a true before/after comparison.
 
 Default preset settings are 24 rounds and 3 repeats unless overridden.
 
+Round-count guidance:
+
+- `1-8` rounds are smoke checks only. Use them for crashes, packaging,
+  telemetry shape, and obvious switch-churn regressions.
+- `12-16` rounds with `2` repeats is a useful exploratory A/B tier while
+  searching for candidate thresholds.
+- `24` rounds with `3` repeats is the promotion gate before treating a tuning
+  change as broadly enabled.
+- `50-100+` rounds on key matchups is an optional expensive confirmation tier
+  for high-risk or near-merge changes; get user confirmation before spending
+  that time.
+- Boss-bot checks should be repeated; a single short run against
+  `basic-gf-surfer`, `diamond`, or another legacy bot is not representative.
+
 Examples:
 
 ```sh

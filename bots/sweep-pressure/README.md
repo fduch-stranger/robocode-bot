@@ -108,6 +108,15 @@ policy keeps shared switch gates while exposing switch-decision telemetry.
 ROBOCODE_SWEEP_GUN_MODE=displacement scripts/run-battle.sh --rounds 8 bots/sweep-pressure bots/circle-strafer
 ```
 
+For neutral gun-evaluation telemetry, set:
+
+```sh
+ROBOCODE_SWEEP_GUN_EVAL=1 scripts/run-battle.sh --telemetry --rounds 12 bots/sweep-pressure bots/circle-strafer
+```
+
+Use `ROBOCODE_SWEEP_GUN_EVAL_INTERVAL=1` only for denser diagnostic runs where
+extra telemetry volume is acceptable.
+
 ## Key Telemetry
 
 - `wall.avoid`: projected wall risk response.
@@ -117,6 +126,8 @@ ROBOCODE_SWEEP_GUN_MODE=displacement scripts/run-battle.sh --rounds 8 bots/sweep
 - `gun.switch`: selected virtual gun mode changes.
 - `gun.switch_decision`: sampled virtual-gun candidate scores and rejection
   reasons.
+- `gun.eval_wave_visit`: optional neutral gun-evaluation result when
+  `ROBOCODE_SWEEP_GUN_EVAL=1`.
 
 Use [Tooling: Telemetry Viewer](../../docs/tooling.md#telemetry-viewer) for
 launch, reset, audit, and stop commands.

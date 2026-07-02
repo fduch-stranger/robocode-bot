@@ -48,10 +48,26 @@ def _forced_gun_mode() -> str | None:
     return mode if mode in SWEEP_FORCE_GUN_MODES else None
 
 
+def _env_flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return default
+
+
 @dataclass(frozen=True)
 class GunPolicy:
     selectable_modes: frozenset[str] = SWEEP_SELECTABLE_GUN_MODES
     forced_mode: str | None = _forced_gun_mode()
+    eval_waves_enabled: bool = _env_flag("ROBOCODE_SWEEP_GUN_EVAL")
+    eval_wave_min_interval: int = _env_int("ROBOCODE_SWEEP_GUN_EVAL_INTERVAL", 8)
     knn_min_samples: int = 60
     min_visits: int = 90
     switch_margin: float = 0.08
@@ -145,6 +161,8 @@ class SweepPressure(Bot):
             GunConfig(
                 selectable_modes=GUN_POLICY.selectable_modes,
                 forced_mode=GUN_POLICY.forced_mode,
+                eval_waves_enabled=GUN_POLICY.eval_waves_enabled,
+                eval_wave_min_interval=GUN_POLICY.eval_wave_min_interval,
                 knn_min_samples=GUN_POLICY.knn_min_samples,
                 min_visits=GUN_POLICY.min_visits,
                 switch_margin=GUN_POLICY.switch_margin,
@@ -347,6 +365,8 @@ class SweepPressure(Bot):
 
         self.set_turn_gun_left(aim.gun_bearing)
         can_fire, hold_reason = self._can_fire(age, distance, aim.gun_bearing, firepower)
+        if GUN_POLICY.eval_waves_enabled and age <= 2 and self.gun_heat <= 0 and self.energy > firepower:
+            self._gun.maybe_add_eval_wave(self, target, firepower, aim)
         if can_fire:
             self._gun.set_pending_wave(self._gun.make_wave(self, target, firepower, aim))
             self.set_fire(firepower)
@@ -375,6 +395,8 @@ class SweepPressure(Bot):
     def _log_wave_visits(self, target: TargetSnapshot) -> None:
         for visit in self._gun.update_waves(self, target):
             self._fire_telemetry.record_wave_visit(visit)
+        for visit in self._gun.update_eval_waves(self, target):
+            self._fire_telemetry.record_eval_wave_visit(visit)
 
     def _log_movement_profile_visits(self) -> None:
         for visit in self._movement.update(self):
