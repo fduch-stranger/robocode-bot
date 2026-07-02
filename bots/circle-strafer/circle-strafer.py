@@ -1,3 +1,6 @@
+import os
+from dataclasses import dataclass
+
 from robocode_tank_royale.bot_api import Bot, BotInfo, Color
 from robocode_tank_royale.bot_api.events import (
     BulletFiredEvent,
@@ -17,7 +20,7 @@ from bot_core.energy import (
     FireGateConfig,
     classify_energy_drop,
 )
-from bot_core.gun import TargetMotion, VirtualGunSystem
+from bot_core.gun import AimSolution, GunConfig, TargetMotion, VirtualGunSystem, should_log_switch_decision
 from bot_core.movement import MinimumRiskMovement, MovementCommand, MovementFlattener, MovementFlatteningConfig
 from bot_core.motion import OwnMotionTracker
 from bot_core.radar import RadarLockConfig, lock_priority_radar
@@ -35,6 +38,29 @@ from bot_core.telemetry.targeting import TargetingTelemetry
 
 
 FIRE_ALIGNMENT_DEGREES = 8
+CIRCLE_SELECTABLE_GUN_MODES = frozenset({"linear", "traditional_gf", "dynamic_cluster"})
+CIRCLE_FORCE_GUN_MODES = CIRCLE_SELECTABLE_GUN_MODES | frozenset({"displacement"})
+
+
+def _forced_gun_mode() -> str | None:
+    mode = os.environ.get("ROBOCODE_CIRCLE_GUN_MODE", "").strip()
+    return mode if mode in CIRCLE_FORCE_GUN_MODES else None
+
+
+@dataclass(frozen=True)
+class GunPolicy:
+    selectable_modes: frozenset[str] = CIRCLE_SELECTABLE_GUN_MODES
+    forced_mode: str | None = _forced_gun_mode()
+    knn_min_samples: int = 60
+    min_visits: int = 90
+    switch_margin: float = 0.08
+    min_switch_score: float = 0.30
+    traditional_gf_min_switch_visits: int = 260
+    traditional_gf_min_switch_score: float = 0.42
+    switch_diagnostics_interval: int = 36
+
+
+GUN_POLICY = GunPolicy()
 TARGET_MEMORY_TURNS = 30
 FIRE_MEMORY_TURNS = 5
 CURRENT_TARGET_BONUS = 190
@@ -124,7 +150,18 @@ class CircleStrafer(Bot):
         self._evade_until_turn = -1
         self._target_accel: dict[int, float] = {}
         self._last_velocity_change_turn: dict[int, int] = {}
-        self._gun = VirtualGunSystem()
+        self._gun = VirtualGunSystem(
+            GunConfig(
+                selectable_modes=GUN_POLICY.selectable_modes,
+                forced_mode=GUN_POLICY.forced_mode,
+                knn_min_samples=GUN_POLICY.knn_min_samples,
+                min_visits=GUN_POLICY.min_visits,
+                switch_margin=GUN_POLICY.switch_margin,
+                min_switch_score=GUN_POLICY.min_switch_score,
+                traditional_gf_min_switch_visits=GUN_POLICY.traditional_gf_min_switch_visits,
+                traditional_gf_min_switch_score=GUN_POLICY.traditional_gf_min_switch_score,
+            )
+        )
         self._movement = MovementFlattener(
             MovementFlatteningConfig(
                 bullet_hit_visit_weight=1.0,
@@ -140,6 +177,7 @@ class CircleStrafer(Bot):
         self._movement_telemetry = MovementTelemetry(self._debug)
         self._targeting_telemetry = TargetingTelemetry(self._debug)
         self._fired_bullets = FiredBulletTracker()
+        self._last_gun_decision_log_turn: dict[int, int] = {}
 
     def run(self) -> None:
         self.body_color = Color.from_rgb(214, 75, 54)
@@ -335,6 +373,7 @@ class CircleStrafer(Bot):
         score_segment = aim.segment_key if use_segmented_gun_stats else None
         if aim.mode_changed:
             self._fire_telemetry.record_gun_switch(target.bot_id, aim, self._gun.score_summary(target.bot_id, score_segment))
+        self._maybe_log_gun_switch_decision(target.bot_id, aim)
         radar_command = lock_priority_radar(
             self,
             self._targets.values(),
@@ -447,12 +486,20 @@ class CircleStrafer(Bot):
             self._movement.clear_round_state()
             self._minimum_risk.clear_round_state()
             self._fired_bullets.clear()
+            self._last_gun_decision_log_turn.clear()
             self._log(
                 "round.reset",
                 previous_turn=self._last_turn_number,
                 current_turn=self.turn_number,
             )
         self._last_turn_number = self.turn_number
+
+    def _maybe_log_gun_switch_decision(self, target_id: int, aim: AimSolution) -> None:
+        last_turn = self._last_gun_decision_log_turn.get(target_id, -100000)
+        if not should_log_switch_decision(aim, self.turn_number, last_turn, GUN_POLICY.switch_diagnostics_interval):
+            return
+        self._fire_telemetry.record_gun_switch_decision(target_id, aim)
+        self._last_gun_decision_log_turn[target_id] = self.turn_number
 
     def _select_target(self) -> TargetSnapshot | None:
         if not self._targets:

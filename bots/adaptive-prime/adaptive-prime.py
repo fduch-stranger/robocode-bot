@@ -18,7 +18,7 @@ from bot_core.energy import (
     EnemyFirePowerPredictor,
     GunHeatTracker,
 )
-from bot_core.gun import AimSolution, GunConfig, TargetMotion, VirtualGunSystem
+from bot_core.gun import AimSolution, GunConfig, TargetMotion, VirtualGunSystem, should_log_switch_decision
 from bot_core.movement import (
     FlatteningDecision,
     MinimumRiskConfig,
@@ -729,17 +729,8 @@ class AdaptivePrime(Bot):
         )
 
     def _maybe_log_gun_switch_decision(self, target_id: int, aim: AimSolution) -> None:
-        if not aim.switch_candidates:
-            return
-        blocked_better = any(
-            candidate.available
-            and candidate.reason in {"visits", "score_floor", "margin"}
-            and candidate.score > candidate.current_score
-            for candidate in aim.switch_candidates
-        )
         last_turn = self._last_gun_decision_log_turn.get(target_id, -100000)
-        should_sample = self.turn_number - last_turn >= GUN_POLICY.switch_diagnostics_interval
-        if not aim.mode_changed and not (blocked_better and should_sample):
+        if not should_log_switch_decision(aim, self.turn_number, last_turn, GUN_POLICY.switch_diagnostics_interval):
             return
         self._fire_telemetry.record_gun_switch_decision(target_id, aim)
         self._last_gun_decision_log_turn[target_id] = self.turn_number

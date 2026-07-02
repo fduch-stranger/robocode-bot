@@ -13,6 +13,7 @@ from bot_core.gun import (
     RollingKnnBuffer,
     VirtualGunScorer,
     VirtualGunSystem,
+    should_log_switch_decision,
 )
 from bot_core.target_snapshot import TargetSnapshot
 
@@ -283,6 +284,40 @@ class GunStatsTest(unittest.TestCase):
 
         self.assertFalse(gun.maybe_add_eval_wave(bot, target, 1.0, aim))
         self.assertEqual(0, gun.eval_wave_count)
+
+    def test_switch_decision_diagnostics_sampling(self) -> None:
+        aim = AimSolution(
+            predicted_x=100.0,
+            predicted_y=100.0,
+            gun_bearing=0.0,
+            mode="linear",
+            guess_factor=None,
+            features=(0.0,) * 7,
+            segment_key=(0,) * 6,
+            virtual_bearings={"linear": 0.0, "traditional_gf": 1.0},
+            switch_candidates=(
+                GunSwitchCandidate("linear", True, 0.2, 0.2, 20, 0, 0.0, 0.0, "current"),
+                GunSwitchCandidate("traditional_gf", True, 0.26, 0.2, 40, 80, 0.1, 0.05, "visits"),
+            ),
+        )
+
+        self.assertTrue(should_log_switch_decision(aim, 100, 70, 24))
+        self.assertFalse(should_log_switch_decision(aim, 100, 90, 24))
+
+        changed = AimSolution(
+            predicted_x=100.0,
+            predicted_y=100.0,
+            gun_bearing=0.0,
+            mode="traditional_gf",
+            guess_factor=None,
+            features=(0.0,) * 7,
+            segment_key=(0,) * 6,
+            virtual_bearings={"linear": 0.0, "traditional_gf": 1.0},
+            previous_mode="linear",
+            mode_changed=True,
+            switch_candidates=aim.switch_candidates,
+        )
+        self.assertTrue(should_log_switch_decision(changed, 100, 99, 24))
 
     def test_dynamic_cluster_requires_recent_effective_samples(self) -> None:
         gun = VirtualGunSystem(

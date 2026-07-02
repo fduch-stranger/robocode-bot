@@ -96,6 +96,18 @@ otherwise:
 Sweep holds fire when the target is stale, energy is critical, low energy meets
 long range, gun bearing error is too high, or energy margin is too small.
 
+## Gun Policy
+
+Sweep Pressure uses a bot-specific `GunPolicy` surface with shared-default
+switch thresholds. It live-selects `linear`, `traditional_gf`, and
+`dynamic_cluster`. Short A/B tuning rejected looser thresholds, so the current
+policy keeps shared switch gates while exposing switch-decision telemetry.
+`displacement` is available only for forced experiments:
+
+```sh
+ROBOCODE_SWEEP_GUN_MODE=displacement scripts/run-battle.sh --rounds 8 bots/sweep-pressure bots/circle-strafer
+```
+
 ## Key Telemetry
 
 - `wall.avoid`: projected wall risk response.
@@ -103,6 +115,8 @@ long range, gun bearing error is too high, or energy margin is too small.
 - `movement.flatten`: sweep direction change.
 - `track`: target, radar, aim mode, fire hold reason.
 - `gun.switch`: selected virtual gun mode changes.
+- `gun.switch_decision`: sampled virtual-gun candidate scores and rejection
+  reasons.
 
 Use [Tooling: Telemetry Viewer](../../docs/tooling.md#telemetry-viewer) for
 launch, reset, audit, and stop commands.

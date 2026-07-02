@@ -99,6 +99,19 @@ mid/far:
   p = 1.1 or 0.8
 ```
 
+## Gun Policy
+
+Chase Lock uses a bot-specific `GunPolicy` surface with sticky shared-default
+thresholds. It live-selects `linear`, `traditional_gf`, and `dynamic_cluster`.
+`displacement` is available only for forced experiments:
+
+```sh
+ROBOCODE_CHASE_GUN_MODE=displacement scripts/run-battle.sh --rounds 8 bots/chase-lock bots/sweep-pressure
+```
+
+Short A/B tuning rejected looser thresholds, so the current policy keeps shared
+switch gates while exposing switch-decision telemetry for the next tuning pass.
+
 ## Key Telemetry
 
 - `target.select`: target switching evidence.
@@ -107,6 +120,8 @@ mid/far:
 - `movement.flatten`: learned lateral direction flips.
 - `movement.minimum_risk`: melee fallback destination. In `track` events this
   branch appears as movement mode `melee_minimum_risk`.
+- `gun.switch_decision`: sampled virtual-gun candidate scores and rejection
+  reasons.
 - `track`: current target, aim mode, movement mode, radar mode, fire hold
   reason.
 

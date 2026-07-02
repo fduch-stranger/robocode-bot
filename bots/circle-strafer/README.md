@@ -88,12 +88,26 @@ otherwise:
 Circle holds fire when scans are stale, energy is critical, the target is too
 far while energy is low, or gun bearing error is too large.
 
+## Gun Policy
+
+Circle Strafer uses a defensive `GunPolicy` surface with shared-default switch
+thresholds. It live-selects `linear`, `traditional_gf`, and `dynamic_cluster`.
+Short A/B tuning rejected looser thresholds, so the current policy keeps shared
+switch gates while exposing switch-decision telemetry. `displacement` is
+available only for forced experiments:
+
+```sh
+ROBOCODE_CIRCLE_GUN_MODE=displacement scripts/run-battle.sh --rounds 8 bots/circle-strafer bots/sweep-pressure
+```
+
 ## Key Telemetry
 
 - `wall.avoid`: wall escape.
 - `separate`: close enemy or collision escape.
 - `movement.minimum_risk`: melee destination.
 - `movement.flatten`: orbit direction changes.
+- `gun.switch_decision`: sampled virtual-gun candidate scores and rejection
+  reasons.
 - `track`: target, radar, aim mode, fire hold reason.
 
 Use [Tooling: Telemetry Viewer](../../docs/tooling.md#telemetry-viewer) for

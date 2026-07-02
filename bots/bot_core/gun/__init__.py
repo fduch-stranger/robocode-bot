@@ -1,4 +1,5 @@
 from bot_core.gun.aim import AimModeSelector
+from bot_core.gun.diagnostics import should_log_switch_decision
 from bot_core.gun.knn import RollingKnnBuffer
 from bot_core.gun.models import (
     AimSolution,
@@ -51,5 +52,6 @@ __all__ = [
     "lateral_direction",
     "point_on_bearing",
     "segment_features",
+    "should_log_switch_decision",
     "signed_bucket",
 ]
