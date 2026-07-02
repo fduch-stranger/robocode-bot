@@ -41,8 +41,13 @@ class GunConfig:
     traditional_gf_segment_full_weight_samples: int = 80
     traditional_gf_coarse_segment_min_samples: int = 8
     traditional_gf_coarse_segment_full_weight_samples: int = 36
+    traditional_gf_peak_selection: str = "max"
+    traditional_gf_peak_support_radius: int = 1
     traditional_gf_min_switch_visits: int = 260
     traditional_gf_min_switch_score: float = 0.42
+    traditional_gf_global_source_penalty: float = 0.0
+    traditional_gf_blend_source_penalty: float = 0.0
+    traditional_gf_coarse_blend_source_penalty: float = 0.0
     anti_surfer_min_samples: int = 7
     anti_surfer_smoothing_bins: float = 0.9
     anti_surfer_decay: float = 0.92
@@ -83,6 +88,7 @@ class GunWave:
     aim_mode: str
     aim_guess_factor: float | None
     virtual_bearings: dict[str, float]
+    traditional_gf_source: str | None = None
 
 
 @dataclass
@@ -149,6 +155,9 @@ class GunSwitchCandidate:
     raw_current_score: float | None = None
     confidence_penalty: float = 0.0
     current_confidence_penalty: float = 0.0
+    source_penalty: float = 0.0
+    current_source_penalty: float = 0.0
+    traditional_gf_source: str | None = None
 
 
 @dataclass
@@ -164,3 +173,4 @@ class WaveVisit:
     traditional_gf_guess_factor: float | None = None
     traditional_gf_error: float | None = None
     traditional_gf_abs_error: float | None = None
+    traditional_gf_source: str | None = None

@@ -64,6 +64,33 @@ and calibration problem before changing switch thresholds again.
 - `adaptive-traditional-gf-baseline-diamond-24`: Diamond validation is currently
   unusable in this environment because the legacy Diamond bot repeatedly throws
   movement exceptions and cannot write its `Diamond.data/error.log`.
+- Added Adaptive-only source-aware `traditional_gf` selection penalties and
+  source-level real hit summaries. Global profiles now need more adjusted score
+  to switch, blend/coarse-blend penalties shrink as segment weight grows, and
+  exact/coarse segment sources keep normal virtual scoring.
+- Added density-supported histogram peak selection as an experiment control.
+  Alternate coarse-key controls were pruned after validation did not justify
+  keeping them. The coarse key stays fixed to distance, lateral speed, and wall
+  margin.
+- A 12-round BasicGFSurfer matrix did not justify changing defaults. Forced
+  `distance_lateral_velocity_age` had the strongest Traditional GF hit rate and
+  lowest selected GF error, while `distance_lateral_advancing` and `density`
+  scored well in forced mode. Normal-mode checks were mixed, with default
+  `distance_lateral_wall` still winning its clean rerun and density not firing
+  `traditional_gf`.
+- A focused 24-round BasicGFSurfer follow-up did not confirm
+  `distance_lateral_velocity_age` as stronger. Forced default
+  `distance_lateral_wall` beat forced `distance_lateral_velocity_age` on score
+  (`2325-1365` vs `2132-1635`), Traditional GF hit rate (`0.243` vs `0.173`),
+  and selected GF abs error (`0.509` vs `0.575`). Normal
+  `distance_lateral_velocity_age` scored better overall than normal default
+  (`2163-1528` vs `2105-1696`), but fired far fewer Traditional GF shots
+  (`72` vs `280`) with lower hit rate (`0.083` vs `0.104`) and weak
+  post-switch calibration. Do not promote it or add selector calibration from
+  this evidence.
+- `tools/gun_eval_summary.py` now reports Traditional GF diagnostics and GF
+  error by profile source, not only aggregate source hit rate, to support the
+  next calibration step.
 
 ## Hypothesis
 
@@ -87,6 +114,9 @@ velocity, acceleration, velocity-change age, and firepower.
      velocity-change age, and firepower.
    - Keep the existing global profile as the fallback when segment evidence is
      thin.
+   - Alternate coarse-key experiment controls were removed after focused
+     BasicGFSurfer validation failed to justify keeping the extra tuning
+     surface.
 
 2. Blend global and segment profiles by confidence.
    - Start with mostly global behavior.
@@ -120,8 +150,15 @@ velocity, acceleration, velocity-change age, and firepower.
 
 6. Consider stricter switch scoring.
    - Keep near-miss virtual score for learning.
-   - Consider a stricter hit-likelihood score or mode-specific calibration
-     penalty for switching if high virtual score still fails to convert.
+   - Adaptive now applies source-aware `traditional_gf` calibration penalties:
+     global profile source is penalized most, blend/coarse-blend penalties fade
+     with segment blend weight, and exact/coarse segment sources are trusted
+     normally. Use telemetry before changing the penalty values.
+
+7. Improve histogram peak interpretation.
+   - Adaptive can opt into density-supported `traditional_gf` peak selection
+     for experiments that should prefer broad local mass over one-bin spikes.
+   - Keep smoothing/decay defaults unchanged while evaluating this selector.
 
 ## Validation Plan
 

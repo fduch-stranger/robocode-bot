@@ -135,6 +135,9 @@ less linear-biased than the shared defaults:
   movement context without waiting too long for exact-segment samples. Coarse
   min/full `8/36` is the shared traditional-GF default; Adaptive keeps env
   knobs for isolated sweeps.
+- `traditional_gf` selection applies source-aware trust penalties: global
+  profile shots need a higher adjusted score, blend penalties shrink as segment
+  weight grows, and exact/coarse segment sources are trusted normally.
 - Melee keeps segmented gun stats and live `traditional_gf` bearings disabled;
   `traditional_gf` candidates can appear as unavailable in switch diagnostics.
 - `displacement` is force-testable but not live-selectable yet; BasicGFSurfer
@@ -167,11 +170,20 @@ ROBOCODE_ADAPTIVE_TRADITIONAL_GF_DECAY=0.975 \
 ROBOCODE_ADAPTIVE_TRADITIONAL_GF_CENTERING_FACTOR=1.0 \
 ROBOCODE_ADAPTIVE_TRADITIONAL_GF_COARSE_SEGMENT_MIN_SAMPLES=8 \
 ROBOCODE_ADAPTIVE_TRADITIONAL_GF_COARSE_SEGMENT_FULL_WEIGHT_SAMPLES=36 \
+ROBOCODE_ADAPTIVE_TRADITIONAL_GF_PEAK_SELECTION=max \
+ROBOCODE_ADAPTIVE_TRADITIONAL_GF_PEAK_SUPPORT_RADIUS=1 \
+ROBOCODE_ADAPTIVE_TRADITIONAL_GF_GLOBAL_SOURCE_PENALTY=0.06 \
+ROBOCODE_ADAPTIVE_TRADITIONAL_GF_BLEND_SOURCE_PENALTY=0.035 \
+ROBOCODE_ADAPTIVE_TRADITIONAL_GF_COARSE_BLEND_SOURCE_PENALTY=0.02 \
 ROBOCODE_ADAPTIVE_GUN_MODE=traditional_gf \
 scripts/run-battle.sh --telemetry --rounds 12 bots/adaptive-prime --legacy basic-gf-surfer
 ```
 
-Use these as telemetry sweep knobs before changing committed defaults.
+Use these as telemetry sweep knobs before changing committed defaults. The
+coarse key is fixed to distance, lateral speed, and wall margin after alternate
+key sweeps did not justify keeping those experiment knobs. Peak selection is
+`max` by default; `density` chooses a neighborhood-supported peak using
+`ROBOCODE_ADAPTIVE_TRADITIONAL_GF_PEAK_SUPPORT_RADIUS`.
 
 For neutral gun-evaluation telemetry, set:
 
@@ -186,10 +198,14 @@ analysis when telemetry volume is acceptable.
 
 Use `tools/gun_eval_summary.py <telemetry-dir> --bot adaptive-prime
 --post-switch-shots 6` to compare switch-time score/visits, production
-wave averages, eval-wave averages, GF error, and real post-switch hit rate. Its
-calibration table reports adjusted score, raw score, confidence penalty, and
-score-vs-hit gaps. Treat `eval_hit_gap` as diagnostic evidence only; eval
-waves are not direct proof that a mode should switch live.
+wave averages, eval-wave averages, GF error, real post-switch hit rate, and
+Traditional GF real hit rate by profile source. The summary also reports
+Traditional GF profile-weight diagnostics and GF error grouped by profile
+source, so coarse-key experiments can separate high virtual score from real
+source conversion. Its calibration table reports adjusted score, raw score,
+confidence/source penalties, selected-source counts, and score-vs-hit gaps.
+Treat `eval_hit_gap` as diagnostic evidence only; eval waves are not direct
+proof that a mode should switch live.
 
 For the `traditional_gf` modeling follow-up, use
 [Adaptive Prime traditional GF modeling](../../docs/plans/adaptive-prime-traditional-gf-modeling.md).

@@ -12,6 +12,7 @@ from bot_core.gun import (
     GunWaveTracker,
     GuessFactorProfile,
     RollingKnnBuffer,
+    TraditionalGfDiagnostics,
     VirtualGunScorer,
     VirtualGunSystem,
     should_log_switch_decision,
@@ -173,7 +174,7 @@ class GunStatsTest(unittest.TestCase):
         coarse_profile.bins[-1] = 4.0
         gun._traditional_profiles[target_id] = global_profile
         gun._traditional_coarse_segment_profiles[
-            (target_id, VirtualGunSystem._traditional_coarse_segment_key(segment_key))
+            (target_id, gun._traditional_coarse_segment_key(segment_key))
         ] = coarse_profile
 
         diagnostics = gun._traditional_guess_factor_diagnostics(target_id, segment_key)
@@ -198,7 +199,7 @@ class GunStatsTest(unittest.TestCase):
         coarse_profile.bins[-1] = 4.0
         gun._traditional_profiles[target_id] = global_profile
         gun._traditional_coarse_segment_profiles[
-            (target_id, VirtualGunSystem._traditional_coarse_segment_key(segment_key))
+            (target_id, gun._traditional_coarse_segment_key(segment_key))
         ] = coarse_profile
 
         diagnostics = gun._traditional_guess_factor_diagnostics(target_id, segment_key)
@@ -336,6 +337,45 @@ class GunStatsTest(unittest.TestCase):
         self.assertTrue(changed)
         self.assertEqual("selected", by_mode["dynamic_cluster"].reason)
         self.assertAlmostEqual(0.0, by_mode["dynamic_cluster"].confidence_penalty)
+
+    def test_aim_mode_selector_penalizes_low_trust_traditional_gf_source(self) -> None:
+        config = GunConfig(
+            selectable_modes=frozenset({"linear", "traditional_gf"}),
+            min_visits=1,
+            min_switch_score=0.1,
+            switch_margin=0.03,
+            traditional_gf_min_switch_visits=1,
+            traditional_gf_min_switch_score=0.1,
+            traditional_gf_global_source_penalty=0.06,
+        )
+        stats = {
+            (1, "linear"): GunStats(visits=100, hits=0, rolling_score=0.30),
+            (1, "traditional_gf"): GunStats(visits=100, hits=0, rolling_score=0.40),
+        }
+        scorer = VirtualGunScorer(config, stats, {})
+        selector = AimModeSelector(config, scorer, {1: "linear"}, stats)
+        diagnostics = TraditionalGfDiagnostics(
+            global_guess_factor=0.4,
+            global_weight=80.0,
+            selected_guess_factor=0.4,
+            source="global",
+        )
+
+        selected, _, changed, candidates = selector.select_with_diagnostics(
+            1,
+            {"linear": 0.0, "traditional_gf": 0.5},
+            None,
+            diagnostics,
+        )
+
+        by_mode = {candidate.mode: candidate for candidate in candidates}
+        self.assertEqual("linear", selected)
+        self.assertFalse(changed)
+        self.assertEqual("margin", by_mode["traditional_gf"].reason)
+        self.assertAlmostEqual(0.28, by_mode["traditional_gf"].raw_score or 0.0)
+        self.assertAlmostEqual(0.22, by_mode["traditional_gf"].score)
+        self.assertAlmostEqual(0.06, by_mode["traditional_gf"].source_penalty)
+        self.assertEqual("global", by_mode["traditional_gf"].traditional_gf_source)
 
     def test_aim_mode_selector_honors_forced_available_mode(self) -> None:
         config = GunConfig(
@@ -634,6 +674,33 @@ class GunStatsTest(unittest.TestCase):
         assert segmented.segment_guess_factor is not None
         self.assertLess(segmented.segment_guess_factor, 0.0)
         self.assertGreater(segmented.blend, 0.0)
+
+    def test_traditional_gf_coarse_segment_key_uses_distance_lateral_wall(self) -> None:
+        segment_key = (0, 1, 2, 3, 4, 5)
+
+        self.assertEqual(
+            (0, 2, 5),
+            VirtualGunSystem._traditional_coarse_segment_key(segment_key),
+        )
+
+    def test_traditional_gf_density_peak_prefers_supported_peak(self) -> None:
+        profile = GuessFactorProfile(
+            visits=20,
+            effective_weight=20.0,
+            bins=[0.0, 0.0, 5.0, 6.0, 5.0, 0.0, 10.0],
+        )
+
+        max_bin_gun = VirtualGunSystem(GunConfig(guess_factor_bins=7, traditional_gf_peak_selection="max"))
+        density_gun = VirtualGunSystem(
+            GunConfig(
+                guess_factor_bins=7,
+                traditional_gf_peak_selection="density",
+                traditional_gf_peak_support_radius=1,
+            )
+        )
+
+        self.assertAlmostEqual(1.0, max_bin_gun._profile_guess_factor(profile))
+        self.assertAlmostEqual(0.0, density_gun._profile_guess_factor(profile))
 
     def test_anti_surfer_guess_factor_targets_under_visited_valley(self) -> None:
         gun = VirtualGunSystem(

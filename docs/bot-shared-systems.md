@@ -94,14 +94,25 @@ virtual-gun scoring, and aim-mode switching are isolated in `GunWaveTracker`,
 Traditional guess-factor aiming always keeps a global profile per target; that
 global profile is the shared default. Bots that enable segmented traditional GF
 can blend normalized global and exact-segment profile peaks when enough samples
-exist in the current exact segment. If the exact segment is sparse, the coarse
-segment can blend distance, lateral-speed, and wall-margin context before
-falling back to the global profile. Track telemetry can include
+exist in the current exact segment. If the exact segment is sparse, a coarse
+segment can blend fixed distance, lateral speed, and wall-margin context before
+falling back to the global profile. Profile interpretation defaults to the
+strongest histogram bin, but bots can opt into a density-supported peak selector
+for experiments that should prefer broader local mass over isolated spikes.
+Track telemetry can include
 `traditional_gf_*` fields showing global/segment peaks, profile weights,
 selected GF, blend, and source.
 `gun.traditional_gf_profile` records the same model diagnostics as a sampled
 model event, which keeps scripted telemetry useful even when selector or `track`
 samples are sparse.
+
+Bots may optionally apply a source-trust penalty to `traditional_gf` selection.
+This lets a bot require more evidence from low-context global profiles while
+trusting exact or coarse segment profiles normally. Shared defaults leave this
+disabled unless a bot config opts in.
+`tools/gun_eval_summary.py` groups Traditional GF real hit rate, model
+diagnostics, and GF error by profile source so source-trust changes can be
+validated before changing selector policy.
 
 The current repo bots enable live `traditional_gf` bearings only in 1v1, where
 segmented gun stats are also enabled. In melee, `traditional_gf` remains a
@@ -230,7 +241,7 @@ Telemetry is JSONL. Common event names:
 - `gun.traditional_gf_profile`: sampled traditional-GF model source, global
   and segment peaks, profile weights, blend, and selected GF.
 - `gun.wave_visit`: virtual gun scoring result, including optional
-  traditional-GF aim/error diagnostics.
+  traditional-GF aim/error/source diagnostics.
 - `gun.eval_wave_visit`: optional neutral gun-evaluation result. These visits
   are separate from production switcher stats.
 - `gun.fire_drift`: planned production wave compared with the actual

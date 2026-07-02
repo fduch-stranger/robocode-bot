@@ -247,7 +247,7 @@ def _gun_switch_decision_fields(target_id: int, aim: AimSolution) -> dict[str, o
 
 
 def _gun_switch_candidate_fields(candidate: GunSwitchCandidate) -> dict[str, object]:
-    return {
+    fields: dict[str, object] = {
         "mode": candidate.mode,
         "available": candidate.available,
         "score": round(candidate.score, 3),
@@ -259,12 +259,17 @@ def _gun_switch_candidate_fields(candidate: GunSwitchCandidate) -> dict[str, obj
         ),
         "confidence_penalty": round(candidate.confidence_penalty, 3),
         "current_confidence_penalty": round(candidate.current_confidence_penalty, 3),
+        "source_penalty": round(candidate.source_penalty, 3),
+        "current_source_penalty": round(candidate.current_source_penalty, 3),
         "visits": candidate.visits,
         "required_visits": candidate.required_visits,
         "min_score": round(candidate.min_score, 3),
         "margin": round(candidate.margin, 3),
         "reason": candidate.reason,
     }
+    if candidate.traditional_gf_source is not None:
+        fields["traditional_gf_source"] = candidate.traditional_gf_source
+    return fields
 
 
 def _traditional_gf_profile_fields(target_id: int, aim: AimSolution) -> dict[str, object]:
@@ -408,4 +413,6 @@ def _wave_visit_fields(visit: WaveVisit) -> dict[str, object]:
         fields["traditional_gf_error"] = round(visit.traditional_gf_error, 3)
     if visit.traditional_gf_abs_error is not None:
         fields["traditional_gf_abs_error"] = round(visit.traditional_gf_abs_error, 3)
+    if visit.traditional_gf_source is not None:
+        fields["traditional_gf_source"] = visit.traditional_gf_source
     return fields

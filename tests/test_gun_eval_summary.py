@@ -57,6 +57,7 @@ class GunEvalSummaryTest(unittest.TestCase):
                                 "score": 0.38,
                                 "raw_score": 0.42,
                                 "confidence_penalty": 0.04,
+                                "source_penalty": 0.02,
                                 "current_score": 0.2,
                                 "raw_current_score": 0.2,
                                 "visits": 120,
@@ -92,6 +93,8 @@ class GunEvalSummaryTest(unittest.TestCase):
         self.assertEqual(0.38, calibration["avg_score_at_switch"])
         self.assertEqual(0.42, calibration["avg_raw_score_at_switch"])
         self.assertEqual(0.04, calibration["avg_confidence_penalty"])
+        self.assertEqual(0.02, calibration["avg_source_penalty"])
+        self.assertEqual({}, calibration["source_counts"])
         self.assertEqual(120.0, calibration["avg_visits_at_switch"])
         self.assertEqual(2, calibration["post_switch_shots"])
         self.assertEqual(1, calibration["post_switch_hits"])
@@ -166,6 +169,65 @@ class GunEvalSummaryTest(unittest.TestCase):
         self.assertEqual(9.0, averages["segment_weight"])
         self.assertEqual(0.25, averages["blend"])
         self.assertEqual(-0.05, averages["selected_guess_factor"])
+        by_source = summary["traditional_gf_diagnostics_by_source"]  # type: ignore[assignment]
+        self.assertEqual(1, by_source["global"]["count"])  # type: ignore[index]
+        self.assertEqual(42.0, by_source["global"]["averages"]["global_weight"])  # type: ignore[index]
+        self.assertEqual(1, by_source["blend"]["count"])  # type: ignore[index]
+        self.assertEqual(18.0, by_source["blend"]["averages"]["segment_weight"])  # type: ignore[index]
+        self.assertEqual(0.5, by_source["blend"]["averages"]["blend"])  # type: ignore[index]
+
+    def test_summarizes_traditional_gf_real_hits_by_source(self) -> None:
+        summary = summarize_events(
+            [
+                {
+                    "event": "bullet.fired",
+                    "fields": {"bullet_id": 1, "aim_mode": "traditional_gf", "traditional_gf_source": "global"},
+                },
+                {"event": "bullet.hit_bot", "fields": {"bullet_id": 1}},
+                {
+                    "event": "bullet.fired",
+                    "fields": {"bullet_id": 2, "aim_mode": "traditional_gf", "traditional_gf_source": "coarse"},
+                },
+            ]
+        )
+
+        by_source = summary["traditional_gf_source_real"]  # type: ignore[assignment]
+        self.assertEqual({"coarse": 1, "global": 1}, by_source["fired"])  # type: ignore[index]
+        self.assertEqual({"global": 1}, by_source["hits"])  # type: ignore[index]
+        self.assertEqual({"coarse": 0.0, "global": 1.0}, by_source["hit_rate"])  # type: ignore[index]
+
+    def test_traditional_gf_source_hits_do_not_cross_round_reset(self) -> None:
+        summary = summarize_events(
+            [
+                {"event": "bullet.hit_bot", "fields": {"bullet_id": 9}},
+                {"event": "round.reset", "fields": {"previous_turn": 80, "current_turn": 0}},
+                {
+                    "event": "bullet.fired",
+                    "fields": {"bullet_id": 9, "aim_mode": "traditional_gf", "traditional_gf_source": "global"},
+                },
+            ]
+        )
+
+        by_source = summary["traditional_gf_source_real"]  # type: ignore[assignment]
+        self.assertEqual({"global": 1}, by_source["fired"])  # type: ignore[index]
+        self.assertEqual({}, by_source["hits"])  # type: ignore[index]
+        self.assertEqual({"global": 0.0}, by_source["hit_rate"])  # type: ignore[index]
+
+    def test_traditional_gf_source_hits_resolve_hit_before_fired(self) -> None:
+        summary = summarize_events(
+            [
+                {"event": "bullet.hit_bot", "fields": {"bullet_id": 9}},
+                {
+                    "event": "bullet.fired",
+                    "fields": {"bullet_id": 9, "aim_mode": "traditional_gf", "traditional_gf_source": "coarse_blend"},
+                },
+            ]
+        )
+
+        by_source = summary["traditional_gf_source_real"]  # type: ignore[assignment]
+        self.assertEqual({"coarse_blend": 1}, by_source["fired"])  # type: ignore[index]
+        self.assertEqual({"coarse_blend": 1}, by_source["hits"])  # type: ignore[index]
+        self.assertEqual({"coarse_blend": 1.0}, by_source["hit_rate"])  # type: ignore[index]
 
     def test_summarizes_traditional_gf_error(self) -> None:
         summary = summarize_events(
@@ -178,6 +240,7 @@ class GunEvalSummaryTest(unittest.TestCase):
                         "traditional_gf_guess_factor": 0.2,
                         "traditional_gf_error": 0.3,
                         "traditional_gf_abs_error": 0.3,
+                        "traditional_gf_source": "global",
                     },
                 },
                 {
@@ -188,6 +251,7 @@ class GunEvalSummaryTest(unittest.TestCase):
                         "traditional_gf_guess_factor": 0.2,
                         "traditional_gf_error": -0.3,
                         "traditional_gf_abs_error": 0.3,
+                        "traditional_gf_source": "coarse_blend",
                     },
                 },
                 {
@@ -198,6 +262,7 @@ class GunEvalSummaryTest(unittest.TestCase):
                         "traditional_gf_guess_factor": 0.0,
                         "traditional_gf_error": 0.1,
                         "traditional_gf_abs_error": 0.1,
+                        "traditional_gf_source": "coarse",
                     },
                 },
             ]
@@ -213,6 +278,13 @@ class GunEvalSummaryTest(unittest.TestCase):
         self.assertEqual(-0.3, gf_error["production_selected"]["avg_error"])  # type: ignore[index]
         self.assertEqual(1, gf_error["eval_selected"]["count"])  # type: ignore[index]
         self.assertEqual(0.1, gf_error["eval_selected"]["avg_abs_error"])  # type: ignore[index]
+        by_source = summary["traditional_gf_error_by_source"]  # type: ignore[assignment]
+        self.assertEqual(1, by_source["production"]["global"]["count"])  # type: ignore[index]
+        self.assertEqual(0.3, by_source["production"]["global"]["avg_abs_error"])  # type: ignore[index]
+        self.assertEqual(1, by_source["production_selected"]["coarse_blend"]["count"])  # type: ignore[index]
+        self.assertEqual(-0.3, by_source["production_selected"]["coarse_blend"]["avg_error"])  # type: ignore[index]
+        self.assertEqual(1, by_source["eval_selected"]["coarse"]["count"])  # type: ignore[index]
+        self.assertEqual(0.1, by_source["eval_selected"]["coarse"]["avg_abs_error"])  # type: ignore[index]
 
     def test_print_summary_includes_selected_counts(self) -> None:
         stream = StringIO()
@@ -231,7 +303,10 @@ class GunEvalSummaryTest(unittest.TestCase):
             "wave_count": {},
             "eval_count": {},
             "traditional_gf_diagnostics": {},
+            "traditional_gf_diagnostics_by_source": {},
+            "traditional_gf_source_real": {},
             "traditional_gf_error": {},
+            "traditional_gf_error_by_source": {},
             "calibration": {"2": {"linear": {"post_switch_hit_rate": 0.5}}},
         }
 
@@ -244,7 +319,10 @@ class GunEvalSummaryTest(unittest.TestCase):
         self.assertIn("wave_selected_avg:", output)
         self.assertIn("eval_non_selected_avg:", output)
         self.assertIn("traditional_gf_diagnostics:", output)
+        self.assertIn("traditional_gf_diagnostics_by_source:", output)
+        self.assertIn("traditional_gf_source_real:", output)
         self.assertIn("traditional_gf_error:", output)
+        self.assertIn("traditional_gf_error_by_source:", output)
         self.assertIn("calibration:", output)
 
 

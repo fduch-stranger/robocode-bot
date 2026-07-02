@@ -1,5 +1,6 @@
 import math
 from dataclasses import dataclass, field
+from typing import Callable
 
 from robocode_tank_royale.bot_api import Bot
 
@@ -148,7 +149,12 @@ class VirtualGunSystem:
                 cluster_guess_factor,
             )
 
-        mode, previous_mode, mode_changed, switch_candidates = self._select_aim_mode(target.bot_id, virtual_bearings, scoring_segment)
+        mode, previous_mode, mode_changed, switch_candidates = self._select_aim_mode(
+            target.bot_id,
+            virtual_bearings,
+            scoring_segment,
+            traditional_diagnostics,
+        )
         aim_bearing = virtual_bearings[mode]
         predicted_x, predicted_y = point_on_bearing(bot, aim_bearing, distance, field_margin)
         selected_guess_factor = None
@@ -209,6 +215,7 @@ class VirtualGunSystem:
             aim_mode=aim.mode,
             aim_guess_factor=aim.guess_factor,
             virtual_bearings=aim.virtual_bearings,
+            traditional_gf_source=aim.traditional_gf.source if aim.traditional_gf is not None else None,
         )
 
     def set_pending_wave(self, wave: GunWave) -> None:
@@ -270,6 +277,7 @@ class VirtualGunSystem:
                     traditional_gf_guess_factor=traditional_gf_error[0] if traditional_gf_error is not None else None,
                     traditional_gf_error=traditional_gf_error[1] if traditional_gf_error is not None else None,
                     traditional_gf_abs_error=traditional_gf_error[2] if traditional_gf_error is not None else None,
+                    traditional_gf_source=wave.traditional_gf_source,
                 )
             )
 
@@ -312,6 +320,7 @@ class VirtualGunSystem:
                     traditional_gf_guess_factor=traditional_gf_error[0] if traditional_gf_error is not None else None,
                     traditional_gf_error=traditional_gf_error[1] if traditional_gf_error is not None else None,
                     traditional_gf_abs_error=traditional_gf_error[2] if traditional_gf_error is not None else None,
+                    traditional_gf_source=wave.traditional_gf_source,
                 )
             )
 
@@ -416,8 +425,9 @@ class VirtualGunSystem:
         target_id: int,
         virtual_bearings: dict[str, float],
         segment_key: tuple[int, ...] | None,
+        traditional_gf: TraditionalGfDiagnostics | None,
     ) -> tuple[str, str | None, bool, tuple[GunSwitchCandidate, ...]]:
-        return self._aim_selector.select_with_diagnostics(target_id, virtual_bearings, segment_key)
+        return self._aim_selector.select_with_diagnostics(target_id, virtual_bearings, segment_key, traditional_gf)
 
     @staticmethod
     def _gun_features(
@@ -674,6 +684,8 @@ class VirtualGunSystem:
         return (segment_key[0], segment_key[2], segment_key[5])
 
     def _profile_guess_factor(self, profile: GuessFactorProfile) -> float:
+        if self.config.traditional_gf_peak_selection == "density":
+            return self._density_peak_guess_factor(lambda index: profile.bins[index])
         best_index = max(range(len(profile.bins)), key=lambda index: profile.bins[index])
         return bin_to_guess_factor(best_index, self.config.guess_factor_bins)
 
@@ -683,14 +695,47 @@ class VirtualGunSystem:
         segment_profile: GuessFactorProfile,
         segment_weight: float,
     ) -> float:
-        best_index = max(
-            range(self.config.guess_factor_bins),
-            key=lambda index: (
+        def blended_value(index: int) -> float:
+            return (
                 (1.0 - segment_weight) * self._normalized_bin(global_profile, index)
                 + segment_weight * self._normalized_bin(segment_profile, index)
-            ),
+            )
+
+        if self.config.traditional_gf_peak_selection == "density":
+            return self._density_peak_guess_factor(blended_value)
+        best_index = max(
+            range(self.config.guess_factor_bins),
+            key=blended_value,
         )
         return bin_to_guess_factor(best_index, self.config.guess_factor_bins)
+
+    def _density_peak_guess_factor(self, value_at: Callable[[int], float]) -> float:
+        bins = self.config.guess_factor_bins
+        radius = max(0, self.config.traditional_gf_peak_support_radius)
+        if radius <= 0:
+            best_index = max(range(bins), key=value_at)
+            return bin_to_guess_factor(best_index, bins)
+
+        def support_weight(center: int, index: int) -> float:
+            return (radius + 1 - abs(index - center)) / (radius + 1)
+
+        def supported_density(center: int) -> float:
+            start = max(0, center - radius)
+            end = min(bins, center + radius + 1)
+            return sum(value_at(index) * support_weight(center, index) for index in range(start, end))
+
+        best_index = max(range(bins), key=supported_density)
+        start = max(0, best_index - radius)
+        end = min(bins, best_index + radius + 1)
+        total_weight = 0.0
+        weighted_guess_factor = 0.0
+        for index in range(start, end):
+            weight = max(0.0, value_at(index)) * support_weight(best_index, index)
+            total_weight += weight
+            weighted_guess_factor += bin_to_guess_factor(index, bins) * weight
+        if total_weight <= 0.0:
+            return bin_to_guess_factor(best_index, bins)
+        return clamp(weighted_guess_factor / total_weight, -1.0, 1.0)
 
     @staticmethod
     def _normalized_bin(profile: GuessFactorProfile, index: int) -> float:

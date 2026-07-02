@@ -142,6 +142,7 @@ EVENT_SPECS: dict[str, TelemetryEventSpec] = {
             "traditional_gf_guess_factor",
             "traditional_gf_error",
             "traditional_gf_abs_error",
+            "traditional_gf_source",
         ),
         aliases={"aim_mode": ("selected_gun",), "gun_mode": ("selected_gun",)},
     ),
@@ -159,6 +160,7 @@ EVENT_SPECS: dict[str, TelemetryEventSpec] = {
             "traditional_gf_guess_factor",
             "traditional_gf_error",
             "traditional_gf_abs_error",
+            "traditional_gf_source",
         ),
         aliases={"aim_mode": ("selected_gun",), "gun_mode": ("selected_gun",)},
     ),
@@ -175,6 +177,7 @@ EVENT_SPECS: dict[str, TelemetryEventSpec] = {
             "gun_confidence_visits",
             "selected_gun_confidence",
             "selected_gun_confidence_visits",
+            "traditional_gf_source",
             "target_age",
             "target_x",
             "target_y",
@@ -185,7 +188,7 @@ EVENT_SPECS: dict[str, TelemetryEventSpec] = {
     "bullet.hit_bot": TelemetryEventSpec(
         "fire",
         required_fields=("bullet_id", "power", "damage", "energy"),
-        optional_fields=("victim", "target", "aim_mode"),
+        optional_fields=("victim", "target", "aim_mode", "traditional_gf_source"),
         aliases={"target": ("victim",)},
     ),
     "gun.fire_drift": TelemetryEventSpec(

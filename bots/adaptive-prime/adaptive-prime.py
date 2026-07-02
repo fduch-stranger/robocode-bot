@@ -109,6 +109,11 @@ class AdaptivePrime(Bot):
                 traditional_gf_segment_full_weight_samples=GUN_POLICY.traditional_gf_segment_full_weight_samples,
                 traditional_gf_coarse_segment_min_samples=GUN_POLICY.traditional_gf_coarse_segment_min_samples,
                 traditional_gf_coarse_segment_full_weight_samples=GUN_POLICY.traditional_gf_coarse_segment_full_weight_samples,
+                traditional_gf_peak_selection=GUN_POLICY.traditional_gf_peak_selection,
+                traditional_gf_peak_support_radius=GUN_POLICY.traditional_gf_peak_support_radius,
+                traditional_gf_global_source_penalty=GUN_POLICY.traditional_gf_global_source_penalty,
+                traditional_gf_blend_source_penalty=GUN_POLICY.traditional_gf_blend_source_penalty,
+                traditional_gf_coarse_blend_source_penalty=GUN_POLICY.traditional_gf_coarse_blend_source_penalty,
                 anti_surfer_min_switch_visits=GUN_POLICY.anti_surfer_min_switch_visits,
                 anti_surfer_min_switch_score=GUN_POLICY.anti_surfer_min_switch_score,
                 switch_confidence_visits=GUN_POLICY.switch_confidence_visits,
@@ -1048,6 +1053,9 @@ class AdaptivePrime(Bot):
             aim_mode=wave.aim_mode if wave is not None else None,
             aim_guess_factor=round(wave.aim_guess_factor, 3)
             if wave is not None and wave.aim_guess_factor is not None
+            else None,
+            traditional_gf_source=wave.traditional_gf_source
+            if wave is not None and wave.aim_mode == "traditional_gf"
             else None,
         )
         self._fire_telemetry.record_bullet_fired(

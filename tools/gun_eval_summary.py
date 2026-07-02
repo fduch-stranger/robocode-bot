@@ -46,6 +46,8 @@ class SwitchWindow:
     current_score: float | None
     raw_current_score: float | None
     confidence_penalty: float | None
+    source_penalty: float | None
+    traditional_gf_source: str | None
     visits: int | None
     shots: list[str] = field(default_factory=list)
     hits: int = 0
@@ -57,6 +59,10 @@ def summarize_events(events: list[dict[str, Any]], *, post_switch_shots: int = 6
     hits: Counter[str] = Counter()
     shots_by_id: dict[str, str] = {}
     pending_hits_by_id: Counter[str] = Counter()
+    traditional_gf_source_by_id: dict[str, str] = {}
+    pending_traditional_gf_source_hits_by_id: Counter[str] = Counter()
+    traditional_gf_source_fired: Counter[str] = Counter()
+    traditional_gf_source_hits: Counter[str] = Counter()
     wave_selected: Counter[str] = Counter()
     eval_selected: Counter[str] = Counter()
     wave_scores: dict[str, list[float]] = defaultdict(list)
@@ -69,11 +75,18 @@ def summarize_events(events: list[dict[str, Any]], *, post_switch_shots: int = 6
     eval_scores_by_target: dict[tuple[str, str], list[float]] = defaultdict(list)
     traditional_gf_sources: Counter[str] = Counter()
     traditional_gf_values: dict[str, list[float]] = defaultdict(list)
+    traditional_gf_values_by_source: dict[str, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
     traditional_gf_error_values: dict[str, dict[str, list[float]]] = {
         "production": defaultdict(list),
         "production_selected": defaultdict(list),
         "eval": defaultdict(list),
         "eval_selected": defaultdict(list),
+    }
+    traditional_gf_error_values_by_source: dict[str, dict[str, dict[str, list[float]]]] = {
+        "production": defaultdict(lambda: defaultdict(list)),
+        "production_selected": defaultdict(lambda: defaultdict(list)),
+        "eval": defaultdict(lambda: defaultdict(list)),
+        "eval_selected": defaultdict(lambda: defaultdict(list)),
     }
     switch_windows: list[SwitchWindow] = []
     active_switch_window: int | None = None
@@ -85,6 +98,8 @@ def summarize_events(events: list[dict[str, Any]], *, post_switch_shots: int = 6
         if name == "round.reset":
             shots_by_id.clear()
             pending_hits_by_id.clear()
+            traditional_gf_source_by_id.clear()
+            pending_traditional_gf_source_hits_by_id.clear()
             shot_to_switch_window.clear()
             if active_switch_window is not None:
                 switch_windows[active_switch_window].accepting = False
@@ -104,6 +119,13 @@ def summarize_events(events: list[dict[str, Any]], *, post_switch_shots: int = 6
                 if len(switch_windows[active_switch_window].shots) >= post_switch_shots:
                     switch_windows[active_switch_window].accepting = False
             shots_by_id[bullet_id] = mode
+            traditional_gf_source = str(fields["traditional_gf_source"]) if fields.get("traditional_gf_source") else None
+            pending_source_hits = pending_traditional_gf_source_hits_by_id.pop(bullet_id, 0)
+            if mode == "traditional_gf" and traditional_gf_source is not None:
+                traditional_gf_source_fired[traditional_gf_source] += 1
+                traditional_gf_source_by_id[bullet_id] = traditional_gf_source
+                if pending_source_hits:
+                    traditional_gf_source_hits[traditional_gf_source] += pending_source_hits
             pending_hits = pending_hits_by_id.pop(bullet_id, 0)
             if pending_hits:
                 hits[mode] += pending_hits
@@ -122,6 +144,13 @@ def summarize_events(events: list[dict[str, Any]], *, post_switch_shots: int = 6
             bullet_id = _bullet_id(fields)
             if bullet_id is not None and bullet_id in shot_to_switch_window:
                 switch_windows[shot_to_switch_window[bullet_id]].hits += 1
+            source = str(fields["traditional_gf_source"]) if fields.get("traditional_gf_source") else None
+            if source is None and bullet_id is not None:
+                source = traditional_gf_source_by_id.get(bullet_id)
+            if mode == "traditional_gf" and source is not None:
+                traditional_gf_source_hits[source] += 1
+            elif bullet_id is not None and (mode is None or mode == "traditional_gf"):
+                pending_traditional_gf_source_hits_by_id[bullet_id] += 1
         elif name == "gun.wave_visit":
             _record_wave(
                 fields,
@@ -132,8 +161,10 @@ def summarize_events(events: list[dict[str, Any]], *, post_switch_shots: int = 6
                 wave_non_selected_scores,
             )
             _record_traditional_gf_error(fields, traditional_gf_error_values["production"])
+            _record_traditional_gf_source_error(fields, traditional_gf_error_values_by_source["production"])
             if fields.get("selected_gun") == "traditional_gf":
                 _record_traditional_gf_error(fields, traditional_gf_error_values["production_selected"])
+                _record_traditional_gf_source_error(fields, traditional_gf_error_values_by_source["production_selected"])
         elif name == "gun.eval_wave_visit":
             _record_wave(
                 fields,
@@ -144,12 +175,16 @@ def summarize_events(events: list[dict[str, Any]], *, post_switch_shots: int = 6
                 eval_non_selected_scores,
             )
             _record_traditional_gf_error(fields, traditional_gf_error_values["eval"])
+            _record_traditional_gf_source_error(fields, traditional_gf_error_values_by_source["eval"])
             if fields.get("selected_gun") == "traditional_gf":
                 _record_traditional_gf_error(fields, traditional_gf_error_values["eval_selected"])
+                _record_traditional_gf_source_error(fields, traditional_gf_error_values_by_source["eval_selected"])
         elif name == "track" and fields.get("traditional_gf_source"):
             _record_traditional_gf_diagnostics(fields, traditional_gf_sources, traditional_gf_values)
+            _record_traditional_gf_source_diagnostics(fields, traditional_gf_values_by_source)
         elif name == "gun.traditional_gf_profile" and fields.get("source"):
             _record_traditional_gf_diagnostics(fields, traditional_gf_sources, traditional_gf_values)
+            _record_traditional_gf_source_diagnostics(fields, traditional_gf_values_by_source)
         elif name == "gun.switch_decision" and fields.get("changed"):
             if active_switch_window is not None:
                 switch_windows[active_switch_window].accepting = False
@@ -176,7 +211,19 @@ def summarize_events(events: list[dict[str, Any]], *, post_switch_shots: int = 6
             traditional_gf_sources,
             traditional_gf_values,
         ),
+        "traditional_gf_diagnostics_by_source": _traditional_gf_source_diagnostics_summary(
+            traditional_gf_sources,
+            traditional_gf_values_by_source,
+        ),
+        "traditional_gf_source_real": {
+            "fired": dict(traditional_gf_source_fired),
+            "hits": dict(traditional_gf_source_hits),
+            "hit_rate": _rates(traditional_gf_source_hits, traditional_gf_source_fired),
+        },
         "traditional_gf_error": _traditional_gf_error_summary(traditional_gf_error_values),
+        "traditional_gf_error_by_source": _traditional_gf_error_by_source_summary(
+            traditional_gf_error_values_by_source,
+        ),
         "calibration": _calibration_summary(switch_windows, wave_scores_by_target, eval_scores_by_target),
     }
 
@@ -231,6 +278,16 @@ def _record_traditional_gf_diagnostics(
             values[output_field].append(value)
 
 
+def _record_traditional_gf_source_diagnostics(
+    fields: dict[str, Any],
+    values_by_source: dict[str, dict[str, list[float]]],
+) -> None:
+    source = fields.get("source", fields.get("traditional_gf_source"))
+    if source is None:
+        return
+    _record_traditional_gf_diagnostics(fields, Counter(), values_by_source[str(source)])
+
+
 def _record_traditional_gf_error(fields: dict[str, Any], values: dict[str, list[float]]) -> None:
     if "traditional_gf_error" not in fields:
         return
@@ -243,6 +300,16 @@ def _record_traditional_gf_error(fields: dict[str, Any], values: dict[str, list[
         value = _float_or_none(fields.get(output_field))
         if value is not None:
             values[output_field].append(value)
+
+
+def _record_traditional_gf_source_error(
+    fields: dict[str, Any],
+    values_by_source: dict[str, dict[str, list[float]]],
+) -> None:
+    source = fields.get("traditional_gf_source")
+    if source is None:
+        return
+    _record_traditional_gf_error(fields, values_by_source[str(source)])
 
 
 def _traditional_gf_error_summary(
@@ -261,6 +328,15 @@ def _traditional_gf_error_summary(
     return summary
 
 
+def _traditional_gf_error_by_source_summary(
+    grouped_values: dict[str, dict[str, dict[str, list[float]]]],
+) -> dict[str, dict[str, dict[str, float | int | None]]]:
+    return {
+        group: _traditional_gf_error_summary(dict(sorted(values_by_source.items())))
+        for group, values_by_source in grouped_values.items()
+    }
+
+
 def _traditional_gf_diagnostics_summary(
     sources: Counter[str],
     values: dict[str, list[float]],
@@ -269,6 +345,19 @@ def _traditional_gf_diagnostics_summary(
         "source_counts": dict(sorted(sources.items())),
         "averages": _averages(values),
         "count": sum(sources.values()),
+    }
+
+
+def _traditional_gf_source_diagnostics_summary(
+    sources: Counter[str],
+    values_by_source: dict[str, dict[str, list[float]]],
+) -> dict[str, dict[str, object]]:
+    return {
+        source: {
+            "count": sources[source],
+            "averages": _averages(values_by_source[source]),
+        }
+        for source in sorted(sources)
     }
 
 
@@ -286,6 +375,14 @@ def _switch_window_from_decision(event: dict[str, Any], fields: dict[str, Any]) 
     confidence_penalty = _float_or_none(
         selected_candidate.get("confidence_penalty") if selected_candidate is not None else None
     )
+    source_penalty = _float_or_none(
+        selected_candidate.get("source_penalty") if selected_candidate is not None else None
+    )
+    traditional_gf_source = (
+        str(selected_candidate["traditional_gf_source"])
+        if selected_candidate is not None and selected_candidate.get("traditional_gf_source")
+        else None
+    )
     return SwitchWindow(
         target=str(fields.get("target")),
         mode=str(selected),
@@ -295,6 +392,8 @@ def _switch_window_from_decision(event: dict[str, Any], fields: dict[str, Any]) 
         current_score=current_score,
         raw_current_score=current_score if raw_current_score is None else raw_current_score,
         confidence_penalty=0.0 if confidence_penalty is None else confidence_penalty,
+        source_penalty=0.0 if source_penalty is None else source_penalty,
+        traditional_gf_source=traditional_gf_source,
         visits=_int_or_none(selected_candidate.get("visits") if selected_candidate is not None else None),
     )
 
@@ -325,7 +424,11 @@ def _calibration_summary(
         confidence_penalties = [
             window.confidence_penalty for window in mode_windows if window.confidence_penalty is not None
         ]
+        source_penalties = [window.source_penalty for window in mode_windows if window.source_penalty is not None]
         switch_visits = [window.visits for window in mode_windows if window.visits is not None]
+        sources = Counter(
+            window.traditional_gf_source for window in mode_windows if window.traditional_gf_source is not None
+        )
         hit_rate = round(hits / shots, 4) if shots else 0.0
         avg_score = _average_values(switch_scores)
         avg_raw_score = _average_values(raw_switch_scores)
@@ -336,6 +439,8 @@ def _calibration_summary(
             "avg_score_at_switch": avg_score,
             "avg_raw_score_at_switch": avg_raw_score,
             "avg_confidence_penalty": _average_values(confidence_penalties),
+            "avg_source_penalty": _average_values(source_penalties),
+            "source_counts": dict(sources),
             "avg_visits_at_switch": _average_values(switch_visits),
             "post_switch_shots": shots,
             "post_switch_hits": hits,
@@ -398,7 +503,10 @@ def _print_summary(summary: dict[str, object]) -> None:
         "wave_count",
         "eval_count",
         "traditional_gf_diagnostics",
+        "traditional_gf_diagnostics_by_source",
+        "traditional_gf_source_real",
         "traditional_gf_error",
+        "traditional_gf_error_by_source",
         "calibration",
     ):
         print(f"{key}: {summary[key]}")

@@ -7,6 +7,7 @@ from bot_core.radar import RadarLockConfig
 
 ADAPTIVE_SELECTABLE_GUN_MODES = frozenset({"linear", "traditional_gf", "dynamic_cluster", "anti_surfer"})
 ADAPTIVE_FORCE_GUN_MODES = ADAPTIVE_SELECTABLE_GUN_MODES | frozenset({"displacement"})
+TRADITIONAL_GF_PEAK_SELECTIONS = frozenset({"max", "density"})
 
 
 def _env_flag(name: str) -> bool:
@@ -36,6 +37,11 @@ def _env_float(name: str, default: float, *, minimum: float | None = None, maxim
     if maximum is not None:
         value = min(maximum, value)
     return value
+
+
+def _env_choice(name: str, default: str, choices: frozenset[str]) -> str:
+    raw = os.environ.get(name, "").strip()
+    return raw if raw in choices else default
 
 
 def _forced_gun_mode() -> str | None:
@@ -85,6 +91,34 @@ class GunPolicy:
         "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_COARSE_SEGMENT_FULL_WEIGHT_SAMPLES",
         36,
         minimum=0,
+    )
+    traditional_gf_peak_selection: str = _env_choice(
+        "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_PEAK_SELECTION",
+        "max",
+        TRADITIONAL_GF_PEAK_SELECTIONS,
+    )
+    traditional_gf_peak_support_radius: int = _env_int(
+        "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_PEAK_SUPPORT_RADIUS",
+        1,
+        minimum=0,
+    )
+    traditional_gf_global_source_penalty: float = _env_float(
+        "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_GLOBAL_SOURCE_PENALTY",
+        0.06,
+        minimum=0.0,
+        maximum=1.0,
+    )
+    traditional_gf_blend_source_penalty: float = _env_float(
+        "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_BLEND_SOURCE_PENALTY",
+        0.035,
+        minimum=0.0,
+        maximum=1.0,
+    )
+    traditional_gf_coarse_blend_source_penalty: float = _env_float(
+        "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_COARSE_BLEND_SOURCE_PENALTY",
+        0.02,
+        minimum=0.0,
+        maximum=1.0,
     )
     anti_surfer_min_switch_visits: int = 95
     anti_surfer_min_switch_score: float = 0.28

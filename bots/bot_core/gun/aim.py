@@ -1,6 +1,6 @@
 from dataclasses import replace
 
-from bot_core.gun.models import GunConfig, GunStats, GunSwitchCandidate
+from bot_core.gun.models import GunConfig, GunStats, GunSwitchCandidate, TraditionalGfDiagnostics
 from bot_core.gun.scoring import VirtualGunScorer
 
 
@@ -22,8 +22,14 @@ class AimModeSelector:
         target_id: int,
         virtual_bearings: dict[str, float],
         segment_key: tuple[int, ...] | None,
+        traditional_gf: TraditionalGfDiagnostics | None = None,
     ) -> tuple[str, str | None, bool]:
-        mode, previous, changed, _ = self.select_with_diagnostics(target_id, virtual_bearings, segment_key)
+        mode, previous, changed, _ = self.select_with_diagnostics(
+            target_id,
+            virtual_bearings,
+            segment_key,
+            traditional_gf,
+        )
         return mode, previous, changed
 
     def select_with_diagnostics(
@@ -31,6 +37,7 @@ class AimModeSelector:
         target_id: int,
         virtual_bearings: dict[str, float],
         segment_key: tuple[int, ...] | None,
+        traditional_gf: TraditionalGfDiagnostics | None = None,
     ) -> tuple[str, str | None, bool, tuple[GunSwitchCandidate, ...]]:
         previous = self.active_modes.get(target_id)
         forced_mode = self.config.forced_mode
@@ -39,14 +46,20 @@ class AimModeSelector:
             and forced_mode in virtual_bearings
         ):
             self.active_modes[target_id] = forced_mode
-            raw_score, score, penalty = self._score_with_confidence(target_id, forced_mode, segment_key)
+            raw_score, score, penalty, source_penalty = self._score_with_confidence(
+                target_id,
+                forced_mode,
+                segment_key,
+                traditional_gf,
+            )
             current_mode = previous if previous in virtual_bearings else None
             if current_mode is None:
                 current_mode = self.config.default_mode if self.config.default_mode in virtual_bearings else forced_mode
-            raw_current_score, current_score, current_penalty = self._score_with_confidence(
+            raw_current_score, current_score, current_penalty, current_source_penalty = self._score_with_confidence(
                 target_id,
                 current_mode,
                 segment_key,
+                traditional_gf,
             )
             stats = self.stats.get((target_id, forced_mode))
             candidate = GunSwitchCandidate(
@@ -63,6 +76,9 @@ class AimModeSelector:
                 raw_current_score,
                 penalty,
                 current_penalty,
+                source_penalty,
+                current_source_penalty,
+                traditional_gf.source if forced_mode == "traditional_gf" and traditional_gf is not None else None,
             )
             return forced_mode, previous, previous != forced_mode, (candidate,)
 
@@ -71,7 +87,12 @@ class AimModeSelector:
             current = self.config.default_mode if self.config.default_mode in virtual_bearings else next(iter(virtual_bearings))
 
         best_mode = current
-        raw_current_score, current_score, current_penalty = self._score_with_confidence(target_id, current, segment_key)
+        raw_current_score, current_score, current_penalty, current_source_penalty = self._score_with_confidence(
+            target_id,
+            current,
+            segment_key,
+            traditional_gf,
+        )
         best_score = current_score
         candidates: dict[str, GunSwitchCandidate] = {}
         ordered_modes: list[str] = []
@@ -83,7 +104,12 @@ class AimModeSelector:
             visits = stats.visits if stats is not None else 0
             required_visits = self.min_switch_visits(mode)
             min_score = self.min_switch_score(mode)
-            raw_score, score, penalty = self._score_with_confidence(target_id, mode, segment_key)
+            raw_score, score, penalty, source_penalty = self._score_with_confidence(
+                target_id,
+                mode,
+                segment_key,
+                traditional_gf,
+            )
             reason = "current" if mode == current else "margin"
             if mode != current and visits < required_visits:
                 reason = "visits"
@@ -109,6 +135,9 @@ class AimModeSelector:
                 raw_current_score,
                 penalty,
                 current_penalty,
+                source_penalty,
+                current_source_penalty,
+                traditional_gf.source if mode == "traditional_gf" and traditional_gf is not None else None,
             )
         for mode, candidate in list(candidates.items()):
             if candidate.reason == "selected" and mode != best_mode:
@@ -118,7 +147,12 @@ class AimModeSelector:
         for mode in sorted(self.config.selectable_modes - set(virtual_bearings)):
             stats = self.stats.get((target_id, mode))
             visits = stats.visits if stats is not None else 0
-            raw_score, score, penalty = self._score_with_confidence(target_id, mode, segment_key)
+            raw_score, score, penalty, source_penalty = self._score_with_confidence(
+                target_id,
+                mode,
+                segment_key,
+                traditional_gf,
+            )
             ordered_modes.append(mode)
             candidates[mode] = GunSwitchCandidate(
                 mode,
@@ -134,6 +168,9 @@ class AimModeSelector:
                 raw_current_score,
                 penalty,
                 current_penalty,
+                source_penalty,
+                current_source_penalty,
+                traditional_gf.source if mode == "traditional_gf" and traditional_gf is not None else None,
             )
 
         self.active_modes[target_id] = best_mode
@@ -144,10 +181,27 @@ class AimModeSelector:
         target_id: int,
         mode: str,
         segment_key: tuple[int, ...] | None,
-    ) -> tuple[float, float, float]:
+        traditional_gf: TraditionalGfDiagnostics | None = None,
+    ) -> tuple[float, float, float, float]:
         raw_score = self.scorer.gun_score(target_id, mode, segment_key)
-        penalty = self._confidence_penalty(target_id, mode)
-        return raw_score, max(0.0, raw_score - penalty), penalty
+        confidence_penalty = self._confidence_penalty(target_id, mode)
+        source_penalty = self._traditional_gf_source_penalty(mode, traditional_gf)
+        return raw_score, max(0.0, raw_score - confidence_penalty - source_penalty), confidence_penalty, source_penalty
+
+    def _traditional_gf_source_penalty(
+        self,
+        mode: str,
+        traditional_gf: TraditionalGfDiagnostics | None,
+    ) -> float:
+        if mode != "traditional_gf" or traditional_gf is None:
+            return 0.0
+        if traditional_gf.source == "global":
+            return self.config.traditional_gf_global_source_penalty
+        if traditional_gf.source == "blend":
+            return self.config.traditional_gf_blend_source_penalty * (1.0 - traditional_gf.blend)
+        if traditional_gf.source == "coarse_blend":
+            return self.config.traditional_gf_coarse_blend_source_penalty * (1.0 - traditional_gf.blend)
+        return 0.0
 
     def _confidence_penalty(self, target_id: int, mode: str) -> float:
         if self.config.switch_confidence_visits <= 0 or self.config.switch_confidence_penalty <= 0:

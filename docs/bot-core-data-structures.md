@@ -99,14 +99,14 @@ Location: `bot_core.gun`
 
 | Structure | Purpose |
 | --- | --- |
-| `GunConfig` | Tuning constants for KNN, wave scoring, switch thresholds, and profiles. |
+| `GunConfig` | Tuning constants for KNN, wave scoring, switch thresholds, profile source trust, coarse traditional-GF keys, and profile peak selection. |
 | `GunSample` | One learned target escape sample for KNN: target id, turn, feature vector, guess factor. |
 | `GunWave` | A simulated bullet wave for a fired shot or optional neutral evaluation opportunity. Used to score virtual guns when it reaches the target. |
 | `GunStats` | Per-target/per-mode visits, hits, and rolling score. |
 | `GuessFactorProfile` | Decayed histogram for traditional and anti-surfer guess-factor aiming. Traditional GF can keep global, exact-segment, and coarse-segment profiles. |
 | `AimSolution` | Output of aiming: predicted point, bearing error, selected mode, features, and mode-change info. |
-| `GunSwitchCandidate` | Per-candidate selector diagnostic with adjusted/raw score, confidence penalty, visits, thresholds, margin, and rejection/selection reason. |
-| `WaveVisit` | Telemetry/learning result when a gun wave reaches the target. |
+| `GunSwitchCandidate` | Per-candidate selector diagnostic with adjusted/raw score, confidence/source penalties, visits, thresholds, margin, and rejection/selection reason. |
+| `WaveVisit` | Telemetry/learning result when a gun wave reaches the target, including optional traditional-GF source/error context. |
 | `RollingKnnBuffer` | Per-target bounded memory of `GunSample` records. |
 | `VirtualGunSystem` | The orchestrator for aiming, scoring, KNN memory, waves, and virtual gun selection. |
 | `GunWaveTracker` | Owns pending/fired gun wave retention and round/target cleanup. |
@@ -208,6 +208,13 @@ visits exist:
 score = global_score * (1 - blend) + segment_score * blend
 ```
 
+Traditional-GF profiles can choose peaks with either the strongest single bin
+or an optional density-supported neighborhood. The default single-bin selector
+preserves historical behavior. Density selection scores nearby mass around each
+candidate bin and returns the neighborhood centroid, which lets experiments
+prefer stable broad peaks over isolated spikes without changing histogram
+smoothing or decay.
+
 ### Gun Switch Diagnostics
 
 `AimModeSelector` evaluates only selectable guns that can currently produce a
@@ -225,16 +232,24 @@ The selected candidate is reported as `selected`; the active gun is reported as
 `gun.switch_decision` telemetry and do not change scoring by themselves.
 
 When `GunConfig.switch_confidence_visits` and
-`GunConfig.switch_confidence_penalty` are enabled, selector decisions use an
-adjusted score:
+`GunConfig.switch_confidence_penalty` are enabled, selector decisions can apply
+a low-visit confidence penalty. Bots can also enable source-aware
+`traditional_gf` penalties for low-context profile sources. Selector decisions
+use an adjusted score:
 
 ```text
-adjusted_score = raw_score - confidence_penalty * max(0, 1 - visits / confidence_visits)
+adjusted_score = raw_score - confidence_penalty - source_penalty
 ```
 
 The adjusted score is clamped at zero. Candidate telemetry reports `score` as
 the adjusted decision score and `raw_score` as the virtual-gun score before the
-confidence penalty.
+decision penalties.
+
+`tools/gun_eval_summary.py` reports Traditional GF source diagnostics in three
+layers: real fired/hit conversion by source, profile-weight and selected-GF
+averages by source, and production/eval GF error by source. Use this to check
+whether a profile source is actually converting before changing source trust
+penalties or promoting a coarse-key experiment.
 
 ### KNN Gun Memory
 
