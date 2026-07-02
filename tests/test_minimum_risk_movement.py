@@ -84,6 +84,19 @@ class MinimumRiskMovementTest(unittest.TestCase):
 
         self.assertEqual(near, planner.surf_wave(bot, 1))
 
+    def test_movement_wave_can_use_inferred_fire_turn_and_source(self) -> None:
+        movement = MovementFlattener()
+        bot = _bot(x=500.0, y=500.0, direction=0.0, speed=0.0, arena_width=1000.0, arena_height=1000.0, turn_number=20)
+        source = TargetSnapshot(1, 100.0, 120.0, 180.0, 0.0, 0.0, 17)
+
+        wave = movement.record_enemy_fire(bot, source, 2.0, fired_turn=17)
+
+        self.assertIsNotNone(wave)
+        assert wave is not None
+        self.assertEqual(17, wave.fired_turn)
+        self.assertAlmostEqual(120.0, wave.source_x)
+        self.assertAlmostEqual(180.0, wave.source_y)
+
     def test_reuses_active_destination_during_commit_window(self) -> None:
         movement = MinimumRiskMovement(
             MinimumRiskConfig(

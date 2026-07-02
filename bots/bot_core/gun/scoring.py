@@ -64,6 +64,19 @@ class VirtualGunScorer:
                 best_visits = stats.visits
         return best_score, best_visits
 
+    def mode_confidence(
+        self,
+        target_id: int,
+        mode: str | None,
+        segment_key: tuple[int, ...] | None = None,
+    ) -> tuple[float, int]:
+        if mode is None:
+            return 0.0, 0
+        stats = self.stats.get((target_id, mode))
+        if stats is None:
+            return 0.0, 0
+        return self.gun_score(target_id, mode, segment_key), stats.visits
+
     def gun_score(self, target_id: int, mode: str, segment_key: tuple[int, ...] | None = None) -> float:
         stats = self.stats.get((target_id, mode))
         if stats is None:

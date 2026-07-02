@@ -1,10 +1,22 @@
 import unittest
 
-from bot_core.target_snapshot import TargetSnapshot
+from types import SimpleNamespace
+
+from bot_core.target_snapshot import TargetSnapshot, target_from_hit_bot
 from bot_core.targeting import TargetMemory, TargetSelector
 
 
 class TargetingTest(unittest.TestCase):
+    def test_hit_bot_snapshot_preserves_previous_motion(self) -> None:
+        previous = TargetSnapshot(7, 60.0, 100.0, 100.0, 135.0, 6.0, 20)
+        event = SimpleNamespace(victim_id=7, energy=55.0, x=120.0, y=130.0)
+
+        target = target_from_hit_bot(event, 21, previous)  # type: ignore[arg-type]
+
+        self.assertEqual(135.0, target.direction)
+        self.assertEqual(6.0, target.speed)
+        self.assertEqual(21, target.seen_turn)
+
     def test_target_memory_reports_stale_and_fresh_targets(self) -> None:
         memory = TargetMemory()
         fresh = TargetSnapshot(1, 80.0, 100.0, 120.0, 0.0, 0.0, 10)

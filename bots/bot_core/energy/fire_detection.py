@@ -45,7 +45,12 @@ class EnemyFireDetector:
         our_energy: float,
         cooling_rate: float,
     ) -> EnemyFireDetection:
-        energy_correction = self.correction_ledger.consume(target_id, current_turn, previous_seen_turn)
+        energy_correction = self.correction_ledger.consume(
+            target_id,
+            current_turn,
+            previous_seen_turn,
+            include_after_turn=True,
+        )
         signal = classify_energy_drop(
             previous_energy,
             current_energy,
@@ -54,8 +59,8 @@ class EnemyFireDetector:
             self.config,
             energy_correction=energy_correction,
         )
+        heat_state = self.gun_heat.update(target_id, current_turn, cooling_rate)
         if not signal.is_fire:
-            heat_state = self.gun_heat.update(target_id, current_turn, cooling_rate)
             return EnemyFireDetection(signal, distance, None, heat_state)
 
         previous_prediction = self.previous_predictions.pop(target_id, None)

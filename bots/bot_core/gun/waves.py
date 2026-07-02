@@ -29,3 +29,5 @@ class GunWaveTracker:
 
     def remove_target(self, target_id: int) -> None:
         self.waves[:] = [wave for wave in self.waves if wave.target_id != target_id]
+        if self.pending_wave is not None and self.pending_wave.target_id == target_id:
+            self.pending_wave = None

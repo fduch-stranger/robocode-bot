@@ -100,6 +100,8 @@ class FireTelemetry:
         target_y: float | None | object = _UNSET,
         wave_created: bool | object = _UNSET,
         shadow_bullets: int | object = _UNSET,
+        selected_gun_confidence: float | object = _UNSET,
+        selected_gun_confidence_visits: int | object = _UNSET,
     ) -> None:
         self._sink.log(
             "bullet.fired",
@@ -119,6 +121,8 @@ class FireTelemetry:
                 target_y=target_y,
                 wave_created=wave_created,
                 shadow_bullets=shadow_bullets,
+                selected_gun_confidence=selected_gun_confidence,
+                selected_gun_confidence_visits=selected_gun_confidence_visits,
             ),
         )
 
@@ -277,6 +281,8 @@ def _bullet_fired_fields(
     target_y: float | None | object = _UNSET,
     wave_created: bool | object = _UNSET,
     shadow_bullets: int | object = _UNSET,
+    selected_gun_confidence: float | object = _UNSET,
+    selected_gun_confidence_visits: int | object = _UNSET,
 ) -> dict[str, object]:
     fields: dict[str, object] = {
         "bullet_id": bullet_id,
@@ -301,6 +307,10 @@ def _bullet_fired_fields(
         fields["wave"] = cast(bool, wave_created)
     if shadow_bullets is not _UNSET:
         fields["shadow_bullets"] = cast(int, shadow_bullets)
+    if selected_gun_confidence is not _UNSET:
+        fields["selected_gun_confidence"] = round(cast(float, selected_gun_confidence), 3)
+    if selected_gun_confidence_visits is not _UNSET:
+        fields["selected_gun_confidence_visits"] = cast(int, selected_gun_confidence_visits)
     fields.update(tracked_fields)
     return fields
 

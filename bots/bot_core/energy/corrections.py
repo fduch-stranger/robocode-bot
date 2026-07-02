@@ -9,7 +9,14 @@ class EnemyEnergyCorrectionLedger:
         if len(corrections) > self.max_entries_per_target:
             del corrections[: len(corrections) - self.max_entries_per_target]
 
-    def consume(self, target_id: int, current_turn: int, after_turn: int) -> float:
+    def consume(
+        self,
+        target_id: int,
+        current_turn: int,
+        after_turn: int,
+        *,
+        include_after_turn: bool = False,
+    ) -> float:
         corrections = self._corrections.get(target_id)
         if not corrections:
             return 0.0
@@ -19,7 +26,7 @@ class EnemyEnergyCorrectionLedger:
         for turn, value, reason in corrections:
             if turn > current_turn:
                 remaining.append((turn, value, reason))
-            elif turn > after_turn:
+            elif turn > after_turn or (include_after_turn and turn == after_turn):
                 correction += value
 
         if remaining:

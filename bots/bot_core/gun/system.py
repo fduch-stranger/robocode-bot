@@ -238,13 +238,12 @@ class VirtualGunSystem:
                 remaining_waves.append(wave)
                 continue
 
-            traveled = (bot.turn_number - wave.fire_turn) * wave.bullet_speed
-            target_distance = math.hypot(target.x - wave.source_x, target.y - wave.source_y)
+            visit_x, visit_y, traveled, target_distance = self._wave_visit_position(bot, wave, target)
             if traveled + self.config.wave_visit_margin < target_distance:
                 remaining_waves.append(wave)
                 continue
 
-            actual_bearing = absolute_bearing_between(wave.source_x, wave.source_y, target.x, target.y)
+            actual_bearing = absolute_bearing_between(wave.source_x, wave.source_y, visit_x, visit_y)
             bearing_offset = relative_bearing(actual_bearing, wave.fire_bearing)
             guess_factor = guess_factor_from_offset(
                 bearing_offset,
@@ -285,13 +284,12 @@ class VirtualGunSystem:
                 remaining_waves.append(wave)
                 continue
 
-            traveled = (bot.turn_number - wave.fire_turn) * wave.bullet_speed
-            target_distance = math.hypot(target.x - wave.source_x, target.y - wave.source_y)
+            visit_x, visit_y, traveled, target_distance = self._wave_visit_position(bot, wave, target)
             if traveled + self.config.wave_visit_margin < target_distance:
                 remaining_waves.append(wave)
                 continue
 
-            actual_bearing = absolute_bearing_between(wave.source_x, wave.source_y, target.x, target.y)
+            actual_bearing = absolute_bearing_between(wave.source_x, wave.source_y, visit_x, visit_y)
             bearing_offset = relative_bearing(actual_bearing, wave.fire_bearing)
             guess_factor = guess_factor_from_offset(
                 bearing_offset,
@@ -328,6 +326,21 @@ class VirtualGunSystem:
 
     def target_confidence(self, target_id: int) -> tuple[float, int]:
         return self._scorer.target_confidence(target_id)
+
+    def active_target_confidence(
+        self,
+        target_id: int,
+        segment_key: tuple[int, ...] | None = None,
+    ) -> tuple[float, int]:
+        return self._scorer.mode_confidence(target_id, self._active_modes.get(target_id), segment_key)
+
+    def mode_confidence(
+        self,
+        target_id: int,
+        mode: str | None,
+        segment_key: tuple[int, ...] | None = None,
+    ) -> tuple[float, int]:
+        return self._scorer.mode_confidence(target_id, mode, segment_key)
 
     def clear_round_state(self) -> None:
         self._wave_tracker.clear_round_state()
@@ -719,6 +732,54 @@ class VirtualGunSystem:
         target_distance: float,
     ) -> dict[str, float]:
         return self._scorer.score_virtual_guns(wave, actual_bearing, target_distance)
+
+    def _wave_visit_position(
+        self,
+        bot: Bot,
+        wave: GunWave,
+        target: TargetSnapshot,
+    ) -> tuple[float, float, float, float]:
+        current_traveled = (bot.turn_number - wave.fire_turn) * wave.bullet_speed
+        current_distance = math.hypot(target.x - wave.source_x, target.y - wave.source_y)
+        previous = self._previous_target_position(target)
+        if previous is None or previous.turn >= target.seen_turn:
+            return target.x, target.y, current_traveled, current_distance
+
+        previous_traveled = (previous.turn - wave.fire_turn) * wave.bullet_speed
+        previous_distance = math.hypot(previous.x - wave.source_x, previous.y - wave.source_y)
+        if previous_traveled + self.config.wave_visit_margin >= previous_distance:
+            return previous.x, previous.y, previous_traveled, previous_distance
+        if current_traveled + self.config.wave_visit_margin < current_distance:
+            return target.x, target.y, current_traveled, current_distance
+
+        low = 0.0
+        high = 1.0
+        elapsed = target.seen_turn - previous.turn
+        for _ in range(12):
+            mid = (low + high) / 2.0
+            x = previous.x + (target.x - previous.x) * mid
+            y = previous.y + (target.y - previous.y) * mid
+            turn = previous.turn + elapsed * mid
+            traveled = (turn - wave.fire_turn) * wave.bullet_speed
+            distance = math.hypot(x - wave.source_x, y - wave.source_y)
+            if traveled + self.config.wave_visit_margin >= distance:
+                high = mid
+            else:
+                low = mid
+
+        ratio = high
+        x = previous.x + (target.x - previous.x) * ratio
+        y = previous.y + (target.y - previous.y) * ratio
+        turn = previous.turn + elapsed * ratio
+        traveled = (turn - wave.fire_turn) * wave.bullet_speed
+        distance = math.hypot(x - wave.source_x, y - wave.source_y)
+        return x, y, traveled, distance
+
+    def _previous_target_position(self, target: TargetSnapshot) -> TargetPosition | None:
+        for position in reversed(self._target_history.get(target.bot_id, [])):
+            if position.turn < target.seen_turn:
+                return position
+        return None
 
     def _center_traditional_guess_factor(self, guess_factor: float) -> float:
         return clamp(guess_factor * self.config.traditional_gf_centering_factor, -1.0, 1.0)

@@ -80,6 +80,39 @@ class GunStatsTest(unittest.TestCase):
         self.assertIsNone(tracker.pending_wave)
         self.assertEqual([1, 2], [wave.fire_turn for wave in waves])
 
+    def test_gun_wave_tracker_clears_matching_pending_wave_on_target_remove(self) -> None:
+        waves: list[GunWave] = []
+        tracker = GunWaveTracker(GunConfig(), waves)
+        tracker.set_pending_wave(make_wave(target_id=7))
+
+        tracker.remove_target(7)
+
+        self.assertIsNone(tracker.pending_wave)
+        self.assertIsNone(tracker.record_pending_fire())
+        self.assertEqual([], waves)
+
+    def test_gun_wave_visit_position_interpolates_between_scans(self) -> None:
+        bot = SimpleNamespace(turn_number=12)
+        gun = VirtualGunSystem(GunConfig(wave_visit_margin=0))
+        previous = TargetSnapshot(1, 100.0, 140.0, 40.0, 0.0, 0.0, 8)
+        current = TargetSnapshot(1, 100.0, 80.0, 80.0, 0.0, 0.0, 12)
+        wave = make_wave(fire_turn=0)
+        wave.source_x = 0.0
+        wave.source_y = 0.0
+        wave.bullet_speed = 10.0
+
+        gun.observe_target(previous)
+        gun.observe_target(current)
+        visit_x, visit_y, traveled, distance = gun._wave_visit_position(bot, wave, current)
+
+        self.assertGreater(traveled, 80.0)
+        self.assertLess(traveled, 120.0)
+        self.assertGreater(visit_x, current.x)
+        self.assertLess(visit_x, previous.x)
+        self.assertAlmostEqual(distance, traveled, delta=0.1)
+        self.assertGreater(visit_y, previous.y)
+        self.assertLess(visit_y, current.y)
+
     def test_virtual_gun_scorer_updates_global_and_segment_scores(self) -> None:
         stats: dict[tuple[int, str], GunStats] = {}
         segment_stats: dict[tuple[int, str, tuple[int, ...]], GunStats] = {}
@@ -92,6 +125,19 @@ class GunStatsTest(unittest.TestCase):
         self.assertEqual(1, stats[(1, "linear")].visits)
         self.assertEqual(1, stats[(1, "linear")].hits)
         self.assertEqual(1, segment_stats[(1, "linear", wave.segment_key)].visits)
+
+    def test_virtual_gun_scorer_reports_mode_confidence(self) -> None:
+        stats = {
+            (1, "linear"): GunStats(visits=30, hits=9, rolling_score=0.2),
+            (1, "dynamic_cluster"): GunStats(visits=4, hits=4, rolling_score=0.8),
+        }
+        scorer = VirtualGunScorer(GunConfig(), stats, {})
+
+        score, visits = scorer.mode_confidence(1, "linear")
+
+        self.assertAlmostEqual(0.23, score)
+        self.assertEqual(30, visits)
+        self.assertEqual((0.0, 0), scorer.mode_confidence(1, None))
 
     def test_traditional_gf_error_reports_aim_vs_actual_guess_factor(self) -> None:
         wave = make_wave()
@@ -312,6 +358,33 @@ class GunStatsTest(unittest.TestCase):
         self.assertEqual("linear", previous)
         self.assertTrue(changed)
 
+    def test_aim_mode_selector_forced_diagnostics_keep_previous_score(self) -> None:
+        config = GunConfig(
+            forced_mode="traditional_gf",
+            selectable_modes=frozenset({"linear", "traditional_gf"}),
+            switch_confidence_visits=0,
+        )
+        stats = {
+            (1, "linear"): GunStats(visits=10, hits=0, rolling_score=0.2),
+            (1, "traditional_gf"): GunStats(visits=10, hits=0, rolling_score=0.5),
+        }
+        scorer = VirtualGunScorer(config, stats, {})
+        selector = AimModeSelector(config, scorer, {1: "linear"}, stats)
+
+        selected, _, _, candidates = selector.select_with_diagnostics(
+            1,
+            {"linear": 0.0, "traditional_gf": 1.0},
+            None,
+        )
+
+        self.assertEqual("traditional_gf", selected)
+        candidate = candidates[0]
+        self.assertEqual("forced", candidate.reason)
+        self.assertAlmostEqual(0.35, candidate.score)
+        self.assertAlmostEqual(0.14, candidate.current_score)
+        self.assertAlmostEqual(0.35, candidate.raw_score or 0.0)
+        self.assertAlmostEqual(0.14, candidate.raw_current_score or 0.0)
+
     def test_aim_mode_selector_ignores_forced_unavailable_mode(self) -> None:
         config = GunConfig(
             forced_mode="dynamic_cluster",
@@ -327,6 +400,24 @@ class GunStatsTest(unittest.TestCase):
         self.assertEqual("linear", selected)
         self.assertEqual("linear", previous)
         self.assertFalse(changed)
+
+    def test_aim_mode_selector_unavailable_candidate_reports_historical_score(self) -> None:
+        config = GunConfig(selectable_modes=frozenset({"linear", "dynamic_cluster"}))
+        stats = {
+            (1, "linear"): GunStats(visits=10, hits=0, rolling_score=0.2),
+            (1, "dynamic_cluster"): GunStats(visits=12, hits=3, rolling_score=0.5),
+        }
+        scorer = VirtualGunScorer(config, stats, {})
+        selector = AimModeSelector(config, scorer, {1: "linear"}, stats)
+
+        _, _, _, candidates = selector.select_with_diagnostics(1, {"linear": 0.0}, None)
+
+        by_mode = {candidate.mode: candidate for candidate in candidates}
+        self.assertFalse(by_mode["dynamic_cluster"].available)
+        self.assertEqual("unavailable", by_mode["dynamic_cluster"].reason)
+        self.assertEqual(12, by_mode["dynamic_cluster"].visits)
+        self.assertAlmostEqual(0.425, by_mode["dynamic_cluster"].score)
+        self.assertAlmostEqual(0.425, by_mode["dynamic_cluster"].raw_score or 0.0)
 
     def test_aim_mode_selector_allows_forced_non_selectable_mode(self) -> None:
         config = GunConfig(

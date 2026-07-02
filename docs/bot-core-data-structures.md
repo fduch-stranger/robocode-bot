@@ -510,10 +510,12 @@ ready
 
 `EnemyFireDetector` returns `EnemyFireDetection(signal, distance,
 previous_prediction, heat_state)` after consuming energy corrections, updating
-gun heat for ignored drops, and recording fire-power prediction samples for
-confirmed fire. Adaptive Prime uses this full detector. Chase Lock, Circle
-Strafer, and Sweep Pressure currently keep local detection flow while using the
-shared correction ledger and energy-drop classifier.
+gun heat for every scan, and recording fire-power prediction samples for
+confirmed fire. Gun heat is context for expected-fire waves and telemetry; it is
+not a hard veto over a valid energy-drop fire because scan timing and corrections
+can make the heat estimate stale. Adaptive Prime, Circle Strafer, and Sweep
+Pressure use this full detector. Chase Lock currently keeps local detection flow
+while using the shared correction ledger and energy-drop classifier.
 
 ## Enemy Fire Prediction
 

@@ -42,13 +42,33 @@ def target_from_scan(event: ScannedBotEvent, turn_number: int) -> TargetSnapshot
     )
 
 
-def target_from_hit_bot(event: HitBotEvent, turn_number: int) -> TargetSnapshot:
+def target_from_hit_bot(
+    event: HitBotEvent,
+    turn_number: int,
+    previous: TargetSnapshot | None = None,
+) -> TargetSnapshot:
     return TargetSnapshot(
         bot_id=event.victim_id,
         energy=event.energy,
         x=event.x,
         y=event.y,
-        direction=0,
-        speed=0,
+        direction=previous.direction if previous is not None else 0,
+        speed=previous.speed if previous is not None else 0,
+        seen_turn=turn_number,
+    )
+
+
+def interpolate_target(previous: TargetSnapshot, current: TargetSnapshot, turn_number: int) -> TargetSnapshot:
+    elapsed = current.seen_turn - previous.seen_turn
+    if elapsed <= 0:
+        return current
+    ratio = min(1.0, max(0.0, (turn_number - previous.seen_turn) / elapsed))
+    return TargetSnapshot(
+        bot_id=current.bot_id,
+        energy=current.energy,
+        x=previous.x + (current.x - previous.x) * ratio,
+        y=previous.y + (current.y - previous.y) * ratio,
+        direction=current.direction,
+        speed=previous.speed + (current.speed - previous.speed) * ratio,
         seen_turn=turn_number,
     )

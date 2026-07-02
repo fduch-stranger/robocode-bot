@@ -40,21 +40,29 @@ class AimModeSelector:
         ):
             self.active_modes[target_id] = forced_mode
             raw_score, score, penalty = self._score_with_confidence(target_id, forced_mode, segment_key)
+            current_mode = previous if previous in virtual_bearings else None
+            if current_mode is None:
+                current_mode = self.config.default_mode if self.config.default_mode in virtual_bearings else forced_mode
+            raw_current_score, current_score, current_penalty = self._score_with_confidence(
+                target_id,
+                current_mode,
+                segment_key,
+            )
             stats = self.stats.get((target_id, forced_mode))
             candidate = GunSwitchCandidate(
                 forced_mode,
                 True,
                 score,
-                score,
+                current_score,
                 stats.visits if stats is not None else 0,
                 self.min_switch_visits(forced_mode),
                 self.min_switch_score(forced_mode),
                 self.config.switch_margin,
                 "forced",
                 raw_score,
-                raw_score,
+                raw_current_score,
                 penalty,
-                penalty,
+                current_penalty,
             )
             return forced_mode, previous, previous != forced_mode, (candidate,)
 
@@ -108,20 +116,23 @@ class AimModeSelector:
         if best_mode in candidates and best_mode != current:
             candidates[best_mode] = replace(candidates[best_mode], reason="selected")
         for mode in sorted(self.config.selectable_modes - set(virtual_bearings)):
+            stats = self.stats.get((target_id, mode))
+            visits = stats.visits if stats is not None else 0
+            raw_score, score, penalty = self._score_with_confidence(target_id, mode, segment_key)
             ordered_modes.append(mode)
             candidates[mode] = GunSwitchCandidate(
                 mode,
                 False,
-                0.0,
+                score,
                 current_score,
-                0,
+                visits,
                 self.min_switch_visits(mode),
                 self.min_switch_score(mode),
                 self.config.switch_margin,
                 "unavailable",
-                0.0,
+                raw_score,
                 raw_current_score,
-                0.0,
+                penalty,
                 current_penalty,
             )
 

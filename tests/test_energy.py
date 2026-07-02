@@ -26,6 +26,16 @@ class EnergyTest(unittest.TestCase):
         self.assertAlmostEqual(0.8, ledger.consume(7, current_turn=14, after_turn=-1))
         self.assertEqual(0.0, ledger.consume(7, current_turn=14, after_turn=-1))
 
+    def test_enemy_energy_correction_ledger_can_include_after_turn(self) -> None:
+        ledger = EnemyEnergyCorrectionLedger()
+        ledger.record(7, turn_number=10, correction=1.2, reason="same_turn_hit")
+        ledger.record(7, turn_number=11, correction=2.0, reason="later_hit")
+
+        correction = ledger.consume(7, current_turn=10, after_turn=10, include_after_turn=True)
+
+        self.assertAlmostEqual(1.2, correction)
+        self.assertAlmostEqual(2.0, ledger.consume(7, current_turn=11, after_turn=10))
+
     def test_enemy_energy_correction_ledger_trims_oldest_entries(self) -> None:
         ledger = EnemyEnergyCorrectionLedger(max_entries_per_target=2)
         ledger.record(3, turn_number=1, correction=1.0, reason="first")
@@ -82,6 +92,35 @@ class EnergyTest(unittest.TestCase):
         self.assertNotIn(4, previous_predictions)
         self.assertEqual(1, predictor.sample_count(4))
         self.assertIsNotNone(predictor.mean_absolute_error(4))
+
+    def test_enemy_fire_detector_keeps_energy_drop_fire_when_gun_heat_is_hot(self) -> None:
+        detector = EnemyFireDetector(EnergyDropConfig())
+        detector.evaluate_scan(
+            target_id=4,
+            previous_energy=80.0,
+            current_energy=78.0,
+            previous_seen_turn=10,
+            current_turn=11,
+            scan_gap=1,
+            distance=320.0,
+            our_energy=90.0,
+            cooling_rate=0.1,
+        )
+
+        detection = detector.evaluate_scan(
+            target_id=4,
+            previous_energy=78.0,
+            current_energy=76.0,
+            previous_seen_turn=11,
+            current_turn=12,
+            scan_gap=1,
+            distance=320.0,
+            our_energy=90.0,
+            cooling_rate=0.1,
+        )
+
+        self.assertTrue(detection.is_fire)
+        self.assertEqual("fire", detection.signal.reason)
 
     def test_fire_gate_returns_ready_decision(self) -> None:
         gate = FireGate(FireGateConfig(fire_memory_turns=1, alignment_degrees=7, energy_margin=5))

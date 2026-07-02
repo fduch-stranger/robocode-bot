@@ -161,12 +161,14 @@ Detected fire creates:
 - an evasion window
 
 Expected fire can also be generated from gun heat when the enemy is likely ready
-to shoot again. The exact energy-drop correction and sample fields are described
-in [Bot Core Data Structures](bot-core-data-structures.md#enemy-fire-prediction).
+to shoot again. Gun heat is not used as a hard veto against a valid energy-drop
+fire in the shared detector; direct energy evidence wins over a stale heat
+estimate. The exact energy-drop correction and sample fields are described in
+[Bot Core Data Structures](bot-core-data-structures.md#enemy-fire-prediction).
 Adaptive Prime uses `EnemyFireDetector` for the common correction,
-classification, gun-heat, and fire-power sample update sequence. Chase Lock,
-Circle Strafer, and Sweep Pressure currently keep local detection methods while
-sharing `EnergyDropConfig`, `classify_energy_drop`,
+classification, gun-heat, and fire-power sample update sequence; Circle Strafer
+and Sweep Pressure use the same shared detector. Chase Lock currently keeps a
+local detection method while sharing `EnergyDropConfig`, `classify_energy_drop`,
 `EnemyEnergyCorrectionLedger`, and the telemetry emitters.
 
 ## Movement Learning

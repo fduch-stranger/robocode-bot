@@ -173,6 +173,8 @@ EVENT_SPECS: dict[str, TelemetryEventSpec] = {
             "gun_samples",
             "gun_confidence",
             "gun_confidence_visits",
+            "selected_gun_confidence",
+            "selected_gun_confidence_visits",
             "target_age",
             "target_x",
             "target_y",

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from robocode_tank_royale.bot_api import Bot, BotInfo, Color
 from robocode_tank_royale.bot_api.events import (
+    BotDeathEvent,
     BulletFiredEvent,
     BulletHitBotEvent,
     HitBotEvent,
@@ -15,11 +16,11 @@ from robocode_tank_royale.bot_api.events import (
 from bot_core.debug import DebugLogger, FiredBulletTracker
 from bot_core.energy import (
     EnemyEnergyCorrectionLedger,
+    EnemyFireDetector,
     EnemyFirePowerPredictor,
     EnergyDropConfig,
     FireGate,
     FireGateConfig,
-    classify_energy_drop,
 )
 from bot_core.gun import AimSolution, GunConfig, TargetMotion, VirtualGunSystem, should_log_switch_decision
 from bot_core.movement import MinimumRiskMovement, MovementCommand, MovementFlattener, MovementFlatteningConfig
@@ -28,7 +29,7 @@ from bot_core.radar import RadarLockConfig, lock_priority_radar
 from bot_core.geometry.angles import body_bearing_to
 from bot_core.geometry.numeric import clamp
 from bot_core.geometry.position import distance_to, drive_to_destination
-from bot_core.target_snapshot import TargetSnapshot, target_from_scan
+from bot_core.target_snapshot import TargetSnapshot, interpolate_target, target_from_hit_bot, target_from_scan
 from bot_core.telemetry.energy import EnergyTelemetry
 from bot_core.telemetry.fire import (
     FireTelemetry,
@@ -154,6 +155,11 @@ class SweepPressure(Bot):
         self._last_turn_number = -1
         self._enemy_energy_corrections = EnemyEnergyCorrectionLedger()
         self._enemy_fire_power = EnemyFirePowerPredictor()
+        self._enemy_fire_detector = EnemyFireDetector(
+            ENERGY_DROP_CONFIG,
+            self._enemy_energy_corrections,
+            fire_power=self._enemy_fire_power,
+        )
         self._evade_until_turn = -1
         self._target_accel: dict[int, float] = {}
         self._last_velocity_change_turn: dict[int, int] = {}
@@ -201,6 +207,7 @@ class SweepPressure(Bot):
         while self.running:
             self._reset_if_new_round()
             self._own_motion.update(self)
+            self._forget_stale_targets()
             self._move()
             self._track_target()
             self.go()
@@ -220,10 +227,12 @@ class SweepPressure(Bot):
                 decision = self._minimum_risk.choose(self, list(self._targets.values()), focus_target)
                 if decision is not None:
                     turn, speed = self._drive_to_destination(decision.x, decision.y, SWEEP_SPEED)
+                    command = MovementCommand("minimum_risk", turn, speed)
+                    command.apply(self)
                     self._movement_telemetry.sample_minimum_risk(
                         focus_target.bot_id,
                         decision,
-                        MovementCommand("minimum_risk", turn, speed),
+                        command,
                         len(self._targets),
                     )
                     return
@@ -252,49 +261,40 @@ class SweepPressure(Bot):
         else:
             self._consume_enemy_energy_correction(event.scanned_bot_id, self.turn_number, -1)
         self._targets[event.scanned_bot_id] = target_from_scan(event, self.turn_number)
-        self._gun.observe_target(self._targets[event.scanned_bot_id])
+        target = self._targets[event.scanned_bot_id]
+        self._gun.observe_target(target)
+        self._log_wave_visits(target)
         if previous is None:
             self._targeting_telemetry.record_scan_new(event.scanned_bot_id, event.energy, event.x, event.y)
 
     def _detect_enemy_fire(self, event: ScannedBotEvent, previous: TargetSnapshot, scan_gap: int) -> bool:
         distance = distance_to(self, event.x, event.y)
-        energy_correction = self._consume_enemy_energy_correction(
+        detection = self._enemy_fire_detector.evaluate_scan(
             event.scanned_bot_id,
-            self.turn_number,
-            previous.seen_turn,
-        )
-        signal = classify_energy_drop(
             previous.energy,
             event.energy,
+            previous.seen_turn,
+            self.turn_number,
             scan_gap,
             distance,
-            ENERGY_DROP_CONFIG,
-            energy_correction=energy_correction,
+            self.energy,
+            self.gun_cooling_rate,
         )
+        signal = detection.signal
         if not signal.is_fire:
             if signal.raw_energy_drop > 0 or signal.energy_correction:
                 self._energy_telemetry.record_drop_ignored(event.scanned_bot_id, signal, scan_gap, distance)
             return False
 
         actual_fire_power = signal.fire_power or 1.5
-        prediction = self._enemy_fire_power.predict(
-            event.scanned_bot_id,
-            enemy_energy=previous.energy,
-            our_energy=self.energy,
-            distance=distance,
-        )
-        self._enemy_fire_power.record(
-            event.scanned_bot_id,
-            enemy_energy=previous.energy,
-            our_energy=self.energy,
-            distance=distance,
-            fire_power=actual_fire_power,
-            previous_prediction=prediction,
-        )
+        current_target = target_from_scan(event, self.turn_number)
+        estimated_fire_turn = max(previous.seen_turn + 1, self.turn_number - max(0, scan_gap - 1))
+        fire_source = interpolate_target(previous, current_target, estimated_fire_turn)
         movement_wave = self._movement.record_enemy_fire(
             self,
-            target_from_scan(event, self.turn_number),
+            fire_source,
             actual_fire_power,
+            fired_turn=estimated_fire_turn,
             **self._own_motion.movement_wave_kwargs(self.turn_number),
         )
         active_evasion = not self._wall_risk()
@@ -310,7 +310,7 @@ class SweepPressure(Bot):
             "active_duel" if active_evasion else "threat_only",
             self._evade_until_turn,
             movement_wave is not None,
-            prediction,
+            detection.previous_prediction,
             self._enemy_fire_power.sample_count(event.scanned_bot_id),
             power_mae,
             evading=active_evasion,
@@ -367,24 +367,23 @@ class SweepPressure(Bot):
         can_fire, hold_reason = self._can_fire(age, distance, aim.gun_bearing, firepower)
         if GUN_POLICY.eval_waves_enabled and age <= 2 and self.gun_heat <= 0 and self.energy > firepower:
             self._gun.maybe_add_eval_wave(self, target, firepower, aim)
+        self._fire_telemetry.sample_track(
+            SimpleTrackTick(
+                target,
+                age,
+                distance,
+                aim,
+                radar_command,
+                firepower,
+                hold_reason,
+                self._gun.sample_count,
+                self._gun.score_summary(target.bot_id, score_segment),
+                len(self._targets),
+            )
+        )
         if can_fire:
             self._gun.set_pending_wave(self._gun.make_wave(self, target, firepower, aim))
             self.set_fire(firepower)
-        else:
-            self._fire_telemetry.sample_track(
-                SimpleTrackTick(
-                    target,
-                    age,
-                    distance,
-                    aim,
-                    radar_command,
-                    firepower,
-                    hold_reason,
-                    self._gun.sample_count,
-                    self._gun.score_summary(target.bot_id, score_segment),
-                    len(self._targets),
-                )
-            )
 
     def _target_motion(self, target: TargetSnapshot) -> TargetMotion:
         return TargetMotion(
@@ -449,7 +448,8 @@ class SweepPressure(Bot):
             self._log("target.stale", bot_id=bot_id)
             del self._targets[bot_id]
             self._gun.remove_target(bot_id)
-            self._movement.remove_target(bot_id)
+            self._movement.remove_target(bot_id, clear_profile=False)
+            self._enemy_fire_detector.remove_target(bot_id)
         if self._target_id not in self._targets:
             self._target_id = None
 
@@ -458,7 +458,7 @@ class SweepPressure(Bot):
             self._targets.clear()
             self._target_id = None
             self._move_direction = 1
-            self._enemy_energy_corrections.clear()
+            self._enemy_fire_detector.clear_round_state()
             self._evade_until_turn = -1
             self._target_accel.clear()
             self._last_velocity_change_turn.clear()
@@ -562,6 +562,11 @@ class SweepPressure(Bot):
         )
 
     def on_hit_bot(self, event: HitBotEvent) -> None:
+        self._targets[event.victim_id] = target_from_hit_bot(
+            event,
+            self.turn_number,
+            self._targets.get(event.victim_id),
+        )
         self._move_direction *= -1
         self._log(
             "hit.bot",
@@ -584,10 +589,24 @@ class SweepPressure(Bot):
             bullet_fields,
         )
 
+    def on_bot_death(self, event: BotDeathEvent) -> None:
+        self._targets.pop(event.victim_id, None)
+        self._gun.remove_target(event.victim_id)
+        self._movement.remove_target(event.victim_id, clear_profile=False)
+        self._enemy_fire_detector.remove_target(event.victim_id)
+        if self._target_id == event.victim_id:
+            self._target_id = None
+        self._log("target.dead", bot_id=event.victim_id)
+
     def on_bullet_fired(self, event: BulletFiredEvent) -> None:
-        target = self._targets.get(self._target_id) if self._target_id is not None else None
-        gun_score, gun_visits = self._gun.target_confidence(target.bot_id) if target is not None else (0.0, 0)
         wave = self._gun.record_pending_fire()
+        target_id = wave.target_id if wave is not None else self._target_id
+        gun_score, gun_visits = self._gun.target_confidence(target_id) if target_id is not None else (0.0, 0)
+        selected_gun_score, selected_gun_visits = (
+            self._gun.mode_confidence(target_id, wave.aim_mode, wave.segment_key)
+            if target_id is not None and wave is not None
+            else (0.0, 0)
+        )
         self._movement.record_shadow_bullet(
             self,
             event.bullet.bullet_id,
@@ -603,7 +622,7 @@ class SweepPressure(Bot):
         )
         self._fire_telemetry.record_bullet_fired(
             event.bullet.bullet_id,
-            self._target_id,
+            target_id,
             event.bullet.power,
             event.bullet.direction,
             self.energy,
@@ -614,6 +633,8 @@ class SweepPressure(Bot):
             bullet_fields,
             wave_created=wave is not None,
             shadow_bullets=self._movement.shadow_bullet_count,
+            selected_gun_confidence=selected_gun_score,
+            selected_gun_confidence_visits=selected_gun_visits,
         )
 
     def _log(self, event: str, **fields: object) -> None:

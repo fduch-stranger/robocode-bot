@@ -167,6 +167,8 @@ class TelemetryEmitterTest(unittest.TestCase):
             target_x=None,
             target_y=120.04,
             shadow_bullets=3,
+            selected_gun_confidence=0.3456,
+            selected_gun_confidence_visits=8,
         )
 
         self.assertEqual(
@@ -215,6 +217,8 @@ class TelemetryEmitterTest(unittest.TestCase):
         self.assertIsNone(sink.records[5][2]["target_age"])
         self.assertIsNone(sink.records[5][2]["target_x"])
         self.assertEqual(120.0, sink.records[5][2]["target_y"])
+        self.assertEqual(0.346, sink.records[5][2]["selected_gun_confidence"])
+        self.assertEqual(8, sink.records[5][2]["selected_gun_confidence_visits"])
 
     def test_fire_telemetry_records_traditional_gf_diagnostics(self) -> None:
         sink = RecordingSink()
