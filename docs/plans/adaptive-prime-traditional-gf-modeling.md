@@ -15,6 +15,19 @@ and calibration problem before changing switch thresholds again.
 - This suggests `traditional_gf` may be over-trusted by virtual scoring or too
   coarse for surfer-style movement.
 
+## Latest Checks
+
+- `adaptive-traditional-gf-segment-12-48-basic-gf-surfer-24`: Adaptive won
+  `2123` to `1532` with firsts `15-9`. `traditional_gf` fired `115` shots with
+  `0.0957` hit rate; profile diagnostics had `164` blended samples and `214`
+  global samples.
+- `adaptive-traditional-gf-forced-12-basic-gf-surfer`: forced
+  `traditional_gf` lost `400` to `1388`, firsts `3-9`, with `0.0875`
+  `traditional_gf` hit rate. Treat this as evidence that the model still needs
+  work, not only switch-threshold tuning.
+- `adaptive-traditional-gf-forced-profile-smoke-6`: verified decoupled
+  `gun.traditional_gf_profile` sampling in forced mode with `28` profile events.
+
 ## Hypothesis
 
 The current `traditional_gf` aim model is a single decayed global guess-factor
@@ -25,7 +38,11 @@ velocity, acceleration, velocity-change age, and firepower.
 
 ## Modeling Candidates
 
-1. Add segmented traditional-GF profiles with global fallback.
+1. Add segmented traditional-GF profiles with global fallback. Started with
+   Adaptive-specific config, then lowered the segment blend warmup to
+   `traditional_gf_segment_min_samples=12` and
+   `traditional_gf_segment_full_weight_samples=48` after the first telemetry
+   check showed the initial 18/80 warmup rarely let segment evidence participate.
    - Useful dimensions: distance, wall margin, lateral velocity, acceleration,
      velocity-change age, and firepower.
    - Keep the existing global profile as the fallback when segment evidence is
@@ -36,9 +53,13 @@ velocity, acceleration, velocity-change age, and firepower.
    - Increase segment influence as segment visits grow.
    - Avoid hard switching to low-sample segment peaks.
 
-3. Add telemetry before major policy changes.
+3. Add telemetry before major policy changes. Started by adding
+   `gun.traditional_gf_profile` plus optional `track` fields for global GF,
+   segment GF, selected GF, profile weights, blend, and source.
    - Report global GF peak, segment GF peak, selected GF, segment visits, and
      selected profile source/blend.
+   - Keep profile sampling independent from switch-decision sampling so forced
+     gun tests expose model behavior.
    - Compare those fields with post-switch real hit rate.
 
 4. Tune histogram smoothing after segmentation.

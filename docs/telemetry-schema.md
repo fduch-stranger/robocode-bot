@@ -48,8 +48,9 @@ The browser viewer and telemetry audit normalize bot-specific fields into a comm
 | `gun.eval_wave_visit` | - | `target`, `guess_factor`, `samples`, `traveled`, `distance`, `selected_gun`, `virtual_scores`, `gun_scores` | `aim_mode` from `selected_gun`<br>`gun_mode` from `selected_gun` |
 | `gun.switch` | `selected` | `target`, `previous`, `scores` | `aim_mode` from `selected`<br>`gun_mode` from `selected` |
 | `gun.switch_decision` | `selected` | `target`, `previous`, `changed`, `candidates` | `aim_mode` from `selected`<br>`gun_mode` from `selected` |
+| `gun.traditional_gf_profile` | `target` | `aim_mode`, `global_guess_factor`, `global_weight`, `segment_guess_factor`, `segment_weight`, `blend`, `selected_guess_factor`, `source` | - |
 | `gun.wave_visit` | - | `target`, `guess_factor`, `samples`, `traveled`, `distance`, `selected_gun`, `virtual_scores`, `gun_scores` | `aim_mode` from `selected_gun`<br>`gun_mode` from `selected_gun` |
-| `track` | `target`, `distance`, `gun_bearing`, `aim_mode` | `age`, `radar_bearing`, `radar_turn`, `radar_mode`, `radar_target`, `radar_age`, `predicted_x`, `predicted_y`, `aim_guess_factor`, `gun_samples`, `gun_scores`, `firepower`, `hold_reason`, `fire_alignment_limit`, `movement_mode`, `known_targets` | `power` from `firepower`<br>`reason` from `hold_reason` |
+| `track` | `target`, `distance`, `gun_bearing`, `aim_mode` | `age`, `radar_bearing`, `radar_turn`, `radar_mode`, `radar_target`, `radar_age`, `predicted_x`, `predicted_y`, `aim_guess_factor`, `traditional_gf_global`, `traditional_gf_global_weight`, `traditional_gf_segment`, `traditional_gf_segment_weight`, `traditional_gf_blend`, `traditional_gf_selected`, `traditional_gf_source`, `gun_samples`, `gun_scores`, `firepower`, `hold_reason`, `fire_alignment_limit`, `movement_mode`, `known_targets` | `power` from `firepower`<br>`reason` from `hold_reason` |
 
 ### Lifecycle
 

@@ -15,6 +15,7 @@ from bot_core.gun.models import (
     GuessFactorProfile,
     TargetMotion,
     TargetPosition,
+    TraditionalGfDiagnostics,
     WaveVisit,
 )
 from bot_core.gun.scoring import VirtualGunScorer
@@ -52,6 +53,7 @@ class VirtualGunSystem:
     _active_modes: dict[int, str] = field(default_factory=dict)
     _target_history: dict[int, list[TargetPosition]] = field(default_factory=dict)
     _traditional_profiles: dict[int, GuessFactorProfile] = field(default_factory=dict)
+    _traditional_segment_profiles: dict[tuple[int, tuple[int, ...]], GuessFactorProfile] = field(default_factory=dict)
     _anti_surfer_profiles: dict[int, GuessFactorProfile] = field(default_factory=dict)
     _wave_tracker: GunWaveTracker = field(init=False)
     _scorer: VirtualGunScorer = field(init=False)
@@ -111,7 +113,14 @@ class VirtualGunSystem:
         if displacement_bearing is not None:
             virtual_bearings["displacement"] = displacement_bearing
 
-        traditional_guess_factor = self._traditional_guess_factor(target.bot_id) if allow_traditional_gf else None
+        traditional_diagnostics = (
+            self._traditional_guess_factor_diagnostics(target.bot_id, segment_key)
+            if allow_traditional_gf
+            else None
+        )
+        traditional_guess_factor = (
+            traditional_diagnostics.selected_guess_factor if traditional_diagnostics is not None else None
+        )
         if traditional_guess_factor is not None:
             virtual_bearings["traditional_gf"] = self._guess_factor_aim_bearing(
                 bot,
@@ -160,6 +169,7 @@ class VirtualGunSystem:
             previous_mode=previous_mode,
             mode_changed=mode_changed,
             switch_candidates=switch_candidates,
+            traditional_gf=traditional_diagnostics,
         )
 
     @staticmethod
@@ -244,7 +254,7 @@ class VirtualGunSystem:
             virtual_scores = self._score_virtual_guns(wave, actual_bearing, target_distance)
             self._knn_sequence += 1
             self._knn_memory.add(GunSample(wave.target_id, self._knn_sequence, wave.features, guess_factor))
-            self._record_traditional_guess_factor(wave.target_id, guess_factor)
+            self._record_traditional_guess_factor(wave.target_id, guess_factor, wave.segment_key)
             self._record_anti_surfer_guess_factor(wave.target_id, guess_factor)
             visits.append(
                 WaveVisit(
@@ -472,25 +482,131 @@ class VirtualGunSystem:
             guess_factor *= clamp(blend, 0.0, 1.0)
         return clamp(guess_factor, -1.0, 1.0)
 
-    def _record_traditional_guess_factor(self, target_id: int, guess_factor: float) -> None:
+    def _record_traditional_guess_factor(
+        self,
+        target_id: int,
+        guess_factor: float,
+        segment_key: tuple[int, ...] | None = None,
+    ) -> None:
         profile = self._traditional_profiles.setdefault(
             target_id,
             GuessFactorProfile(bins=[0.0] * self.config.guess_factor_bins),
         )
+        self._record_guess_factor_profile(
+            profile,
+            guess_factor,
+            self.config.traditional_gf_smoothing_bins,
+            self.config.traditional_gf_decay,
+        )
+        if self.config.traditional_gf_segment_min_samples > 0 and segment_key is not None:
+            segment_profile = self._traditional_segment_profiles.setdefault(
+                (target_id, segment_key),
+                GuessFactorProfile(bins=[0.0] * self.config.guess_factor_bins),
+            )
+            self._record_guess_factor_profile(
+                segment_profile,
+                guess_factor,
+                self.config.traditional_gf_smoothing_bins,
+                self.config.traditional_gf_decay,
+            )
+
+    def _record_guess_factor_profile(
+        self,
+        profile: GuessFactorProfile,
+        guess_factor: float,
+        smoothing_bins: float,
+        decay: float,
+    ) -> None:
         profile.visits += 1
-        profile.effective_weight = profile.effective_weight * self.config.traditional_gf_decay + 1.0
+        profile.effective_weight = profile.effective_weight * decay + 1.0
         bin_index = guess_factor_to_bin(guess_factor, self.config.guess_factor_bins)
         for index in range(self.config.guess_factor_bins):
-            profile.bins[index] *= self.config.traditional_gf_decay
-            offset = (index - bin_index) / self.config.traditional_gf_smoothing_bins
+            profile.bins[index] *= decay
+            offset = (index - bin_index) / smoothing_bins
             profile.bins[index] += math.exp(-(offset * offset))
 
-    def _traditional_guess_factor(self, target_id: int) -> float | None:
+    def _traditional_guess_factor(
+        self,
+        target_id: int,
+        segment_key: tuple[int, ...] | None = None,
+    ) -> float | None:
+        diagnostics = self._traditional_guess_factor_diagnostics(target_id, segment_key)
+        return diagnostics.selected_guess_factor if diagnostics is not None else None
+
+    def _traditional_guess_factor_diagnostics(
+        self,
+        target_id: int,
+        segment_key: tuple[int, ...] | None = None,
+    ) -> TraditionalGfDiagnostics | None:
         profile = self._traditional_profiles.get(target_id)
         if profile is None or profile.effective_weight < self.config.traditional_gf_min_samples:
             return None
+        global_guess_factor = self._profile_guess_factor(profile)
+        if self.config.traditional_gf_segment_min_samples <= 0 or segment_key is None:
+            return TraditionalGfDiagnostics(
+                global_guess_factor=global_guess_factor,
+                global_weight=profile.effective_weight,
+                selected_guess_factor=global_guess_factor,
+                source="global",
+            )
+
+        segment_profile = self._traditional_segment_profiles.get((target_id, segment_key))
+        if (
+            segment_profile is None
+            or segment_profile.effective_weight < self.config.traditional_gf_segment_min_samples
+        ):
+            return TraditionalGfDiagnostics(
+                global_guess_factor=global_guess_factor,
+                global_weight=profile.effective_weight,
+                segment_weight=segment_profile.effective_weight if segment_profile is not None else 0.0,
+                selected_guess_factor=global_guess_factor,
+                source="global",
+            )
+
+        blend = clamp(
+            (segment_profile.effective_weight - self.config.traditional_gf_segment_min_samples)
+            / max(
+                1.0,
+                self.config.traditional_gf_segment_full_weight_samples
+                - self.config.traditional_gf_segment_min_samples,
+            ),
+            0.0,
+            1.0,
+        )
+        segment_guess_factor = self._profile_guess_factor(segment_profile)
+        selected_guess_factor = self._blended_profile_guess_factor(profile, segment_profile, blend)
+        return TraditionalGfDiagnostics(
+            global_guess_factor=global_guess_factor,
+            global_weight=profile.effective_weight,
+            segment_guess_factor=segment_guess_factor,
+            segment_weight=segment_profile.effective_weight,
+            blend=blend,
+            selected_guess_factor=selected_guess_factor,
+            source="segment" if blend >= 1.0 else "blend",
+        )
+
+    def _profile_guess_factor(self, profile: GuessFactorProfile) -> float:
         best_index = max(range(len(profile.bins)), key=lambda index: profile.bins[index])
         return bin_to_guess_factor(best_index, self.config.guess_factor_bins)
+
+    def _blended_profile_guess_factor(
+        self,
+        global_profile: GuessFactorProfile,
+        segment_profile: GuessFactorProfile,
+        segment_weight: float,
+    ) -> float:
+        best_index = max(
+            range(self.config.guess_factor_bins),
+            key=lambda index: (
+                (1.0 - segment_weight) * self._normalized_bin(global_profile, index)
+                + segment_weight * self._normalized_bin(segment_profile, index)
+            ),
+        )
+        return bin_to_guess_factor(best_index, self.config.guess_factor_bins)
+
+    @staticmethod
+    def _normalized_bin(profile: GuessFactorProfile, index: int) -> float:
+        return profile.bins[index] / max(0.001, profile.effective_weight)
 
     def _record_anti_surfer_guess_factor(self, target_id: int, guess_factor: float) -> None:
         profile = self._anti_surfer_profiles.setdefault(

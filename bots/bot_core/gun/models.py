@@ -36,6 +36,8 @@ class GunConfig:
     traditional_gf_min_samples: int = 28
     traditional_gf_smoothing_bins: float = 1.25
     traditional_gf_decay: float = 0.985
+    traditional_gf_segment_min_samples: int = 0
+    traditional_gf_segment_full_weight_samples: int = 80
     traditional_gf_min_switch_visits: int = 260
     traditional_gf_min_switch_score: float = 0.42
     anti_surfer_min_samples: int = 7
@@ -95,6 +97,17 @@ class GuessFactorProfile:
 
 
 @dataclass(frozen=True)
+class TraditionalGfDiagnostics:
+    global_guess_factor: float
+    global_weight: float
+    segment_guess_factor: float | None = None
+    segment_weight: float = 0.0
+    blend: float = 0.0
+    selected_guess_factor: float | None = None
+    source: str = "global"
+
+
+@dataclass(frozen=True)
 class TargetPosition:
     turn: int
     x: float
@@ -115,6 +128,7 @@ class AimSolution:
     previous_mode: str | None = None
     mode_changed: bool = False
     switch_candidates: tuple["GunSwitchCandidate", ...] = ()
+    traditional_gf: TraditionalGfDiagnostics | None = None
 
 
 @dataclass(frozen=True)

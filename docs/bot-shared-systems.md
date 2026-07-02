@@ -91,6 +91,16 @@ floor, margin, or a better superseding candidate.
 virtual-gun scoring, and aim-mode switching are isolated in `GunWaveTracker`,
 `VirtualGunScorer`, and `AimModeSelector`.
 
+Traditional guess-factor aiming always keeps a global profile per target.
+Bots can also enable segmented traditional-GF profiles. When enough samples
+exist in the current segment, the aim model blends normalized global and
+segment profile peaks; otherwise it falls back to the global profile.
+Track telemetry can include `traditional_gf_*` fields showing global/segment
+peaks, profile weights, selected GF, blend, and source.
+`gun.traditional_gf_profile` records the same model diagnostics as a sampled
+model event, which keeps scripted telemetry useful even when selector or `track`
+samples are sparse.
+
 ## Gun Learning
 
 ```mermaid
@@ -203,6 +213,8 @@ Telemetry is JSONL. Common event names:
 - `gun.switch`: selected gun mode changes or initial selection.
 - `gun.switch_decision`: sampled selector diagnostics for available and
   unavailable candidate guns.
+- `gun.traditional_gf_profile`: sampled traditional-GF model source, global
+  and segment peaks, profile weights, blend, and selected GF.
 - `gun.wave_visit`: virtual gun scoring result.
 - `gun.eval_wave_visit`: optional neutral gun-evaluation result. These visits
   are separate from production switcher stats.

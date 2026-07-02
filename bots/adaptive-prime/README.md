@@ -130,6 +130,8 @@ less linear-biased than the shared defaults:
   switch visit thresholds.
 - `traditional_gf` has an Adaptive-specific activation path so it can replace
   `linear` when virtual scoring shows a clear advantage.
+- `traditional_gf` uses segmented guess-factor profile blending with global
+  fallback so the actual bearing can track current movement context.
 - `displacement` is force-testable but not live-selectable yet; BasicGFSurfer
   telemetry showed high virtual scores but poor real hit rate and noisy
   switching.
@@ -185,8 +187,11 @@ checks are done.
 - `enemy.fire_detected`: confirmed enemy energy-drop fire.
 - `gun.switch_decision`: sampled selector diagnostics, including candidate
   scores, visits, thresholds, margin, and rejection reason.
+- `gun.traditional_gf_profile`: sampled global/segment traditional-GF profile
+  diagnostics emitted periodically, including during forced-gun tests.
 - `track`: selected target, aim mode, movement mode, radar mode, and fire hold
-  state.
+  state. When `traditional_gf` is available, includes `traditional_gf_*`
+  fields for global/segment GF peaks, blend, selected GF, and source.
 
 Use [Tooling: Telemetry Viewer](../../docs/tooling.md#telemetry-viewer) for
 launch, reset, audit, and stop commands.

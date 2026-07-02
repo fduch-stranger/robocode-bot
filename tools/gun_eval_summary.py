@@ -63,6 +63,8 @@ def summarize_events(events: list[dict[str, Any]], *, post_switch_shots: int = 6
     eval_scores: dict[str, list[float]] = defaultdict(list)
     wave_scores_by_target: dict[tuple[str, str], list[float]] = defaultdict(list)
     eval_scores_by_target: dict[tuple[str, str], list[float]] = defaultdict(list)
+    traditional_gf_sources: Counter[str] = Counter()
+    traditional_gf_values: dict[str, list[float]] = defaultdict(list)
     switch_windows: list[SwitchWindow] = []
     active_switch_window: int | None = None
     shot_to_switch_window: dict[str, int] = {}
@@ -114,6 +116,10 @@ def summarize_events(events: list[dict[str, Any]], *, post_switch_shots: int = 6
             _record_wave(fields, wave_selected, wave_scores, wave_scores_by_target)
         elif name == "gun.eval_wave_visit":
             _record_wave(fields, eval_selected, eval_scores, eval_scores_by_target)
+        elif name == "track" and fields.get("traditional_gf_source"):
+            _record_traditional_gf_diagnostics(fields, traditional_gf_sources, traditional_gf_values)
+        elif name == "gun.traditional_gf_profile" and fields.get("source"):
+            _record_traditional_gf_diagnostics(fields, traditional_gf_sources, traditional_gf_values)
         elif name == "gun.switch_decision" and fields.get("changed"):
             if active_switch_window is not None:
                 switch_windows[active_switch_window].accepting = False
@@ -132,6 +138,10 @@ def summarize_events(events: list[dict[str, Any]], *, post_switch_shots: int = 6
         "eval_avg": _averages(eval_scores),
         "wave_count": {mode: len(scores) for mode, scores in sorted(wave_scores.items())},
         "eval_count": {mode: len(scores) for mode, scores in sorted(eval_scores.items())},
+        "traditional_gf_diagnostics": _traditional_gf_diagnostics_summary(
+            traditional_gf_sources,
+            traditional_gf_values,
+        ),
         "calibration": _calibration_summary(switch_windows, wave_scores_by_target, eval_scores_by_target),
     }
 
@@ -158,6 +168,36 @@ def _record_wave(
         score_value = float(score)
         scores_by_mode[mode_name].append(score_value)
         scores_by_target[(target, mode_name)].append(score_value)
+
+
+def _record_traditional_gf_diagnostics(
+    fields: dict[str, Any],
+    sources: Counter[str],
+    values: dict[str, list[float]],
+) -> None:
+    sources[str(fields.get("source", fields.get("traditional_gf_source")))] += 1
+    for output_field, field_names in {
+        "global_guess_factor": ("global_guess_factor", "traditional_gf_global"),
+        "global_weight": ("global_weight", "traditional_gf_global_weight"),
+        "segment_guess_factor": ("segment_guess_factor", "traditional_gf_segment"),
+        "segment_weight": ("segment_weight", "traditional_gf_segment_weight"),
+        "blend": ("blend", "traditional_gf_blend"),
+        "selected_guess_factor": ("selected_guess_factor", "traditional_gf_selected"),
+    }.items():
+        value = next((_float_or_none(fields.get(field)) for field in field_names if field in fields), None)
+        if value is not None:
+            values[output_field].append(value)
+
+
+def _traditional_gf_diagnostics_summary(
+    sources: Counter[str],
+    values: dict[str, list[float]],
+) -> dict[str, object]:
+    return {
+        "source_counts": dict(sorted(sources.items())),
+        "averages": _averages(values),
+        "count": sum(sources.values()),
+    }
 
 
 def _switch_window_from_decision(event: dict[str, Any], fields: dict[str, Any]) -> SwitchWindow | None:
@@ -281,6 +321,7 @@ def _print_summary(summary: dict[str, object]) -> None:
         "eval_avg",
         "wave_count",
         "eval_count",
+        "traditional_gf_diagnostics",
         "calibration",
     ):
         print(f"{key}: {summary[key]}")

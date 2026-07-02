@@ -61,6 +61,10 @@ class FireTelemetry:
     def record_gun_switch_decision(self, target_id: int, aim: AimSolution) -> None:
         self._sink.log("gun.switch_decision", **_gun_switch_decision_fields(target_id, aim))
 
+    def record_traditional_gf_profile(self, target_id: int, aim: AimSolution) -> None:
+        if aim.traditional_gf is not None:
+            self._sink.log("gun.traditional_gf_profile", **_traditional_gf_profile_fields(target_id, aim))
+
     def record_wave_visit(self, visit: WaveVisit) -> None:
         self._sink.log("gun.wave_visit", **_wave_visit_fields(visit))
 
@@ -152,7 +156,7 @@ def _track_base_fields(
     gun_scores: dict[str, str],
     known_targets: int,
 ) -> dict[str, object]:
-    return {
+    fields: dict[str, object] = {
         "target": target.bot_id,
         "age": age,
         "distance": round(distance, 1),
@@ -168,6 +172,19 @@ def _track_base_fields(
         "gun_scores": gun_scores,
         "known_targets": known_targets,
     }
+    if aim.traditional_gf is not None:
+        fields.update(
+            {
+                "traditional_gf_global": rounded(aim.traditional_gf.global_guess_factor, 3),
+                "traditional_gf_global_weight": round(aim.traditional_gf.global_weight, 1),
+                "traditional_gf_segment": rounded(aim.traditional_gf.segment_guess_factor, 3),
+                "traditional_gf_segment_weight": round(aim.traditional_gf.segment_weight, 1),
+                "traditional_gf_blend": round(aim.traditional_gf.blend, 3),
+                "traditional_gf_selected": rounded(aim.traditional_gf.selected_guess_factor, 3),
+                "traditional_gf_source": aim.traditional_gf.source,
+            }
+        )
+    return fields
 
 
 def _gun_switch_fields(target_id: int, aim: AimSolution, scores: dict[str, str]) -> dict[str, object]:
@@ -207,6 +224,21 @@ def _gun_switch_candidate_fields(candidate: GunSwitchCandidate) -> dict[str, obj
         "min_score": round(candidate.min_score, 3),
         "margin": round(candidate.margin, 3),
         "reason": candidate.reason,
+    }
+
+
+def _traditional_gf_profile_fields(target_id: int, aim: AimSolution) -> dict[str, object]:
+    assert aim.traditional_gf is not None
+    return {
+        "target": target_id,
+        "aim_mode": aim.mode,
+        "global_guess_factor": rounded(aim.traditional_gf.global_guess_factor, 3),
+        "global_weight": round(aim.traditional_gf.global_weight, 1),
+        "segment_guess_factor": rounded(aim.traditional_gf.segment_guess_factor, 3),
+        "segment_weight": round(aim.traditional_gf.segment_weight, 1),
+        "blend": round(aim.traditional_gf.blend, 3),
+        "selected_guess_factor": rounded(aim.traditional_gf.selected_guess_factor, 3),
+        "source": aim.traditional_gf.source,
     }
 
 

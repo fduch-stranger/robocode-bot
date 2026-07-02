@@ -11,6 +11,7 @@ from bot_core.gun.models import (
     GuessFactorProfile,
     TargetMotion,
     TargetPosition,
+    TraditionalGfDiagnostics,
     WaveVisit,
 )
 from bot_core.gun.scoring import VirtualGunScorer
@@ -41,6 +42,7 @@ __all__ = [
     "RollingKnnBuffer",
     "TargetMotion",
     "TargetPosition",
+    "TraditionalGfDiagnostics",
     "VirtualGunScorer",
     "VirtualGunSystem",
     "WaveVisit",

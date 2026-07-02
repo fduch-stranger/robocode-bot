@@ -404,6 +404,77 @@ class GunStatsTest(unittest.TestCase):
 
         self.assertLess(gun._traditional_guess_factor(1), 0.0)
 
+    def test_traditional_guess_factor_falls_back_to_global_until_segment_ready(self) -> None:
+        gun = VirtualGunSystem(
+            GunConfig(
+                guess_factor_bins=7,
+                traditional_gf_min_samples=1,
+                traditional_gf_segment_min_samples=3,
+                traditional_gf_segment_full_weight_samples=3,
+                traditional_gf_smoothing_bins=0.75,
+            )
+        )
+        segment_key = (1, 1, 1, 1, 1, 1)
+
+        for _ in range(5):
+            gun._record_traditional_guess_factor(1, 1.0)
+        gun._record_traditional_guess_factor(1, -1.0, segment_key)
+
+        self.assertGreater(gun._traditional_guess_factor(1, segment_key), 0.0)
+
+    def test_traditional_guess_factor_uses_segment_profile_when_ready(self) -> None:
+        gun = VirtualGunSystem(
+            GunConfig(
+                guess_factor_bins=7,
+                traditional_gf_min_samples=1,
+                traditional_gf_segment_min_samples=2,
+                traditional_gf_segment_full_weight_samples=2,
+                traditional_gf_smoothing_bins=0.75,
+            )
+        )
+        left_segment = (1, 1, 1, 1, 1, 1)
+        right_segment = (2, 1, 1, 1, 1, 1)
+
+        for _ in range(4):
+            gun._record_traditional_guess_factor(1, 1.0, left_segment)
+            gun._record_traditional_guess_factor(1, -1.0, right_segment)
+
+        self.assertGreater(gun._traditional_guess_factor(1, left_segment), 0.0)
+        self.assertLess(gun._traditional_guess_factor(1, right_segment), 0.0)
+
+    def test_traditional_guess_factor_reports_segment_diagnostics(self) -> None:
+        gun = VirtualGunSystem(
+            GunConfig(
+                guess_factor_bins=7,
+                traditional_gf_min_samples=1,
+                traditional_gf_segment_min_samples=2,
+                traditional_gf_segment_full_weight_samples=6,
+                traditional_gf_smoothing_bins=0.75,
+            )
+        )
+        segment_key = (1, 1, 1, 1, 1, 1)
+
+        for _ in range(4):
+            gun._record_traditional_guess_factor(1, 1.0)
+        gun._record_traditional_guess_factor(1, -1.0, segment_key)
+        fallback = gun._traditional_guess_factor_diagnostics(1, segment_key)
+        self.assertIsNotNone(fallback)
+        assert fallback is not None
+        self.assertEqual("global", fallback.source)
+        self.assertIsNone(fallback.segment_guess_factor)
+        self.assertGreater(fallback.global_guess_factor, 0.0)
+
+        for _ in range(4):
+            gun._record_traditional_guess_factor(1, -1.0, segment_key)
+        segmented = gun._traditional_guess_factor_diagnostics(1, segment_key)
+        self.assertIsNotNone(segmented)
+        assert segmented is not None
+        self.assertEqual("blend", segmented.source)
+        self.assertIsNotNone(segmented.segment_guess_factor)
+        assert segmented.segment_guess_factor is not None
+        self.assertLess(segmented.segment_guess_factor, 0.0)
+        self.assertGreater(segmented.blend, 0.0)
+
     def test_anti_surfer_guess_factor_targets_under_visited_valley(self) -> None:
         gun = VirtualGunSystem(
             GunConfig(

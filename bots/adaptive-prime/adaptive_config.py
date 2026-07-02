@@ -42,6 +42,8 @@ class GunPolicy:
     displacement_min_switch_score: float = 0.16
     traditional_gf_min_switch_visits: int = 160
     traditional_gf_min_switch_score: float = 0.24
+    traditional_gf_segment_min_samples: int = 12
+    traditional_gf_segment_full_weight_samples: int = 48
     anti_surfer_min_switch_visits: int = 95
     anti_surfer_min_switch_score: float = 0.28
     switch_confidence_visits: int = 240

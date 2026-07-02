@@ -124,6 +124,45 @@ class GunEvalSummaryTest(unittest.TestCase):
         self.assertEqual({}, summary["hits"])
         self.assertEqual({"linear": 0.0}, summary["hit_rate"])
 
+    def test_summarizes_traditional_gf_diagnostics(self) -> None:
+        summary = summarize_events(
+            [
+                {
+                    "event": "track",
+                    "fields": {
+                        "traditional_gf_source": "global",
+                        "traditional_gf_global": 0.2,
+                        "traditional_gf_global_weight": 42.0,
+                        "traditional_gf_segment_weight": 0.0,
+                        "traditional_gf_blend": 0.0,
+                        "traditional_gf_selected": 0.2,
+                    },
+                },
+                {
+                    "event": "track",
+                    "fields": {
+                        "traditional_gf_source": "blend",
+                        "traditional_gf_global": 0.2,
+                        "traditional_gf_global_weight": 50.0,
+                        "traditional_gf_segment": -0.6,
+                        "traditional_gf_segment_weight": 18.0,
+                        "traditional_gf_blend": 0.5,
+                        "traditional_gf_selected": -0.3,
+                    },
+                },
+            ]
+        )
+
+        diagnostics = summary["traditional_gf_diagnostics"]  # type: ignore[assignment]
+        self.assertEqual({"blend": 1, "global": 1}, diagnostics["source_counts"])  # type: ignore[index]
+        averages = diagnostics["averages"]  # type: ignore[index]
+        self.assertEqual(0.2, averages["global_guess_factor"])
+        self.assertEqual(46.0, averages["global_weight"])
+        self.assertEqual(-0.6, averages["segment_guess_factor"])
+        self.assertEqual(9.0, averages["segment_weight"])
+        self.assertEqual(0.25, averages["blend"])
+        self.assertEqual(-0.05, averages["selected_guess_factor"])
+
     def test_print_summary_includes_selected_counts(self) -> None:
         stream = StringIO()
         summary = {
@@ -136,6 +175,7 @@ class GunEvalSummaryTest(unittest.TestCase):
             "eval_avg": {},
             "wave_count": {},
             "eval_count": {},
+            "traditional_gf_diagnostics": {},
             "calibration": {"2": {"linear": {"post_switch_hit_rate": 0.5}}},
         }
 
@@ -145,6 +185,7 @@ class GunEvalSummaryTest(unittest.TestCase):
         output = stream.getvalue()
         self.assertIn("wave_selected: {'linear': 2}", output)
         self.assertIn("eval_selected: {'dynamic_cluster': 3}", output)
+        self.assertIn("traditional_gf_diagnostics:", output)
         self.assertIn("calibration:", output)
 
 

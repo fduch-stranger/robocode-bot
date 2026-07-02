@@ -1,7 +1,7 @@
 import unittest
 
 from bot_core.energy import EnergyDropSignal, EnemyFirePowerPrediction, FireDecision, GunHeatState
-from bot_core.gun import AimSolution, GunSwitchCandidate, WaveVisit
+from bot_core.gun import AimSolution, GunSwitchCandidate, TraditionalGfDiagnostics, WaveVisit
 from bot_core.movement import FlatteningDecision, GoToSurfDecision, MinimumRiskDecision, MovementCommand, MovementProfileVisit
 from bot_core.radar import RadarCommand
 from bot_core.target_snapshot import TargetSnapshot
@@ -198,6 +198,79 @@ class TelemetryEmitterTest(unittest.TestCase):
         self.assertIsNone(sink.records[5][2]["target_age"])
         self.assertIsNone(sink.records[5][2]["target_x"])
         self.assertEqual(120.0, sink.records[5][2]["target_y"])
+
+    def test_fire_telemetry_records_traditional_gf_diagnostics(self) -> None:
+        sink = RecordingSink()
+        target = self._target()
+        radar = RadarCommand(target, turn=4.444, mode="lock", bearing=-8.888, age=1)
+        aim = AimSolution(
+            130.04,
+            170.05,
+            -2.345,
+            "traditional_gf",
+            0.4,
+            (0.0,) * 7,
+            (1, 2, 3),
+            {"traditional_gf": 1.0},
+            traditional_gf=TraditionalGfDiagnostics(
+                global_guess_factor=0.2,
+                global_weight=42.4,
+                segment_guess_factor=0.6,
+                segment_weight=18.2,
+                blend=0.35,
+                selected_guess_factor=0.4,
+                source="blend",
+            ),
+        )
+
+        FireTelemetry(sink).sample_track(
+            SimpleTrackTick(target, 2, 321.98, aim, radar, 1.2, "gun_alignment", 42, {"traditional_gf": "0.42/9"}, 3)
+        )
+
+        fields = sink.only_record()[2]
+        self.assertEqual(0.2, fields["traditional_gf_global"])
+        self.assertEqual(42.4, fields["traditional_gf_global_weight"])
+        self.assertEqual(0.6, fields["traditional_gf_segment"])
+        self.assertEqual(18.2, fields["traditional_gf_segment_weight"])
+        self.assertEqual(0.35, fields["traditional_gf_blend"])
+        self.assertEqual(0.4, fields["traditional_gf_selected"])
+        self.assertEqual("blend", fields["traditional_gf_source"])
+
+    def test_fire_telemetry_records_traditional_gf_profile_event(self) -> None:
+        sink = RecordingSink()
+        aim = AimSolution(
+            130.04,
+            170.05,
+            -2.345,
+            "traditional_gf",
+            0.4,
+            (0.0,) * 7,
+            (1, 2, 3),
+            {"traditional_gf": 1.0},
+            traditional_gf=TraditionalGfDiagnostics(
+                global_guess_factor=0.2,
+                global_weight=42.4,
+                segment_guess_factor=0.6,
+                segment_weight=18.2,
+                blend=0.35,
+                selected_guess_factor=0.4,
+                source="blend",
+            ),
+        )
+
+        FireTelemetry(sink).record_traditional_gf_profile(4, aim)
+
+        kind, event, fields = sink.only_record()
+        self.assertEqual(("log", "gun.traditional_gf_profile"), (kind, event))
+        self.assertEqual(4, fields["target"])
+        self.assertEqual("traditional_gf", fields["aim_mode"])
+        self.assertEqual(0.2, fields["global_guess_factor"])
+        self.assertEqual(42.4, fields["global_weight"])
+        self.assertEqual(0.6, fields["segment_guess_factor"])
+        self.assertEqual(18.2, fields["segment_weight"])
+        self.assertEqual(0.35, fields["blend"])
+        self.assertEqual(0.4, fields["selected_guess_factor"])
+        self.assertEqual("blend", fields["source"])
 
     def test_energy_telemetry_records_drop_fire_and_heat_wave_events(self) -> None:
         sink = RecordingSink()

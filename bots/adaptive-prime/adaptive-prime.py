@@ -102,6 +102,8 @@ class AdaptivePrime(Bot):
                 displacement_min_switch_score=GUN_POLICY.displacement_min_switch_score,
                 traditional_gf_min_switch_visits=GUN_POLICY.traditional_gf_min_switch_visits,
                 traditional_gf_min_switch_score=GUN_POLICY.traditional_gf_min_switch_score,
+                traditional_gf_segment_min_samples=GUN_POLICY.traditional_gf_segment_min_samples,
+                traditional_gf_segment_full_weight_samples=GUN_POLICY.traditional_gf_segment_full_weight_samples,
                 anti_surfer_min_switch_visits=GUN_POLICY.anti_surfer_min_switch_visits,
                 anti_surfer_min_switch_score=GUN_POLICY.anti_surfer_min_switch_score,
                 switch_confidence_visits=GUN_POLICY.switch_confidence_visits,
@@ -139,6 +141,7 @@ class AdaptivePrime(Bot):
         self._targeting_telemetry = TargetingTelemetry(self._debug)
         self._fired_bullets = FiredBulletTracker()
         self._last_gun_decision_log_turn: dict[int, int] = {}
+        self._last_traditional_gf_profile_log_turn: dict[int, int] = {}
 
     def run(self) -> None:
         self.body_color = Color.from_rgb(60, 112, 180)
@@ -316,6 +319,7 @@ class AdaptivePrime(Bot):
         if aim.mode_changed:
             self._fire_telemetry.record_gun_switch(target.bot_id, aim, self._gun.score_summary(target.bot_id, score_segment))
         self._maybe_log_gun_switch_decision(target.bot_id, aim)
+        self._maybe_log_traditional_gf_profile(target.bot_id, aim)
         age = self.turn_number - target.seen_turn
 
         if age > TARGET_POLICY.reacquire_turns:
@@ -736,6 +740,15 @@ class AdaptivePrime(Bot):
             return
         self._fire_telemetry.record_gun_switch_decision(target_id, aim)
         self._last_gun_decision_log_turn[target_id] = self.turn_number
+
+    def _maybe_log_traditional_gf_profile(self, target_id: int, aim: AimSolution) -> None:
+        if aim.traditional_gf is None:
+            return
+        last_turn = self._last_traditional_gf_profile_log_turn.get(target_id, -100000)
+        if not aim.mode_changed and self.turn_number - last_turn < GUN_POLICY.switch_diagnostics_interval:
+            return
+        self._fire_telemetry.record_traditional_gf_profile(target_id, aim)
+        self._last_traditional_gf_profile_log_turn[target_id] = self.turn_number
 
     def _update_own_motion_stats(self) -> None:
         self._own_motion.update(self)
