@@ -33,8 +33,8 @@ Gun architecture context:
 - Circle Strafer keeps shared-default thresholds except for a shorter base visit gate to let `dynamic_cluster` compete after KNN warmup.
 - Sweep currently keeps shared-default switch thresholds unless a narrow candidate is under test.
   Use switch-decision and eval-wave telemetry before changing thresholds again.
-- Adaptive live-selects linear, traditional GF, dynamic cluster, and anti-surfer. Chase/Circle/Sweep live-select linear, traditional GF, and dynamic cluster.
-- `displacement` is force-testable but not live-selectable. Force env vars: `ROBOCODE_ADAPTIVE_GUN_MODE`, `ROBOCODE_CHASE_GUN_MODE`, `ROBOCODE_CIRCLE_GUN_MODE`, and `ROBOCODE_SWEEP_GUN_MODE`.
+- Adaptive live-selects linear, traditional GF, and dynamic cluster. `anti_surfer` and `displacement` remain force-testable for Adaptive but are not normal live-selectable modes. Chase/Circle/Sweep live-select linear, traditional GF, and dynamic cluster.
+- Force env vars: `ROBOCODE_ADAPTIVE_GUN_MODE`, `ROBOCODE_CHASE_GUN_MODE`, `ROBOCODE_CIRCLE_GUN_MODE`, and `ROBOCODE_SWEEP_GUN_MODE`.
 - Eval-wave env vars: `ROBOCODE_ADAPTIVE_GUN_EVAL`, `ROBOCODE_CHASE_GUN_EVAL`, `ROBOCODE_CIRCLE_GUN_EVAL`, `ROBOCODE_SWEEP_GUN_EVAL`, plus matching `_INTERVAL` vars.
 
 Telemetry event examples: `track`, `gun.switch`, `gun.switch_decision`, `gun.wave_visit`, `gun.eval_wave_visit`, `gun.fire_drift`, `enemy.fire_detected`, `enemy.gun_heat_wave`, `movement.profile_visit`, `movement.flatten`, `movement.minimum_risk`, `bullet.fired`, `bullet.hit_bot`, `hit.bullet`.

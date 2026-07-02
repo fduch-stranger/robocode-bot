@@ -143,9 +143,9 @@ less linear-biased than the shared defaults:
 - `displacement` is force-testable but not live-selectable yet; BasicGFSurfer
   telemetry showed high virtual scores but poor real hit rate and noisy
   switching.
-- `anti_surfer` stays conservative because it intentionally aims at
-  under-visited guess-factor bins; select it only after its virtual score has
-  enough evidence.
+- `anti_surfer` is force-testable but no longer live-selectable in normal
+  Adaptive mode. Recent BasicGFSurfer validation did not show enough live value
+  to keep it competing with `linear`, `traditional_gf`, and `dynamic_cluster`.
 - Switching uses a small confidence penalty until a mode has enough virtual
   visits. `gun.switch_decision` reports both adjusted `score` and `raw_score`
   so score-vs-hit calibration can separate weak evidence from weak aim logic.
@@ -159,8 +159,9 @@ ROBOCODE_ADAPTIVE_GUN_MODE=traditional_gf scripts/run-battle.sh --rounds 8 bots/
 Valid values are `linear`, `displacement`, `traditional_gf`,
 `dynamic_cluster`, and `anti_surfer`. A forced gun is used only on ticks where
 that gun has enough data to produce an aim bearing; otherwise the selector
-falls back to an available mode. `displacement` is included here for isolated
-experiments even though it is not part of normal live switching.
+falls back to an available mode. `displacement` and `anti_surfer` are included
+here for isolated experiments even though they are not part of normal live
+switching.
 
 For `traditional_gf` modeling experiments, Adaptive also accepts:
 
