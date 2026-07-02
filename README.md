@@ -50,9 +50,9 @@ scripts/run-battle.sh
 This creates local configuration, installs dependencies, packages the bots, and
 runs a default battle with every local bot.
 
-## Current Snapshot
+## Tracked Snapshot
 
-`Adaptive Prime` is the current local champion candidate. The latest tracked
+`Adaptive Prime` is the tracked local champion candidate. The recorded
 round-robin and boss-bot benchmark summary is in
 [Championship Results](docs/championship-results.md).
 

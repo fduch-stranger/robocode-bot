@@ -140,12 +140,10 @@ less linear-biased than the shared defaults:
   weight grows, and exact/coarse segment sources are trusted normally.
 - Melee keeps segmented gun stats and live `traditional_gf` bearings disabled;
   `traditional_gf` candidates can appear as unavailable in switch diagnostics.
-- `displacement` is force-testable but not live-selectable yet; BasicGFSurfer
-  telemetry showed high virtual scores but poor real hit rate and noisy
-  switching.
-- `anti_surfer` is force-testable but no longer live-selectable in normal
-  Adaptive mode. Recent BasicGFSurfer validation did not show enough live value
-  to keep it competing with `linear`, `traditional_gf`, and `dynamic_cluster`.
+- Adaptive's normal selectable gun modes are `linear`, `traditional_gf`, and
+  `dynamic_cluster`. `displacement` and `anti_surfer` are still built by the
+  standard runtime and can be forced for isolated experiments, but they are not
+  part of Adaptive's normal selectable-mode set.
 - Switching uses a small confidence penalty until a mode has enough virtual
   visits. `gun.switch_decision` reports both adjusted `score` and `raw_score`
   so score-vs-hit calibration can separate weak evidence from weak aim logic.
@@ -160,8 +158,8 @@ Valid values are `linear`, `displacement`, `traditional_gf`,
 `dynamic_cluster`, and `anti_surfer`. A forced gun is used only on ticks where
 that gun has enough data to produce an aim bearing; otherwise the selector
 falls back to an available mode. `displacement` and `anti_surfer` are included
-here for isolated experiments even though they are not part of normal live
-switching.
+here for isolated experiments even though they are outside Adaptive's normal
+selectable-mode set.
 
 For `traditional_gf` modeling experiments, Adaptive also accepts:
 
@@ -181,9 +179,8 @@ scripts/run-battle.sh --telemetry --rounds 12 bots/adaptive-prime --legacy basic
 ```
 
 Use these as telemetry sweep knobs before changing committed defaults. The
-coarse key is fixed to distance, lateral speed, and wall margin after alternate
-key sweeps did not justify keeping those experiment knobs. Peak selection is
-`max` by default; `density` chooses a neighborhood-supported peak using
+coarse key is fixed in code to distance, lateral speed, and wall margin. Peak
+selection is `max` by default; `density` chooses a neighborhood-supported peak using
 `ROBOCODE_ADAPTIVE_TRADITIONAL_GF_PEAK_SUPPORT_RADIUS`.
 
 For neutral gun-evaluation telemetry, set:
@@ -208,10 +205,10 @@ confidence/source penalties, selected-source counts, and score-vs-hit gaps.
 Treat `eval_hit_gap` as diagnostic evidence only; eval waves are not direct
 proof that a mode should switch live.
 
-For gun modeling and selector calibration follow-up, check the active plan list
-in [docs/plans](../../docs/plans/README.md), especially the current
-confidence-calibrated selector work. Do not tune `traditional_gf` switch
-thresholds again until the model/calibration checks are done.
+For gun modeling and selector calibration follow-up, check the research notes
+in [docs/plans](../../docs/plans/README.md), especially the
+confidence-calibrated selector plan, before changing committed selector or
+Traditional GF defaults.
 
 ## Key Telemetry
 

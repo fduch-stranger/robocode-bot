@@ -112,10 +112,9 @@ candidates can appear as unavailable in switch diagnostics.
 ROBOCODE_CHASE_GUN_MODE=displacement scripts/run-battle.sh --rounds 8 bots/chase-lock bots/sweep-pressure
 ```
 
-Short A/B tuning rejected broadly looser thresholds. The retained policy only
-lowers Chase's `traditional_gf` switch visits and score floor after forced-mode
-and A/B checks showed that traditional GF can outperform linear against Sweep
-Pressure.
+The retained policy lowers only Chase's `traditional_gf` switch visits and
+score floor relative to the standard shared defaults; other switch gates stay
+on the shared policy surface.
 
 For neutral gun-evaluation telemetry, set:
 

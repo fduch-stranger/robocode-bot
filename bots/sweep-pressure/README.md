@@ -102,10 +102,9 @@ Sweep Pressure uses a bot-specific `GunPolicy` surface with shared-default
 switch thresholds. It live-selects `linear`, `traditional_gf`, and
 `dynamic_cluster` in 1v1. Melee keeps segmented gun stats and live
 `traditional_gf` bearings disabled, so `traditional_gf` candidates can appear
-as unavailable in switch diagnostics. Short A/B tuning rejected looser
-thresholds, so the current policy keeps shared switch gates while exposing
-switch-decision telemetry. `displacement` is available only for forced
-experiments:
+as unavailable in switch diagnostics. The current policy keeps shared switch
+gates while exposing switch-decision telemetry. `displacement` is available
+only for forced experiments:
 
 ```sh
 ROBOCODE_SWEEP_GUN_MODE=displacement scripts/run-battle.sh --rounds 8 bots/sweep-pressure bots/circle-strafer

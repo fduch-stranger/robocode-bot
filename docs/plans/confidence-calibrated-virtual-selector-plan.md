@@ -45,6 +45,43 @@ given this gun's virtual score, source, samples, context, and past real
 conversion, what is the probability it will actually hit if selected now?
 ```
 
+## Validated Implementation Direction
+
+Keep the current selector available as the default selector.
+
+The repository already has a narrow selector boundary:
+
+```text
+VirtualGunSystem -> AimModeSelector -> GunSwitchCandidate diagnostics
+```
+
+The calibrated implementation should therefore be a second selector strategy,
+not a replacement of the existing one:
+
+```text
+virtual_score selector:
+  current AimModeSelector behavior
+
+confidence_calibrated selector:
+  same availability, visit, score-floor, forced-mode, and margin semantics
+  but candidate decision score can use online calibration
+```
+
+`VirtualGunSystem` should instantiate the selector from runtime config. Shared
+defaults must continue to use the current selector. Adaptive Prime should be the
+first bot wired to the calibrated selector, behind an explicit disabled-by-
+default config/env flag during passive and shadow phases.
+
+Forced gun mode must bypass calibrated selection. It may still record passive
+calibration observations, but it must not be blocked, reranked, or exploration-
+modified by calibration.
+
+The current `GunDecisionContext`, per-mode policies, `AimSolution`, and
+`GunSwitchCandidate` diagnostics already provide most of the source/context
+surface needed for calibration. Avoid adding concrete-gun branches to selector
+logic; source-specific behavior should come from generic decision context and
+policy/config data.
+
 ## Target Behavior
 
 The selector should prefer calibrated real hit probability over raw virtual
@@ -142,6 +179,36 @@ Use existing fired-bullet tracking where possible. The important link is:
 bullet_id -> selected gun mode/source/context at fire time -> hit/miss result
 ```
 
+The fire-time snapshot must be stored when the real bullet is confirmed by
+`BulletFiredEvent`, because later selector state may have changed. The snapshot
+should include:
+
+```text
+bullet_id
+target id
+selected mode
+selected source/context
+segment/context key
+raw score
+adjusted selector score
+calibrated score if shadow/live is enabled
+confidence/source/calibration penalties
+fire turn
+```
+
+Use the bot API outcome callbacks for real conversion:
+
+```text
+on_bullet_hit -> hit
+on_bullet_hit_wall -> miss
+on_bullet_hit_bullet -> miss or blocked-miss bucket
+round end / target death before resolution -> unresolved, ignored
+```
+
+The existing `FiredBulletTracker` is useful for telemetry attribution, but the
+online selector should own or receive a calibration-specific outstanding-shot
+record so live decisions do not depend on debug telemetry storage.
+
 Also track post-switch windows:
 
 ```text
@@ -151,6 +218,12 @@ after selector switches to mode X:
 
 This specifically catches guns that switch well on paper but fail after taking
 control.
+
+`tools/gun_eval_summary.py` already reports an offline `calibration` table using
+`gun.switch_decision`, `bullet.fired`, and `bullet.hit_bot`. The online selector
+calibration should reuse that terminology carefully: offline summary remains an
+analysis tool, while the new calibration store is live battle state used for
+passive measurement, shadow scoring, and later gated selection.
 
 ## Calibrated Score
 
@@ -287,10 +360,13 @@ bots/bot_core/gun/calibration.py
   GunCalibrationKey
   GunCalibrationStats
   GunCalibrationStore
+  GunSelectionSnapshot
   calibrated_score()
 
 bots/bot_core/gun/aim.py
-  AimModeSelector uses calibration store when enabled
+  AimModeSelector remains the current virtual-score selector
+  ConfidenceCalibratedAimModeSelector applies calibration when enabled
+  shared selector protocol/helper preserves forced-mode and gate semantics
 
 bots/bot_core/gun/models.py
   config fields
@@ -303,7 +379,9 @@ bots/bot_core/telemetry/fire.py
 Potential config fields:
 
 ```text
+selector_strategy: str = "virtual_score"
 selector_calibration_enabled: bool = False
+selector_calibration_shadow: bool = False
 selector_calibration_prior_shots: int = 12
 selector_calibration_prior_hit_rate: float = 0.14
 selector_calibration_full_weight_shots: int = 40
@@ -312,6 +390,16 @@ selector_exploration_enabled: bool = False
 selector_exploration_interval: int = 24
 selector_exploration_max_score_gap: float = 0.05
 ```
+
+Adaptive Prime wiring should map bot-specific env/config onto these shared
+fields, for example:
+
+```text
+ROBOCODE_ADAPTIVE_SELECTOR_CALIBRATION=0|shadow|live
+```
+
+All other bots should keep `selector_strategy="virtual_score"` until Adaptive
+validation justifies broader rollout.
 
 ## Telemetry
 
@@ -369,7 +457,7 @@ Phase 1: passive measurement
 
 ```text
 record fire-time selector context by bullet id
-update real hit/miss conversion when bullets resolve
+update real hit/miss conversion from bullet-hit, bullet-wall, and bullet-bullet outcomes
 emit calibration telemetry
 do not change selection
 ```

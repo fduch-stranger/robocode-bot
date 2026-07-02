@@ -50,7 +50,7 @@ Adaptive Prime ranked first in all 3 melee runs.
 ## Legacy Boss Checks
 
 Adaptive Prime was checked against configured converted legacy boss bots. Each
-boss check used 24 rounds. These are the active boss benchmarks kept in the
+boss check used 24 rounds. These are the recorded boss benchmarks for the
 tooling preset.
 
 | Boss | Adaptive Score | Boss Score | Adaptive 1sts | Boss 1sts | Result |

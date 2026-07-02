@@ -39,12 +39,12 @@ flowchart TD
 
 | Package | Mode | State owner |
 | --- | --- | --- |
-| `head_on` | `head_on` | Stateless direct bearing. |
-| `linear` | `linear` | Stateless linear intercept prediction. |
-| `displacement` | `displacement` | Reads shared target history, no private learner. |
-| `dynamic_cluster` | `dynamic_cluster` | Owns KNN sample memory. |
-| `traditional_gf` | `traditional_gf` | Owns global, exact-segment, and coarse GF profiles. |
-| `anti_surfer` | `anti_surfer` | Owns anti-surfer guess-factor profile bins. |
+| [`head_on`](head_on/README.md) | `head_on` | Stateless direct bearing. |
+| [`linear`](linear/README.md) | `linear` | Stateless linear intercept prediction. |
+| [`displacement`](displacement/README.md) | `displacement` | Reads shared target history, no private learner. |
+| [`dynamic_cluster`](dynamic_cluster/README.md) | `dynamic_cluster` | Owns KNN sample memory. |
+| [`traditional_gf`](traditional_gf/README.md) | `traditional_gf` | Owns global, exact-segment, and coarse GF profiles. |
+| [`anti_surfer`](anti_surfer/README.md) | `anti_surfer` | Owns anti-surfer guess-factor profile bins. |
 
 `factory.standard_runtime_config()` wires the standard bot gun set. Add a
 sub-package README whenever a new concrete gun is introduced.

@@ -45,8 +45,8 @@ The browser viewer and telemetry audit normalize bot-specific fields into a comm
 | --- | --- | --- | --- |
 | `bullet.fired` | `bullet_id`, `power`, `aim_mode` | `target`, `direction`, `energy`, `gun_waves`, `gun_samples`, `gun_confidence`, `gun_confidence_visits`, `selected_gun_confidence`, `selected_gun_confidence_visits`, `traditional_gf_source`, `target_age`, `target_x`, `target_y`, `wave`, `shadow_bullets` | - |
 | `bullet.hit_bot` | `bullet_id`, `power`, `damage`, `energy` | `victim`, `target`, `aim_mode`, `traditional_gf_source` | `target` from `victim` |
-| `gun.fire_drift` | `bullet_id` | `target`, `aim_mode`, `planned_x`, `planned_y`, `actual_x`, `actual_y`, `source_error`, `planned_direction`, `actual_direction`, `direction_error`, `abs_direction_error`, `planned_power`, `actual_power`, `power_error`, `planned_speed`, `actual_speed`, `speed_error` | - |
 | `gun.eval_wave_visit` | - | `target`, `guess_factor`, `samples`, `traveled`, `distance`, `selected_gun`, `virtual_scores`, `gun_scores`, `traditional_gf_guess_factor`, `traditional_gf_error`, `traditional_gf_abs_error`, `traditional_gf_source` | `aim_mode` from `selected_gun`<br>`gun_mode` from `selected_gun` |
+| `gun.fire_drift` | `bullet_id` | `target`, `aim_mode`, `planned_x`, `planned_y`, `actual_x`, `actual_y`, `source_error`, `planned_direction`, `actual_direction`, `direction_error`, `abs_direction_error`, `planned_power`, `actual_power`, `power_error`, `planned_speed`, `actual_speed`, `speed_error` | - |
 | `gun.switch` | `selected` | `target`, `previous`, `scores` | `aim_mode` from `selected`<br>`gun_mode` from `selected` |
 | `gun.switch_decision` | `selected` | `target`, `previous`, `changed`, `candidates` | `aim_mode` from `selected`<br>`gun_mode` from `selected` |
 | `gun.traditional_gf_profile` | `target` | `aim_mode`, `global_guess_factor`, `global_weight`, `segment_guess_factor`, `segment_weight`, `blend`, `selected_guess_factor`, `source` | - |

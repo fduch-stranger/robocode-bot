@@ -11,8 +11,8 @@ This is the navigation hub for the Robocode bot workspace.
 | Understand implementation structures: KNN buffers, waves, stats buffers, prediction data | [Bot Core Data Structures](bot-core-data-structures.md) |
 | Understand concrete gun behavior and package boundaries | [Gun Component Docs](#gun-component-docs) |
 | Inspect the generated telemetry event contract | [Telemetry Event Schema](telemetry-schema.md) |
-| Review latest local championship results | [Championship Results](championship-results.md) |
-| Review active research and tuning plans | [Plans](plans/README.md) |
+| Review tracked local championship results | [Championship Results](championship-results.md) |
+| Review research and tuning plans | [Plans](plans/README.md) |
 | Tune or inspect a specific bot | [Bot Docs](#bot-docs) |
 
 ## Bot Docs
