@@ -78,8 +78,8 @@ class GunPolicy:
     min_visits: int = 90
     switch_margin: float = 0.08
     min_switch_score: float = 0.30
-    traditional_gf_min_switch_visits: int = 260
-    traditional_gf_min_switch_score: float = 0.42
+    traditional_gf_min_switch_visits: int = 120
+    traditional_gf_min_switch_score: float = 0.30
     switch_diagnostics_interval: int = 30
 
 

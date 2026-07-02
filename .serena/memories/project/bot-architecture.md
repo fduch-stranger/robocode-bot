@@ -20,7 +20,8 @@ Gun architecture context:
 - `gun.eval_wave_visit` is optional neutral evaluation telemetry. Eval-wave stats are separate from production switching stats and should be used for diagnostics, not A/B performance gates.
 - Adaptive Prime has bot-specific `GunPolicy` thresholds in `bots/adaptive-prime/adaptive_config.py`; do not copy them blindly to other bots.
 - Chase Lock, Circle Strafer, and Sweep Pressure each have bot-local `GunPolicy` surfaces in their bot entry file and emit sampled `gun.switch_decision` telemetry.
-- Chase/Circle/Sweep currently keep shared-default switch thresholds unless a narrow candidate is under test. Use their switch-decision and eval-wave telemetry before changing thresholds again.
+- Chase Lock keeps shared-default switch thresholds except for a narrower `traditional_gf` activation gate. Circle/Sweep currently keep shared-default switch thresholds unless a narrow candidate is under test.
+  Use switch-decision and eval-wave telemetry before changing thresholds again.
 - Adaptive live-selects linear, traditional GF, dynamic cluster, and anti-surfer. Chase/Circle/Sweep live-select linear, traditional GF, and dynamic cluster.
 - `displacement` is force-testable but not live-selectable. Force env vars: `ROBOCODE_ADAPTIVE_GUN_MODE`, `ROBOCODE_CHASE_GUN_MODE`, `ROBOCODE_CIRCLE_GUN_MODE`, and `ROBOCODE_SWEEP_GUN_MODE`.
 - Eval-wave env vars: `ROBOCODE_ADAPTIVE_GUN_EVAL`, `ROBOCODE_CHASE_GUN_EVAL`, `ROBOCODE_CIRCLE_GUN_EVAL`, `ROBOCODE_SWEEP_GUN_EVAL`, plus matching `_INTERVAL` vars.

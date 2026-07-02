@@ -102,15 +102,18 @@ mid/far:
 ## Gun Policy
 
 Chase Lock uses a bot-specific `GunPolicy` surface with sticky shared-default
-thresholds. It live-selects `linear`, `traditional_gf`, and `dynamic_cluster`.
+thresholds plus a narrower `traditional_gf` activation gate. It live-selects
+`linear`, `traditional_gf`, and `dynamic_cluster`.
 `displacement` is available only for forced experiments:
 
 ```sh
 ROBOCODE_CHASE_GUN_MODE=displacement scripts/run-battle.sh --rounds 8 bots/chase-lock bots/sweep-pressure
 ```
 
-Short A/B tuning rejected looser thresholds, so the current policy keeps shared
-switch gates while exposing switch-decision telemetry for the next tuning pass.
+Short A/B tuning rejected broadly looser thresholds. The retained policy only
+lowers Chase's `traditional_gf` switch visits and score floor after forced-mode
+and A/B checks showed that traditional GF can outperform linear against Sweep
+Pressure.
 
 For neutral gun-evaluation telemetry, set:
 
