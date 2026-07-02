@@ -29,6 +29,7 @@ from bot_core.gun import (
     GunScoringConfig,
     GunSelectorConfig,
     GunSystemConfig,
+    LINEAR_VARIANT_MODES,
     TargetMotion,
     VirtualGunSystem,
     should_log_switch_decision,
@@ -58,7 +59,7 @@ from bot_core.telemetry.targeting import TargetingTelemetry
 
 FIRE_ALIGNMENT_DEGREES = 7
 CHASE_SELECTABLE_GUN_MODES = frozenset({"linear", "traditional_gf", "dynamic_cluster"})
-CHASE_FORCE_GUN_MODES = CHASE_SELECTABLE_GUN_MODES | frozenset({"displacement"})
+CHASE_FORCE_GUN_MODES = CHASE_SELECTABLE_GUN_MODES | LINEAR_VARIANT_MODES | frozenset({"displacement"})
 
 
 def _forced_gun_mode() -> str | None:

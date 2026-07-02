@@ -23,10 +23,20 @@ class AdaptiveConfigTest(unittest.TestCase):
             config.ADAPTIVE_SELECTABLE_GUN_MODES,
         )
         self.assertEqual(
-            frozenset({"linear", "traditional_gf", "dynamic_cluster", "anti_surfer", "displacement"}),
+            frozenset({
+                "linear",
+                "linear_wall_aware",
+                "linear_accel_damped",
+                "traditional_gf",
+                "dynamic_cluster",
+                "anti_surfer",
+                "displacement",
+            }),
             config.ADAPTIVE_FORCE_GUN_MODES,
         )
         self.assertNotIn("anti_surfer", config.GunPolicy().selectable_modes)
+        self.assertNotIn("linear_wall_aware", config.GunPolicy().selectable_modes)
+        self.assertNotIn("linear_accel_damped", config.GunPolicy().selectable_modes)
 
 
 if __name__ == "__main__":

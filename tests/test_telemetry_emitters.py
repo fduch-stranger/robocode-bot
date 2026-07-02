@@ -322,6 +322,44 @@ class TelemetryEmitterTest(unittest.TestCase):
         self.assertEqual(0.4, fields["selected_guess_factor"])
         self.assertEqual("blend", fields["source"])
 
+    def test_fire_telemetry_records_linear_variant_wave_diagnostics(self) -> None:
+        sink = RecordingSink()
+
+        FireTelemetry(sink).record_wave_visit(
+            WaveVisit(
+                1,
+                -0.2345,
+                17,
+                88.88,
+                199.99,
+                "linear_wall_aware",
+                {"linear_wall_aware": 0.5},
+                {"linear_wall_aware": "0.50/1"},
+                gun_diagnostics={
+                    "linear_wall_aware": {
+                        "wall_hit": True,
+                        "ticks": 12,
+                        "final_speed": 0.0,
+                    },
+                    "linear_accel_damped": {
+                        "effective_acceleration": -0.5,
+                        "applied_acceleration_ticks": 7,
+                        "velocity_change_age": 2,
+                        "final_speed": 1.25,
+                    },
+                },
+            )
+        )
+
+        fields = sink.only_record()[2]
+        self.assertTrue(fields["linear_wall_aware_wall_hit"])
+        self.assertEqual(12, fields["linear_wall_aware_ticks"])
+        self.assertEqual(0.0, fields["linear_wall_aware_final_speed"])
+        self.assertEqual(-0.5, fields["linear_accel_damped_effective_acceleration"])
+        self.assertEqual(7, fields["linear_accel_damped_applied_ticks"])
+        self.assertEqual(2, fields["linear_accel_damped_velocity_change_age"])
+        self.assertEqual(1.25, fields["linear_accel_damped_final_speed"])
+
     def test_energy_telemetry_records_drop_fire_and_heat_wave_events(self) -> None:
         sink = RecordingSink()
         telemetry = EnergyTelemetry(sink)

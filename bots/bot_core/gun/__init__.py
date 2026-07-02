@@ -10,6 +10,12 @@ from bot_core.gun.config import (
 from bot_core.gun.context import AimContext, GunBearing, GunVisit, TargetHistoryStore
 from bot_core.gun.diagnostics import should_log_switch_decision
 from bot_core.gun.guns.base import GunComponent
+from bot_core.gun.guns.linear import (
+    LINEAR_ACCEL_DAMPED_MODE,
+    LINEAR_MODE,
+    LINEAR_VARIANT_MODES,
+    LINEAR_WALL_AWARE_MODE,
+)
 from bot_core.gun.models import (
     AimSolution,
     GunSample,
@@ -20,7 +26,11 @@ from bot_core.gun.models import (
     TargetPosition,
     WaveVisit,
 )
-from bot_core.gun.prediction import predicted_position
+from bot_core.gun.prediction import (
+    predict_accel_damped_linear_position,
+    predict_linear_position,
+    predict_wall_aware_linear_position,
+)
 from bot_core.gun.scoring import VirtualGunScorer
 from bot_core.gun.system import VirtualGunSystem
 from bot_core.gun.utils import (
@@ -54,6 +64,10 @@ __all__ = [
     "GunVisit",
     "GunWave",
     "GunWaveTracker",
+    "LINEAR_ACCEL_DAMPED_MODE",
+    "LINEAR_MODE",
+    "LINEAR_VARIANT_MODES",
+    "LINEAR_WALL_AWARE_MODE",
     "TargetMotion",
     "TargetPosition",
     "TargetHistoryStore",
@@ -67,7 +81,9 @@ __all__ = [
     "guess_factor_to_bin",
     "lateral_direction",
     "point_on_bearing",
-    "predicted_position",
+    "predict_accel_damped_linear_position",
+    "predict_linear_position",
+    "predict_wall_aware_linear_position",
     "segment_features",
     "should_log_switch_decision",
     "signed_bucket",

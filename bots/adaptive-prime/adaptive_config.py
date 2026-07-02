@@ -2,11 +2,12 @@ import os
 from dataclasses import dataclass
 
 from bot_core.energy import EnergyDropConfig, FireGate, FireGateConfig
+from bot_core.gun import LINEAR_VARIANT_MODES
 from bot_core.radar import RadarLockConfig
 
 
 ADAPTIVE_SELECTABLE_GUN_MODES = frozenset({"linear", "traditional_gf", "dynamic_cluster"})
-ADAPTIVE_FORCE_GUN_MODES = ADAPTIVE_SELECTABLE_GUN_MODES | frozenset({"anti_surfer", "displacement"})
+ADAPTIVE_FORCE_GUN_MODES = ADAPTIVE_SELECTABLE_GUN_MODES | LINEAR_VARIANT_MODES | frozenset({"anti_surfer", "displacement"})
 TRADITIONAL_GF_PEAK_SELECTIONS = frozenset({"max", "density"})
 
 

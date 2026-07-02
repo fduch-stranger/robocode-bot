@@ -12,9 +12,15 @@ from bot_core.gun import (
     GunSample,
     GunStats,
     GunSwitchCandidate,
+    GunVisit,
     GunWave,
     GunWaveTracker,
+    LINEAR_ACCEL_DAMPED_MODE,
+    LINEAR_MODE,
+    LINEAR_VARIANT_MODES,
+    LINEAR_WALL_AWARE_MODE,
     TargetHistoryStore,
+    TargetMotion,
     VirtualGunScorer,
     VirtualGunSystem,
     should_log_switch_decision,
@@ -142,6 +148,8 @@ class GunStatsTest(unittest.TestCase):
         components = runtime.component_factory(TargetHistoryStore(max_history=80))
         by_mode = {component.mode: component for component in components}
 
+        for mode in LINEAR_VARIANT_MODES:
+            self.assertIn(mode, by_mode)
         self.assertEqual(7, runtime.system.max_waves)
         self.assertTrue(runtime.system.eval_waves_enabled)
         self.assertEqual(3, runtime.system.eval_wave_min_interval)
@@ -166,6 +174,83 @@ class GunStatsTest(unittest.TestCase):
 
         self.assertEqual(3, runtime.system.max_waves)
         self.assertEqual(4, by_mode["dynamic_cluster"].config.min_samples)
+
+    def test_runtime_config_registers_force_testable_linear_variants(self) -> None:
+        runtime = runtime_config(
+            selector=GunSelectorConfig(
+                forced_mode=LINEAR_WALL_AWARE_MODE,
+                selectable_modes=frozenset({LINEAR_MODE, "dynamic_cluster"}),
+            )
+        )
+        gun = VirtualGunSystem(runtime)
+        bot = SimpleNamespace(
+            x=100.0,
+            y=100.0,
+            gun_direction=0.0,
+            arena_width=800.0,
+            arena_height=600.0,
+        )
+        target = TargetSnapshot(1, 100.0, 300.0, 100.0, 0.0, 8.0, 1)
+
+        aim = gun.aim(
+            bot,
+            target,
+            distance=200.0,
+            firepower=1.0,
+            motion=TargetMotion(acceleration=-1.0, velocity_change_age=0),
+            field_margin=18.0,
+        )
+
+        self.assertEqual(LINEAR_WALL_AWARE_MODE, aim.mode)
+        self.assertTrue(LINEAR_VARIANT_MODES.issubset(aim.virtual_bearings))
+        self.assertIn(LINEAR_WALL_AWARE_MODE, aim.gun_diagnostics)
+        self.assertIn(LINEAR_ACCEL_DAMPED_MODE, aim.gun_diagnostics)
+        self.assertIn("wall_hit", aim.gun_diagnostics[LINEAR_WALL_AWARE_MODE])
+        self.assertEqual(-0.5, aim.gun_diagnostics[LINEAR_ACCEL_DAMPED_MODE]["effective_acceleration"])
+        self.assertEqual(0, aim.gun_diagnostics[LINEAR_ACCEL_DAMPED_MODE]["velocity_change_age"])
+        self.assertNotIn(LINEAR_WALL_AWARE_MODE, runtime.selector.selectable_modes)
+        self.assertNotIn(LINEAR_ACCEL_DAMPED_MODE, runtime.selector.selectable_modes)
+
+    def test_linear_variant_visit_diagnostics_read_wave_metadata(self) -> None:
+        runtime = runtime_config()
+        gun = VirtualGunSystem(runtime)
+        bot = SimpleNamespace(
+            x=100.0,
+            y=100.0,
+            gun_direction=0.0,
+            turn_number=10,
+            arena_width=800.0,
+            arena_height=600.0,
+        )
+        target = TargetSnapshot(1, 100.0, 300.0, 100.0, 0.0, 8.0, 1)
+        aim = gun.aim(
+            bot,
+            target,
+            distance=200.0,
+            firepower=1.0,
+            motion=TargetMotion(acceleration=-1.0, velocity_change_age=0),
+            field_margin=18.0,
+        )
+        wave = gun.make_wave(bot, target, 1.0, aim)
+        visit = GunVisit(
+            wave=wave,
+            actual_bearing=0.0,
+            target_distance=200.0,
+            guess_factor=0.0,
+            segment_key=wave.segment_key,
+        )
+        components = {
+            component.mode: component
+            for component in runtime.component_factory(TargetHistoryStore(max_history=80))
+        }
+
+        wall_diagnostics = components[LINEAR_WALL_AWARE_MODE].visit_diagnostics(visit)
+        accel_diagnostics = components[LINEAR_ACCEL_DAMPED_MODE].visit_diagnostics(visit)
+
+        self.assertEqual(aim.gun_diagnostics[LINEAR_WALL_AWARE_MODE], wall_diagnostics)
+        self.assertEqual(aim.gun_diagnostics[LINEAR_ACCEL_DAMPED_MODE], accel_diagnostics)
+        self.assertIn("wall_hit", wall_diagnostics)
+        self.assertEqual(-0.5, accel_diagnostics["effective_acceleration"])
 
     def test_rolling_knn_buffer_keeps_targets_isolated(self) -> None:
         buffer = RollingKnnBuffer(max_samples=5, max_samples_per_target=3)

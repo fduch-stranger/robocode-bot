@@ -125,7 +125,7 @@ learning state. The package docs include behavior diagrams and ownership notes:
 | Component | State |
 | --- | --- |
 | [`HeadOnGun`](../bots/bot_core/gun/guns/head_on/README.md) | Stateless direct bearing. |
-| [`LinearGun`](../bots/bot_core/gun/guns/linear/README.md) | Stateless linear prediction. |
+| [`LinearGun`](../bots/bot_core/gun/guns/linear/README.md) | Stateless linear prediction variants using `bot_core.gun.prediction.LinearPrediction` diagnostics. |
 | [`DisplacementGun`](../bots/bot_core/gun/guns/displacement/README.md) | Reads shared `TargetHistoryStore` to average matching historical displacement samples. |
 | [`DynamicClusterGun`](../bots/bot_core/gun/guns/dynamic_cluster/README.md) | Owns `RollingKnnBuffer`, sample sequencing, neighbor selection, decayed weighting, bandwidth scoring, and warmup blending. |
 | [`TraditionalGfGun`](../bots/bot_core/gun/guns/traditional_gf/README.md) | Owns global, exact-segment, and coarse-segment GF profiles, peak selection, centering, and diagnostics. |
@@ -751,6 +751,10 @@ The current implementation uses practical approximations:
 - Movement stats buffers use coarse buckets to keep memory bounded.
 - Rolling scores use exponential averages instead of storing all historical
   outcomes.
+- Linear prediction variants stay deliberately simple: `linear` assumes constant
+  velocity, `linear_wall_aware` reuses the shared movement predictor for wall
+  clipping, and `linear_accel_damped` applies bounded acceleration for a short
+  horizon only.
 - Expected gun-heat waves are useful for early evasion, but less certain than
   energy-drop waves.
 - Bullet shadowing is conservative and only reduces danger for confirmed waves.

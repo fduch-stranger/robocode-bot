@@ -69,7 +69,9 @@ Virtual gun behavior lives in `bot_core.gun`.
 Typical aim modes:
 
 - [`linear`](../bots/bot_core/gun/guns/linear/README.md): intercept target
-  assuming current velocity.
+  assuming current velocity. Force-testable variants
+  `linear_wall_aware` and `linear_accel_damped` use the same component package
+  to compare wall-hit-aware and acceleration-damped prediction.
 - [`head_on`](../bots/bot_core/gun/guns/head_on/README.md): direct bearing.
 - [`displacement`](../bots/bot_core/gun/guns/displacement/README.md): average
   historical displacement.
