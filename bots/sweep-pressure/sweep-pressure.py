@@ -34,11 +34,11 @@ from bot_core.gun import (
     GunSystemConfig,
     TargetMotion,
     VirtualGunSystem,
+    dynamic_cluster_config_from_policy,
     selector_config_from_policy,
     should_log_switch_decision,
 )
 from bot_core.gun.factory import standard_runtime_config
-from bot_core.gun.guns.dynamic_cluster.config import DynamicClusterGunConfig
 from bot_core.gun.guns.traditional_gf.config import TraditionalGfGunConfig
 from bot_core.movement import MinimumRiskMovement, MovementCommand, MovementFlattener, MovementFlatteningConfig
 from bot_core.motion import OwnMotionTracker
@@ -96,11 +96,7 @@ class SweepPressure(Bot):
                 scoring=GunScoringConfig(selectable_modes=GUN_POLICY.selectable_modes),
                 min_visits=GUN_POLICY.min_visits,
                 min_switch_score=GUN_POLICY.min_switch_score,
-                dynamic_cluster=DynamicClusterGunConfig(
-                    min_samples=GUN_POLICY.knn_min_samples,
-                    min_switch_visits=GUN_POLICY.min_visits,
-                    min_switch_score=GUN_POLICY.min_switch_score,
-                ),
+                dynamic_cluster=dynamic_cluster_config_from_policy(GUN_POLICY),
                 traditional_gf=TraditionalGfGunConfig(
                     min_switch_visits=GUN_POLICY.traditional_gf_min_switch_visits,
                     min_switch_score=GUN_POLICY.traditional_gf_min_switch_score,

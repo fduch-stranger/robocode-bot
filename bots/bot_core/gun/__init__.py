@@ -36,7 +36,9 @@ from bot_core.gun.models import (
 )
 from bot_core.gun.policy import (
     DEFAULT_LIVE_GUN_MODES,
+    DynamicClusterPolicy,
     SHARED_GUN_POLICY_DEFAULTS,
+    dynamic_cluster_config_from_policy,
     selector_config_from_policy,
 )
 from bot_core.gun.prediction import (
@@ -82,6 +84,7 @@ __all__ = [
     "LINEAR_VARIANT_MODES",
     "LINEAR_WALL_AWARE_MODE",
     "DEFAULT_LIVE_GUN_MODES",
+    "DynamicClusterPolicy",
     "SHARED_GUN_POLICY_DEFAULTS",
     "TargetMotion",
     "TargetPosition",
@@ -101,6 +104,7 @@ __all__ = [
     "predict_linear_position",
     "predict_wall_aware_linear_position",
     "segment_features",
+    "dynamic_cluster_config_from_policy",
     "selector_config_from_policy",
     "should_log_switch_decision",
     "signed_bucket",

@@ -25,13 +25,13 @@ from bot_core.gun import (
     GunSystemConfig,
     TargetMotion,
     VirtualGunSystem,
+    dynamic_cluster_config_from_policy,
     selector_config_from_policy,
     should_log_switch_decision,
 )
 from bot_core.gun.factory import standard_runtime_config
 from bot_core.gun.guns.anti_surfer.config import AntiSurferGunConfig
 from bot_core.gun.guns.displacement.config import DisplacementGunConfig
-from bot_core.gun.guns.dynamic_cluster.config import DynamicClusterGunConfig
 from bot_core.gun.guns.traditional_gf.config import TraditionalGfGunConfig
 from bot_core.movement import (
     FlatteningDecision,
@@ -118,11 +118,7 @@ class AdaptivePrime(Bot):
                     min_switch_visits=GUN_POLICY.displacement_min_switch_visits,
                     min_switch_score=GUN_POLICY.displacement_min_switch_score,
                 ),
-                dynamic_cluster=DynamicClusterGunConfig(
-                    min_samples=GUN_POLICY.knn_min_samples,
-                    min_switch_visits=GUN_POLICY.min_visits,
-                    min_switch_score=GUN_POLICY.min_switch_score,
-                ),
+                dynamic_cluster=dynamic_cluster_config_from_policy(GUN_POLICY),
                 traditional_gf=TraditionalGfGunConfig(
                     min_samples=traditional_gf_policy.min_samples,
                     min_switch_visits=traditional_gf_policy.min_switch_visits,

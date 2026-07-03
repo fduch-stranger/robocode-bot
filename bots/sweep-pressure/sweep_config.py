@@ -2,12 +2,13 @@ import os
 from dataclasses import dataclass
 
 from bot_core.energy import EnergyDropConfig, FireGate, FireGateConfig
-from bot_core.gun import DEFAULT_LIVE_GUN_MODES, LINEAR_VARIANT_MODES, SHARED_GUN_POLICY_DEFAULTS
+from bot_core.gun import DEFAULT_LIVE_GUN_MODES, DynamicClusterPolicy, LINEAR_VARIANT_MODES, SHARED_GUN_POLICY_DEFAULTS
 from bot_core.radar import RadarLockConfig
 
 
 SWEEP_SELECTABLE_GUN_MODES = DEFAULT_LIVE_GUN_MODES
 SWEEP_FORCE_GUN_MODES = SWEEP_SELECTABLE_GUN_MODES | LINEAR_VARIANT_MODES | frozenset({"displacement"})
+SWEEP_DYNAMIC_CLUSTER_POLICY = DynamicClusterPolicy.from_env("ROBOCODE_SWEEP")
 
 
 def _forced_gun_mode() -> str | None:
@@ -47,6 +48,7 @@ class GunPolicy:
     traditional_gf_min_switch_visits: int = SHARED_GUN_POLICY_DEFAULTS.traditional_gf_min_switch_visits
     traditional_gf_min_switch_score: float = SHARED_GUN_POLICY_DEFAULTS.traditional_gf_min_switch_score
     switch_diagnostics_interval: int = 24
+    dynamic_cluster: DynamicClusterPolicy = SWEEP_DYNAMIC_CLUSTER_POLICY
 
 
 @dataclass(frozen=True)

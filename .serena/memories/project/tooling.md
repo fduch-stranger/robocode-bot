@@ -13,7 +13,7 @@ Important local config:
 - `ROBOCODE_PYTHON_BIN` overrides bot launcher/telemetry Python.
 - `ROBOCODE_LEGACY_BOTS_ROOT` points to converted legacy bots. If empty, scripts use ignored repo-local `legacy-bots/`.
 - Telemetry defaults are controlled by `ROBOCODE_TELEMETRY_*` variables.
-- Adaptive gun testing env vars include `ROBOCODE_ADAPTIVE_GUN_MODE`, `ROBOCODE_ADAPTIVE_GUN_EVAL`, and `ROBOCODE_ADAPTIVE_GUN_EVAL_INTERVAL`.
+- Gun testing env vars include per-bot gun-mode/eval prefixes such as `ROBOCODE_ADAPTIVE_GUN_MODE`, `ROBOCODE_CHASE_GUN_EVAL`, and matching `_GUN_EVAL_INTERVAL` vars. Dynamic-cluster experiment knobs are also per-bot: `ROBOCODE_ADAPTIVE_DYNAMIC_*`, `ROBOCODE_CHASE_DYNAMIC_*`, `ROBOCODE_CIRCLE_DYNAMIC_*`, and `ROBOCODE_SWEEP_DYNAMIC_*`.
 
 Battle/tool commands:
 - Default battle with all local bots: `scripts/run-battle.sh`.
@@ -28,6 +28,8 @@ Battle/tool commands:
 - Telemetry viewer generations reset on `telemetry.session` for new processes/files and on bot-emitted `battle.reset` for same-process GUI game restarts; normal `round.reset` remains within the same generation unless it looks like an aborted/reset GUI run.
 - Telemetry audit: `tools/telemetry_audit.py battle-results/runs/<run>/telemetry --require-bot adaptive-prime`.
 - Gun/eval summary: `tools/gun_eval_summary.py battle-results/runs/<run>/telemetry --bot adaptive-prime`.
+- BasicGFSurfer glitch filtering: `tools/surfer_glitch_analysis.py battle-results/ab/<experiment>` filters rounds where Adaptive hit accuracy is greater than the default `0.30` cutoff and warns/fails on incomplete telemetry or short runs.
+- Focused BasicGFSurfer A/B: `scripts/run-ab.sh --preset adaptive-1v1-basic-gf-surfer --rounds 24 --repeats 3 --telemetry`, with repeatable `--baseline-env KEY=VALUE` / `--candidate-env KEY=VALUE` for forced-gun and tuning sweeps.
 
 A/B round guidance:
 - `1-8` rounds are smoke checks only: crashes, packaging, telemetry shape, and obvious churn/regression signals.

@@ -20,6 +20,7 @@ flowchart TD
     O["scripts/verify-telemetry.sh"] --> E
     O --> M
     P["tools/telemetry_schema_docs.py"] --> Q["docs/telemetry-schema.md"]
+    R["tools/surfer_glitch_analysis.py"] --> S["filter high-accuracy BasicGFSurfer rounds"]
 ```
 
 ## Environment
@@ -317,6 +318,28 @@ the next N real shots, production wave average, eval-wave average, and
 score-vs-hit gaps. Use this to identify modes that look strong virtually but
 underperform with real bullets before changing live switch policy.
 
+For BasicGFSurfer-style legacy validation, use 20+ round telemetry runs so KNN
+memory can warm up, then filter likely stuck-surfer rounds where Adaptive hit
+accuracy is abnormally high:
+
+```sh
+tools/surfer_glitch_analysis.py battle-results/legacy-filter/<experiment>
+tools/surfer_glitch_analysis.py battle-results/legacy-filter/<experiment> \
+  --threshold 0.30 \
+  --json-output battle-results/legacy-filter/<experiment>/filtered-summary.json
+```
+
+The tool reads cumulative `runner.log` round results and adaptive-prime
+telemetry. It reports raw totals and filtered totals after excluding rounds
+where Adaptive accuracy is greater than the threshold. Use the filtered totals
+when judging BasicGFSurfer gun experiments; raw improvements can be dominated
+by rounds where the legacy surfer was stuck or glitchy.
+Incomplete inputs and runs shorter than 20 scored rounds are reported as
+warnings and make the CLI exit nonzero unless `--allow-missing-data` is passed.
+For dynamic-cluster runs, the summary also reports kept/excluded diagnostic
+averages such as selected-vs-actual guess-factor error, ambiguity rate, aim
+confidence, peak score ratio, and effective bandwidth.
+
 The browser viewer keeps raw JSONL fields available through the event API and
 source files. Its decision stream uses readable event summaries, while cards,
 charts, and performance summaries use normalized dashboard semantics derived
@@ -383,6 +406,7 @@ not a true before/after comparison.
 | `sweep-1v1-core` | Sweep Pressure | vs Adaptive, Chase, Circle |
 | `adaptive-melee-core` | Adaptive Prime | four local bots |
 | `adaptive-1v1-boss` | Adaptive Prime | DrussGT, Saguaro, BasicGFSurfer, Diamond |
+| `adaptive-1v1-basic-gf-surfer` | Adaptive Prime | BasicGFSurfer only |
 
 Default preset settings are 24 rounds and 3 repeats unless overridden.
 
@@ -420,10 +444,13 @@ Options:
 | `--preset PRESET` | Benchmark preset. |
 | `--baseline PATH` | Baseline repo/worktree. |
 | `--candidate PATH` | Candidate repo/worktree. |
+| `--baseline-env KEY=VALUE` | Env override for baseline runs; repeatable. |
+| `--candidate-env KEY=VALUE` | Env override for candidate runs; repeatable. |
 | `--rounds N` | Override preset rounds. |
 | `--repeats N` | Override preset repeat count. |
 | `--run-dir DIR` | Override output directory. |
 | `--target-bot NAME` | Override target bot name for result extraction. |
+| `--telemetry` | Enable telemetry JSONL for each battle run. |
 | `--verbose` | Stream battle output to terminal as well as logs. |
 
 ### A/B Output
@@ -448,9 +475,29 @@ Decision labels:
 - `regression`: candidate lost enough score or first places.
 - `mixed`: results moved in conflicting directions.
 
-Telemetry is intentionally off during A/B runs. The runner warns if telemetry
+Telemetry is off by default during A/B runs. The runner warns if telemetry
 viewers are discovered afterward, because live telemetry can add noise and make
-benchmark results less comparable.
+benchmark results less comparable. Use `--telemetry` for diagnostics or
+BasicGFSurfer validation that needs per-round hit-rate filtering:
+
+```sh
+scripts/run-ab.sh \
+  --name basic-gf-surfer-gun-check \
+  --preset adaptive-1v1-basic-gf-surfer \
+  --rounds 24 \
+  --repeats 3 \
+  --telemetry \
+  --candidate-env ROBOCODE_ADAPTIVE_DYNAMIC_BANDWIDTH_MIN=0.08 \
+  --candidate-env ROBOCODE_ADAPTIVE_DYNAMIC_BANDWIDTH_MAX=0.22 \
+  --baseline <baseline-worktree> \
+  --candidate <candidate-worktree>
+
+tools/surfer_glitch_analysis.py battle-results/ab/<experiment>
+```
+
+Dynamic-cluster tuning env vars are shared by policy shape but per bot in name:
+`ROBOCODE_ADAPTIVE_DYNAMIC_*`, `ROBOCODE_CHASE_DYNAMIC_*`,
+`ROBOCODE_CIRCLE_DYNAMIC_*`, and `ROBOCODE_SWEEP_DYNAMIC_*`.
 
 ## Battle Series
 

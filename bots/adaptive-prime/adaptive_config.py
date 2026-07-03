@@ -2,7 +2,7 @@ import os
 from dataclasses import dataclass, field
 
 from bot_core.energy import EnergyDropConfig, FireGate, FireGateConfig
-from bot_core.gun import DEFAULT_LIVE_GUN_MODES, LINEAR_VARIANT_MODES, SHARED_GUN_POLICY_DEFAULTS
+from bot_core.gun import DEFAULT_LIVE_GUN_MODES, DynamicClusterPolicy, LINEAR_VARIANT_MODES, SHARED_GUN_POLICY_DEFAULTS
 from bot_core.gun.guns.traditional_gf.config import TraditionalGfGunConfig
 from bot_core.radar import RadarLockConfig
 
@@ -11,6 +11,7 @@ ADAPTIVE_SELECTABLE_GUN_MODES = DEFAULT_LIVE_GUN_MODES
 ADAPTIVE_FORCE_GUN_MODES = ADAPTIVE_SELECTABLE_GUN_MODES | LINEAR_VARIANT_MODES | frozenset({"anti_surfer", "displacement"})
 TRADITIONAL_GF_PEAK_SELECTIONS = frozenset({"max", "density"})
 TRADITIONAL_GF_DEFAULTS = TraditionalGfGunConfig()
+ADAPTIVE_DYNAMIC_CLUSTER_POLICY = DynamicClusterPolicy.from_env("ROBOCODE_ADAPTIVE")
 
 
 def _env_flag(name: str) -> bool:
@@ -124,6 +125,7 @@ class GunPolicy:
     switch_confidence_penalty: float = 0.04
     primary_confidence_penalty_scale: float = 0.25
     switch_diagnostics_interval: int = 24
+    dynamic_cluster: DynamicClusterPolicy = ADAPTIVE_DYNAMIC_CLUSTER_POLICY
 
 
 @dataclass(frozen=True)

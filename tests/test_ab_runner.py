@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import argparse
 import sys
 import tempfile
 import unittest
@@ -42,12 +43,28 @@ class RunAbTest(unittest.TestCase):
                 self.assertEqual(target_bot, preset["targetBot"])
                 self.assertEqual(matchup_names, [matchup["name"] for matchup in preset["matchups"]])
 
+    def test_basic_gf_surfer_preset_is_focused_on_surfer(self) -> None:
+        preset = run_ab.PRESETS["adaptive-1v1-basic-gf-surfer"]
+
+        self.assertEqual("Adaptive Prime", preset["targetBot"])
+        self.assertEqual(24, preset["rounds"])
+        self.assertEqual(3, preset["repeats"])
+        self.assertEqual(
+            [{"name": "adaptive-vs-basic-gf-surfer", "bots": ["bots/adaptive-prime", "legacy:basic-gf-surfer"]}],
+            preset["matchups"],
+        )
+
     def test_resolve_bot_args_keeps_legacy_token(self) -> None:
         repo = Path("/repo")
 
         args = run_ab.resolve_bot_args(repo, ["bots/adaptive-prime", "legacy:basic-gf-surfer"])
 
         self.assertEqual(["/repo/bots/adaptive-prime", "legacy:basic-gf-surfer"], args)
+
+    def test_parse_env_overrides_requires_key_value_pairs(self) -> None:
+        self.assertEqual({"A": "1", "B": "two"}, run_ab.parse_env_overrides(["A=1", "B=two"]))
+        with self.assertRaises(ValueError):
+            run_ab.parse_env_overrides(["missing-equals"])
 
     def test_classify_delta_marks_regression_for_score_drop(self) -> None:
         self.assertEqual("regression", run_ab.classify_delta(1000, -30, 0, -1))
@@ -101,6 +118,64 @@ class RunAbTest(unittest.TestCase):
             text = output.read_text()
             self.assertIn("| adaptive-vs-test | win | 1000 | 1040 | 40 | 10 | 11 | 1 |", text)
             self.assertIn("Decision: `win`", text)
+
+    def test_run_experiment_passes_telemetry_to_battle_runner(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo = root / "repo"
+            (repo / "scripts").mkdir(parents=True)
+            (repo / "scripts" / "run-battle.sh").write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+            experiment_dir = root / "experiment"
+            commands: list[list[str]] = []
+            envs: list[dict[str, str]] = []
+
+            def fake_run_command(
+                command: list[str],
+                cwd: Path,
+                log_file: Path,
+                verbose: bool,
+                env: dict[str, str] | None = None,
+            ) -> None:
+                commands.append(command)
+                envs.append(env or {})
+                self._write_result(log_file.parent / "results.json", 1000, 10)
+
+            original_run_command = run_ab.run_command
+            original_telemetry_warning = run_ab.telemetry_warning
+            run_ab.run_command = fake_run_command
+            run_ab.telemetry_warning = lambda repo_path: self.fail("telemetry warning should be skipped when enabled")
+            try:
+                args = argparse.Namespace(
+                    name="surfer-telemetry",
+                    preset="adaptive-1v1-basic-gf-surfer",
+                    baseline=str(repo),
+                    candidate=str(repo),
+                    baseline_env=[],
+                    candidate_env=["ROBOCODE_ADAPTIVE_DYNAMIC_BANDWIDTH_MIN=0.08"],
+                    rounds=20,
+                    repeats=1,
+                    run_dir=str(experiment_dir),
+                    target_bot=None,
+                    telemetry=True,
+                    verbose=False,
+                )
+
+                exit_code = run_ab.run_experiment(args)
+            finally:
+                run_ab.run_command = original_run_command
+                run_ab.telemetry_warning = original_telemetry_warning
+
+            self.assertEqual(0, exit_code)
+            self.assertEqual(2, len(commands))
+            self.assertIn("--telemetry", commands[0])
+            self.assertNotIn("ROBOCODE_ADAPTIVE_DYNAMIC_BANDWIDTH_MIN", envs[0])
+            self.assertEqual("0.08", envs[1]["ROBOCODE_ADAPTIVE_DYNAMIC_BANDWIDTH_MIN"])
+            manifest = json.loads((experiment_dir / "manifest.json").read_text())
+            self.assertEqual("on", manifest["telemetry"])
+            self.assertEqual(
+                {"ROBOCODE_ADAPTIVE_DYNAMIC_BANDWIDTH_MIN": "0.08"},
+                manifest["sides"]["candidate"]["env"],
+            )
 
     @staticmethod
     def _write_result(path: Path, score: int, first_places: int) -> None:

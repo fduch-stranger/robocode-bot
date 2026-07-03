@@ -27,6 +27,7 @@ from bot_core.gun import (
     VirtualGunScorer,
     VirtualGunSystem,
     build_fire_context,
+    dynamic_cluster_config_from_policy,
     movement_context_tags,
     should_log_switch_decision,
 )
@@ -179,6 +180,19 @@ class GunStatsTest(unittest.TestCase):
 
         self.assertGreaterEqual(config.max_samples_per_target, 900)
         self.assertGreaterEqual(config.max_samples, config.max_samples_per_target)
+
+    def test_standard_runtime_dynamic_cluster_uses_shared_defaults(self) -> None:
+        policy = SimpleNamespace(knn_min_samples=30, min_visits=12, min_switch_score=0.03)
+        runtime = standard_runtime_config(
+            dynamic_cluster=dynamic_cluster_config_from_policy(policy)
+        )
+        config = component_config(runtime, "dynamic_cluster")
+
+        self.assertEqual(30, config.min_samples)
+        self.assertEqual(12, config.min_switch_visits)
+        self.assertEqual(0.03, config.min_switch_score)
+        self.assertEqual(0.85, config.ambiguous_peak_score_ratio)
+        self.assertEqual(0.8, config.ambiguous_peak_centering_factor)
 
     def test_runtime_config_maps_to_runtime_components(self) -> None:
         runtime = runtime_config(
@@ -1620,6 +1634,141 @@ class GunStatsTest(unittest.TestCase):
         self.assertAlmostEqual(0.2, prediction.diagnostics["best_peak_gf"], delta=0.11)
         self.assertAlmostEqual(-0.6, prediction.diagnostics["second_peak_gf"], delta=0.11)
         self.assertGreater(prediction.diagnostics["peak_separation"], 0.6)
+
+    def test_dynamic_cluster_ambiguity_threshold_is_configurable(self) -> None:
+        samples = [
+            GunSample(1, 1, (0.0,) * 7, 0.18),
+            GunSample(1, 2, (0.0,) * 7, 0.22),
+            GunSample(1, 3, (0.0,) * 7, -0.62),
+        ]
+        strict = DynamicClusterGun(
+            DynamicClusterGunConfig(
+                min_samples=3,
+                min_effective_samples=0.0,
+                blend_samples=3,
+                neighbors=3,
+                guess_factor_bins=21,
+                bandwidth=0.12,
+                ambiguous_peak_score_ratio=0.2,
+                context_weighting_enabled=False,
+            )
+        )
+        lenient = DynamicClusterGun(
+            DynamicClusterGunConfig(
+                min_samples=3,
+                min_effective_samples=0.0,
+                blend_samples=3,
+                neighbors=3,
+                guess_factor_bins=21,
+                bandwidth=0.12,
+                ambiguous_peak_score_ratio=0.99,
+                context_weighting_enabled=False,
+            )
+        )
+
+        strict_prediction = strict._prediction_from_samples(1, (0.0,) * 7, samples, FireContext(), 0.0)
+        lenient_prediction = lenient._prediction_from_samples(1, (0.0,) * 7, samples, FireContext(), 0.0)
+
+        self.assertIsNotNone(strict_prediction)
+        self.assertIsNotNone(lenient_prediction)
+        assert strict_prediction is not None
+        assert lenient_prediction is not None
+        self.assertTrue(strict_prediction.diagnostics["ambiguous_peak"])
+        self.assertFalse(lenient_prediction.diagnostics["ambiguous_peak"])
+
+    def test_dynamic_cluster_ambiguous_peak_centering_is_configurable(self) -> None:
+        samples = [
+            GunSample(1, 1, (0.0,) * 7, 0.5),
+            GunSample(1, 2, (0.0,) * 7, 0.55),
+            GunSample(1, 3, (0.0,) * 7, -0.5),
+            GunSample(1, 4, (0.0,) * 7, -0.55),
+        ]
+        uncentered = DynamicClusterGun(
+            DynamicClusterGunConfig(
+                min_samples=4,
+                min_effective_samples=0.0,
+                blend_samples=4,
+                neighbors=4,
+                guess_factor_bins=21,
+                bandwidth=0.12,
+                ambiguous_peak_score_ratio=0.5,
+                ambiguous_peak_centering_factor=1.0,
+                context_weighting_enabled=False,
+            )
+        )
+        centered = DynamicClusterGun(
+            DynamicClusterGunConfig(
+                min_samples=4,
+                min_effective_samples=0.0,
+                blend_samples=4,
+                neighbors=4,
+                guess_factor_bins=21,
+                bandwidth=0.12,
+                ambiguous_peak_score_ratio=0.5,
+                ambiguous_peak_centering_factor=0.5,
+                context_weighting_enabled=False,
+            )
+        )
+
+        uncentered_prediction = uncentered._prediction_from_samples(1, (0.0,) * 7, samples, FireContext(), 0.0)
+        centered_prediction = centered._prediction_from_samples(1, (0.0,) * 7, samples, FireContext(), 0.0)
+
+        self.assertIsNotNone(uncentered_prediction)
+        self.assertIsNotNone(centered_prediction)
+        assert uncentered_prediction is not None
+        assert centered_prediction is not None
+        self.assertTrue(uncentered_prediction.diagnostics["ambiguous_peak"])
+        self.assertTrue(centered_prediction.diagnostics["ambiguous_peak"])
+        self.assertAlmostEqual(
+            abs(uncentered_prediction.guess_factor) * 0.5,
+            abs(centered_prediction.guess_factor),
+            delta=0.02,
+        )
+
+    def test_dynamic_cluster_context_weight_clamp_is_configurable(self) -> None:
+        current = FireContext(
+            movement_tags=frozenset({"surfer"}),
+            bullet_flight_time=40.0,
+            lateral_direction_confidence=1.0,
+        )
+        sample = FireContext(
+            movement_tags=frozenset({"surfer"}),
+            bullet_flight_time=40.0,
+            lateral_direction_confidence=1.0,
+        )
+        gun = DynamicClusterGun(
+            DynamicClusterGunConfig(
+                tag_match_bonus=1.0,
+                context_weight_min=0.4,
+                context_weight_max=1.1,
+            )
+        )
+
+        self.assertAlmostEqual(1.1, gun._context_weight_factor(current, sample))
+
+    def test_dynamic_cluster_centroid_window_scale_is_configurable(self) -> None:
+        samples = [
+            GunSample(1, 1, (0.0,) * 7, 0.0),
+            GunSample(1, 2, (0.0,) * 7, 0.6),
+        ]
+        weighted_neighbors = [(sample, 1.0) for sample in samples]
+        narrow = DynamicClusterGun(
+            DynamicClusterGunConfig(
+                guess_factor_bins=21,
+                centroid_window_bandwidth_scale=1.0,
+                centroid_window_bin_scale=1.0,
+            )
+        )
+        wide = DynamicClusterGun(
+            DynamicClusterGunConfig(
+                guess_factor_bins=21,
+                centroid_window_bandwidth_scale=8.0,
+                centroid_window_bin_scale=1.0,
+            )
+        )
+
+        self.assertAlmostEqual(0.0, narrow._local_peak_centroid(0.0, weighted_neighbors, 0.1))
+        self.assertGreater(wide._local_peak_centroid(0.0, weighted_neighbors, 0.1), 0.0)
 
     def test_dynamic_cluster_aim_confidence_maturity_uses_sample_count_not_neighbor_count(self) -> None:
         samples = [GunSample(1, turn, (0.0,) * 7, 0.3) for turn in range(1, 21)]

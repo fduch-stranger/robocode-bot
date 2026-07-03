@@ -17,7 +17,13 @@ class DynamicClusterGunConfig:
     bandwidth_min: float = 0.12
     bandwidth_max: float = 0.30
     bandwidth_hit_width_scale: float = 1.5
+    second_peak_suppression_bandwidth_scale: float = 1.0
+    second_peak_suppression_bin_scale: float = 1.5
+    centroid_window_bandwidth_scale: float = 1.0
+    centroid_window_bin_scale: float = 1.5
     centroid_min_weight: float = 1e-6
+    ambiguous_peak_score_ratio: float = 0.85
+    ambiguous_peak_centering_factor: float = 0.8
     confidence_mature_samples: int = 150
     confidence_max_neighbor_distance: float = 1.2
     confidence_peak_margin_reference: float = 3.0
@@ -28,6 +34,8 @@ class DynamicClusterGunConfig:
     flight_time_mismatch_penalty: float = 0.18
     wall_escape_mismatch_penalty: float = 0.12
     lateral_confidence_penalty: float = 0.12
+    context_weight_min: float = 0.25
+    context_weight_max: float = 1.5
 
     def mode_policy(self) -> GunModePolicy:
         return GunModePolicy(

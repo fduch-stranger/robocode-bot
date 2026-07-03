@@ -93,6 +93,15 @@ PRESETS: dict[str, dict[str, Any]] = {
             {"name": "adaptive-vs-diamond", "bots": ["bots/adaptive-prime", "legacy:diamond"]},
         ],
     },
+    "adaptive-1v1-basic-gf-surfer": {
+        "description": "Adaptive Prime focused BasicGFSurfer 1v1 benchmark.",
+        "rounds": 24,
+        "repeats": 3,
+        "targetBot": TARGET_BOT,
+        "matchups": [
+            {"name": "adaptive-vs-basic-gf-surfer", "bots": ["bots/adaptive-prime", "legacy:basic-gf-surfer"]},
+        ],
+    },
 }
 
 
@@ -100,6 +109,7 @@ PRESETS: dict[str, dict[str, Any]] = {
 class SideConfig:
     name: str
     repo: Path
+    env: dict[str, str]
 
 
 def slugify(value: str) -> str:
@@ -150,6 +160,18 @@ def resolve_bot_args(repo: Path, bots: list[str]) -> list[str]:
         else:
             resolved.append(str(repo / bot))
     return resolved
+
+
+def parse_env_overrides(values: list[str]) -> dict[str, str]:
+    env: dict[str, str] = {}
+    for value in values:
+        if "=" not in value:
+            raise ValueError(f"Environment override must be KEY=VALUE: {value!r}")
+        key, env_value = value.split("=", 1)
+        if not key:
+            raise ValueError(f"Environment override must include a key: {value!r}")
+        env[key] = env_value
+    return env
 
 
 def read_results(result_path: Path, target_bot: str) -> dict[str, Any]:
@@ -290,7 +312,7 @@ def write_summary_markdown(summary: dict[str, Any], destination: Path) -> None:
     destination.write_text("\n".join(lines))
 
 
-def run_command(command: list[str], cwd: Path, log_file: Path, verbose: bool) -> None:
+def run_command(command: list[str], cwd: Path, log_file: Path, verbose: bool, env: dict[str, str] | None = None) -> None:
     log_file.parent.mkdir(parents=True, exist_ok=True)
     if verbose:
         print("Running:", " ".join(command), flush=True)
@@ -298,6 +320,7 @@ def run_command(command: list[str], cwd: Path, log_file: Path, verbose: bool) ->
         process = subprocess.Popen(
             command,
             cwd=cwd,
+            env=env,
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -349,8 +372,8 @@ def run_experiment(args: argparse.Namespace) -> int:
         experiment_dir = root_dir / experiment_dir
 
     sides = [
-        SideConfig("baseline", Path(args.baseline).resolve()),
-        SideConfig("candidate", Path(args.candidate).resolve()),
+        SideConfig("baseline", Path(args.baseline).resolve(), parse_env_overrides(args.baseline_env)),
+        SideConfig("candidate", Path(args.candidate).resolve(), parse_env_overrides(args.candidate_env)),
     ]
     experiment_dir.mkdir(parents=True, exist_ok=True)
 
@@ -363,8 +386,14 @@ def run_experiment(args: argparse.Namespace) -> int:
         "repeats": repeats,
         "targetBot": target_bot,
         "command": sys.argv,
-        "telemetry": "off",
-        "sides": {side.name: repo_state(side.repo) for side in sides},
+        "telemetry": "on" if args.telemetry else "off",
+        "sides": {
+            side.name: {
+                **repo_state(side.repo),
+                "env": side.env,
+            }
+            for side in sides
+        },
         "matchups": preset["matchups"],
     }
     (experiment_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
@@ -384,16 +413,20 @@ def run_experiment(args: argparse.Namespace) -> int:
                     str(rounds),
                     "--run-dir",
                     str(run_dir),
-                    *resolve_bot_args(side.repo, matchup["bots"]),
                 ]
+                if args.telemetry:
+                    command.append("--telemetry")
+                command.extend(resolve_bot_args(side.repo, matchup["bots"]))
                 print(f"{side.name} {matchup['name']} run {repeat}/{repeats}")
-                run_command(command, side.repo, run_dir / "ab-run.log", args.verbose)
+                side_env = {**os.environ, **side.env}
+                run_command(command, side.repo, run_dir / "ab-run.log", args.verbose, side_env)
 
     warnings = {}
-    for side in sides:
-        warning = telemetry_warning(side.repo)
-        if warning:
-            warnings[side.name] = warning
+    if not args.telemetry:
+        for side in sides:
+            warning = telemetry_warning(side.repo)
+            if warning:
+                warnings[side.name] = warning
     if warnings:
         print("Telemetry warning: viewer(s) discovered after no-telemetry A/B run.", file=sys.stderr)
         for side, warning in warnings.items():
@@ -427,16 +460,24 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--preset", choices=sorted(PRESETS), default="adaptive-1v1-core")
     parser.add_argument("--baseline", default=str(root_dir), help="Baseline repo/worktree path.")
     parser.add_argument("--candidate", default=str(root_dir), help="Candidate repo/worktree path.")
+    parser.add_argument("--baseline-env", action="append", default=[], help="Env override for baseline runs, KEY=VALUE.")
+    parser.add_argument("--candidate-env", action="append", default=[], help="Env override for candidate runs, KEY=VALUE.")
     parser.add_argument("--rounds", type=int, default=None, help="Override preset rounds.")
     parser.add_argument("--repeats", type=int, default=None, help="Override preset repeat count.")
     parser.add_argument("--run-dir", default=None, help="Output directory. Defaults to battle-results/ab/<timestamp>-<name>.")
     parser.add_argument("--target-bot", default=None, help=f"Bot name to compare. Defaults to {TARGET_BOT!r}.")
+    parser.add_argument("--telemetry", action="store_true", help="Enable telemetry JSONL for each battle run.")
     parser.add_argument("--verbose", action="store_true", help="Write full battle output to the terminal as well as logs.")
     args = parser.parse_args(argv)
     if args.rounds is not None and args.rounds < 1:
         parser.error("--rounds must be positive")
     if args.repeats is not None and args.repeats < 1:
         parser.error("--repeats must be positive")
+    for label, values in (("--baseline-env", args.baseline_env), ("--candidate-env", args.candidate_env)):
+        try:
+            parse_env_overrides(values)
+        except ValueError as error:
+            parser.error(f"{label}: {error}")
     return args
 
 

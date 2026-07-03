@@ -31,6 +31,19 @@ Aim extraction scores the usual guess-factor density bins, then refines the
 best bin with a local weighted centroid of nearby neighbor samples. Bandwidth
 is adjusted by target hit width, and component diagnostics report peak margin,
 neighbor agreement, aim confidence, ambiguity, and the selected guess factor.
+`DynamicClusterGunConfig` owns the density bandwidth, second-peak suppression,
+centroid window, context-weight clamp, ambiguity ratio/centering, and confidence
+inputs so tuning can be tested without changing the component algorithm. The
+default only mildly centers highly ambiguous peaks (`ratio >= 0.85`) so the gun
+remains the primary KNN aim model rather than being hidden by selector policy.
+
+Each live bot exposes experiment-only env overrides for those dynamic-cluster
+knobs through its own prefix: `ROBOCODE_ADAPTIVE_DYNAMIC_*`,
+`ROBOCODE_CHASE_DYNAMIC_*`, `ROBOCODE_CIRCLE_DYNAMIC_*`, or
+`ROBOCODE_SWEEP_DYNAMIC_*`. Use them through
+`scripts/run-ab.sh --candidate-env ...` for sweeps; do not treat an env-only
+result as a shared default promotion until filtered 20+ round surfer results or
+matching bot-specific evidence support it.
 
 The component handles warmup and availability itself. The facade only asks for a
 `GunBearing` and publishes visits back through the component contract.

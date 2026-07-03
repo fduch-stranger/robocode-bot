@@ -180,16 +180,17 @@ class DynamicClusterGun:
             score = self._density_score(candidate, weighted_neighbors, effective_bandwidth)
             scored_bins.append((candidate, score))
 
-        best_index, (best_guess_factor, best_score) = max(
-            enumerate(scored_bins),
-            key=lambda indexed_scored: indexed_scored[1][1],
-        )
+        best_index = max(range(len(scored_bins)), key=lambda index: scored_bins[index][1])
+        best_guess_factor, best_score = scored_bins[best_index]
         second_guess_factor, second_score = self._second_peak(scored_bins, best_index, effective_bandwidth)
         selected_guess_factor = self._local_peak_centroid(
             best_guess_factor,
             weighted_neighbors,
             effective_bandwidth,
         )
+        peak_score_ratio = second_score / max(best_score, 1e-6)
+        if peak_score_ratio >= self.config.ambiguous_peak_score_ratio:
+            selected_guess_factor *= self.config.ambiguous_peak_centering_factor
         return DensityAnalysis(
             selected_guess_factor=selected_guess_factor,
             best_bin_guess_factor=best_guess_factor,
@@ -210,7 +211,10 @@ class DynamicClusterGun:
 
         best_guess_factor, _ = scored_bins[best_index]
         bin_width = 2.0 / max(1, self.config.guess_factor_bins - 1)
-        suppression_window = max(effective_bandwidth, 1.5 * bin_width)
+        suppression_window = max(
+            effective_bandwidth * self.config.second_peak_suppression_bandwidth_scale,
+            self.config.second_peak_suppression_bin_scale * bin_width,
+        )
         local_peaks: list[tuple[float, float]] = []
         for index, (guess_factor, score) in enumerate(scored_bins):
             if abs(guess_factor - best_guess_factor) <= suppression_window:
@@ -250,7 +254,10 @@ class DynamicClusterGun:
         effective_bandwidth: float,
     ) -> float:
         bin_width = 2.0 / max(1, self.config.guess_factor_bins - 1)
-        window = max(effective_bandwidth, 1.5 * bin_width)
+        window = max(
+            effective_bandwidth * self.config.centroid_window_bandwidth_scale,
+            self.config.centroid_window_bin_scale * bin_width,
+        )
         total_weight = 0.0
         weighted_guess_factor = 0.0
         for sample, weight in weighted_neighbors:
@@ -291,7 +298,7 @@ class DynamicClusterGun:
         factor *= 1.0 - self.config.flight_time_mismatch_penalty * clamp(flight_delta / 0.5, 0.0, 1.0)
         factor *= 1.0 - self.config.wall_escape_mismatch_penalty * clamp(wall_delta, 0.0, 1.0)
         factor *= 1.0 - self.config.lateral_confidence_penalty * (1.0 - lateral_confidence)
-        return clamp(factor, 0.25, 1.5)
+        return clamp(factor, self.config.context_weight_min, self.config.context_weight_max)
 
     def _neighbor_diagnostics(
         self,
@@ -362,7 +369,7 @@ class DynamicClusterGun:
             "second_peak_score": density.second_peak_score,
             "peak_separation": abs(density.best_bin_guess_factor - density.second_peak_guess_factor),
             "peak_score_ratio": peak_score_ratio,
-            "ambiguous_peak": peak_score_ratio >= 0.85,
+            "ambiguous_peak": peak_score_ratio >= self.config.ambiguous_peak_score_ratio,
         }
 
     @staticmethod
