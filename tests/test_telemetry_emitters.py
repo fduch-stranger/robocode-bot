@@ -341,12 +341,6 @@ class TelemetryEmitterTest(unittest.TestCase):
                         "ticks": 12,
                         "final_speed": 0.0,
                     },
-                    "linear_accel_damped": {
-                        "effective_acceleration": -0.5,
-                        "applied_acceleration_ticks": 7,
-                        "velocity_change_age": 2,
-                        "final_speed": 1.25,
-                    },
                 },
             )
         )
@@ -355,10 +349,6 @@ class TelemetryEmitterTest(unittest.TestCase):
         self.assertTrue(fields["linear_wall_aware_wall_hit"])
         self.assertEqual(12, fields["linear_wall_aware_ticks"])
         self.assertEqual(0.0, fields["linear_wall_aware_final_speed"])
-        self.assertEqual(-0.5, fields["linear_accel_damped_effective_acceleration"])
-        self.assertEqual(7, fields["linear_accel_damped_applied_ticks"])
-        self.assertEqual(2, fields["linear_accel_damped_velocity_change_age"])
-        self.assertEqual(1.25, fields["linear_accel_damped_final_speed"])
 
     def test_energy_telemetry_records_drop_fire_and_heat_wave_events(self) -> None:
         sink = RecordingSink()

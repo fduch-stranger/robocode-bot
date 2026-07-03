@@ -434,19 +434,6 @@ def _wave_visit_fields(visit: WaveVisit) -> dict[str, object]:
         fields["linear_wall_aware_ticks"] = linear_wall_aware_ticks
     if linear_wall_aware_final_speed is not None:
         fields["linear_wall_aware_final_speed"] = round(linear_wall_aware_final_speed, 3)
-    linear_accel_damped = visit.gun_diagnostics.get("linear_accel_damped", {})
-    linear_accel_damped_effective_acceleration = _diagnostic_float(linear_accel_damped, "effective_acceleration")
-    linear_accel_damped_applied_ticks = _diagnostic_int(linear_accel_damped, "applied_acceleration_ticks")
-    linear_accel_damped_velocity_change_age = _diagnostic_int(linear_accel_damped, "velocity_change_age")
-    linear_accel_damped_final_speed = _diagnostic_float(linear_accel_damped, "final_speed")
-    if linear_accel_damped_effective_acceleration is not None:
-        fields["linear_accel_damped_effective_acceleration"] = round(linear_accel_damped_effective_acceleration, 3)
-    if linear_accel_damped_applied_ticks is not None:
-        fields["linear_accel_damped_applied_ticks"] = linear_accel_damped_applied_ticks
-    if linear_accel_damped_velocity_change_age is not None:
-        fields["linear_accel_damped_velocity_change_age"] = linear_accel_damped_velocity_change_age
-    if linear_accel_damped_final_speed is not None:
-        fields["linear_accel_damped_final_speed"] = round(linear_accel_damped_final_speed, 3)
     return fields
 
 

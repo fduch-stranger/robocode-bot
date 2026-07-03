@@ -1,12 +1,11 @@
 # Linear Gun
 
-Modes: `linear`, `linear_wall_aware`, `linear_accel_damped`
+Modes: `linear`, `linear_wall_aware`
 
 The linear gun family predicts an intercept point from the target's current
 motion. `linear` assumes constant velocity and remains the default practical
-baseline for moving targets. `linear_wall_aware` and `linear_accel_damped` are
-force-testable variants for comparing wall-hit-aware and acceleration-damped
-prediction.
+baseline for moving targets. `linear_wall_aware` is a force-testable variant
+for comparing wall-hit-aware prediction against the baseline.
 
 ## Package Contents
 
@@ -31,10 +30,8 @@ flowchart TD
     B --> C{"configured linear mode"}
     C --> D["constant velocity"]
     C --> E["wall-aware movement projection"]
-    C --> F["acceleration-damped projection"]
     D --> G["absolute bearing to predicted point"]
     E --> G
-    F --> G
     G --> H["return GunBearing"]
     I["GunVisit"] --> J["no private learning"]
 ```

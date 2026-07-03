@@ -5,7 +5,6 @@ from typing import cast
 from robocode_tank_royale.bot_api import Bot
 
 from bot_core.gun.prediction import (
-    predict_accel_damped_linear_position,
     predict_linear_position,
     predict_wall_aware_linear_position,
 )
@@ -52,48 +51,6 @@ class GunPredictionTest(unittest.TestCase):
         self.assertAlmostEqual(782.0, linear_x)
         self.assertAlmostEqual(782.0, wall_x)
         self.assertLess(wall_y, linear_y)
-
-    def test_predict_accel_damped_linear_position_slows_decelerating_target(self) -> None:
-        bot = _bot(x=0.0, y=0.0, arena_width=1000.0, arena_height=1000.0)
-        target = TargetSnapshot(
-            bot_id=1,
-            energy=100.0,
-            x=100.0,
-            y=100.0,
-            direction=0.0,
-            speed=8.0,
-            seen_turn=1,
-        )
-
-        linear_x, linear_y = predict_linear_position(bot, target, 1.0, 18.0)
-        damped_x, damped_y = predict_accel_damped_linear_position(
-            bot,
-            target,
-            1.0,
-            18.0,
-            acceleration=-2.0,
-        )
-
-        self.assertEqual(linear_y, damped_y)
-        self.assertLess(damped_x, linear_x)
-
-    def test_predict_accel_damped_linear_position_matches_linear_without_acceleration(self) -> None:
-        bot = _bot(x=0.0, y=0.0, arena_width=1000.0, arena_height=1000.0)
-        target = TargetSnapshot(
-            bot_id=1,
-            energy=100.0,
-            x=100.0,
-            y=100.0,
-            direction=0.0,
-            speed=8.0,
-            seen_turn=1,
-        )
-
-        self.assertEqual(
-            predict_linear_position(bot, target, 1.0, 18.0),
-            predict_accel_damped_linear_position(bot, target, 1.0, 18.0),
-        )
-
 
 if __name__ == "__main__":
     unittest.main()

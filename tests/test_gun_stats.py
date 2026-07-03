@@ -15,7 +15,6 @@ from bot_core.gun import (
     GunVisit,
     GunWave,
     GunWaveTracker,
-    LINEAR_ACCEL_DAMPED_MODE,
     LINEAR_MODE,
     LINEAR_VARIANT_MODES,
     LINEAR_WALL_AWARE_MODE,
@@ -204,12 +203,8 @@ class GunStatsTest(unittest.TestCase):
         self.assertEqual(LINEAR_WALL_AWARE_MODE, aim.mode)
         self.assertTrue(LINEAR_VARIANT_MODES.issubset(aim.virtual_bearings))
         self.assertIn(LINEAR_WALL_AWARE_MODE, aim.gun_diagnostics)
-        self.assertIn(LINEAR_ACCEL_DAMPED_MODE, aim.gun_diagnostics)
         self.assertIn("wall_hit", aim.gun_diagnostics[LINEAR_WALL_AWARE_MODE])
-        self.assertEqual(-0.5, aim.gun_diagnostics[LINEAR_ACCEL_DAMPED_MODE]["effective_acceleration"])
-        self.assertEqual(0, aim.gun_diagnostics[LINEAR_ACCEL_DAMPED_MODE]["velocity_change_age"])
         self.assertNotIn(LINEAR_WALL_AWARE_MODE, runtime.selector.selectable_modes)
-        self.assertNotIn(LINEAR_ACCEL_DAMPED_MODE, runtime.selector.selectable_modes)
 
     def test_linear_variant_visit_diagnostics_read_wave_metadata(self) -> None:
         runtime = runtime_config()
@@ -245,12 +240,9 @@ class GunStatsTest(unittest.TestCase):
         }
 
         wall_diagnostics = components[LINEAR_WALL_AWARE_MODE].visit_diagnostics(visit)
-        accel_diagnostics = components[LINEAR_ACCEL_DAMPED_MODE].visit_diagnostics(visit)
 
         self.assertEqual(aim.gun_diagnostics[LINEAR_WALL_AWARE_MODE], wall_diagnostics)
-        self.assertEqual(aim.gun_diagnostics[LINEAR_ACCEL_DAMPED_MODE], accel_diagnostics)
         self.assertIn("wall_hit", wall_diagnostics)
-        self.assertEqual(-0.5, accel_diagnostics["effective_acceleration"])
 
     def test_rolling_knn_buffer_keeps_targets_isolated(self) -> None:
         buffer = RollingKnnBuffer(max_samples=5, max_samples_per_target=3)

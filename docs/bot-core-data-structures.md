@@ -752,9 +752,8 @@ The current implementation uses practical approximations:
 - Rolling scores use exponential averages instead of storing all historical
   outcomes.
 - Linear prediction variants stay deliberately simple: `linear` assumes constant
-  velocity, `linear_wall_aware` reuses the shared movement predictor for wall
-  clipping, and `linear_accel_damped` applies bounded acceleration for a short
-  horizon only.
+  velocity, and `linear_wall_aware` reuses the shared movement predictor for
+  wall clipping.
 - Expected gun-heat waves are useful for early evasion, but less certain than
   energy-drop waves.
 - Bullet shadowing is conservative and only reduces danger for confirmed waves.

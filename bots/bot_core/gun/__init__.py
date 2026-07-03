@@ -11,7 +11,6 @@ from bot_core.gun.context import AimContext, GunBearing, GunVisit, TargetHistory
 from bot_core.gun.diagnostics import should_log_switch_decision
 from bot_core.gun.guns.base import GunComponent
 from bot_core.gun.guns.linear import (
-    LINEAR_ACCEL_DAMPED_MODE,
     LINEAR_MODE,
     LINEAR_VARIANT_MODES,
     LINEAR_WALL_AWARE_MODE,
@@ -27,7 +26,6 @@ from bot_core.gun.models import (
     WaveVisit,
 )
 from bot_core.gun.prediction import (
-    predict_accel_damped_linear_position,
     predict_linear_position,
     predict_wall_aware_linear_position,
 )
@@ -64,7 +62,6 @@ __all__ = [
     "GunVisit",
     "GunWave",
     "GunWaveTracker",
-    "LINEAR_ACCEL_DAMPED_MODE",
     "LINEAR_MODE",
     "LINEAR_VARIANT_MODES",
     "LINEAR_WALL_AWARE_MODE",
@@ -81,7 +78,6 @@ __all__ = [
     "guess_factor_to_bin",
     "lateral_direction",
     "point_on_bearing",
-    "predict_accel_damped_linear_position",
     "predict_linear_position",
     "predict_wall_aware_linear_position",
     "segment_features",

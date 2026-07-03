@@ -26,7 +26,6 @@ class AdaptiveConfigTest(unittest.TestCase):
             frozenset({
                 "linear",
                 "linear_wall_aware",
-                "linear_accel_damped",
                 "traditional_gf",
                 "dynamic_cluster",
                 "anti_surfer",
@@ -36,7 +35,6 @@ class AdaptiveConfigTest(unittest.TestCase):
         )
         self.assertNotIn("anti_surfer", config.GunPolicy().selectable_modes)
         self.assertNotIn("linear_wall_aware", config.GunPolicy().selectable_modes)
-        self.assertNotIn("linear_accel_damped", config.GunPolicy().selectable_modes)
 
 
 if __name__ == "__main__":
