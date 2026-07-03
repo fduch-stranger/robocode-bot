@@ -69,9 +69,148 @@ class SurferGlitchAnalysisTest(unittest.TestCase):
         self.assertEqual(80, summary["filtered"]["baseline"]["score"])
         self.assertEqual(210, summary["filtered"]["candidate"]["score"])
         self.assertEqual(130, summary["filtered"]["delta"]["score"])
+        self.assertAlmostEqual(80.0, summary["filtered"]["baseline"]["scorePerRound"])
+        self.assertAlmostEqual(105.0, summary["filtered"]["candidate"]["scorePerRound"])
+        self.assertAlmostEqual(25.0, summary["filtered"]["delta"]["scorePerRound"])
         self.assertEqual(2, summary["filtered"]["delta"]["firstPlaces"])
         self.assertEqual(-1, summary["filtered"]["delta"]["excludedRounds"])
         self.assertEqual(4, summary["filtered"]["candidate"]["dynamicHits"])
+        self.assertEqual(80, summary["pairedFiltered"]["baseline"]["score"])
+        self.assertEqual(120, summary["pairedFiltered"]["candidate"]["score"])
+        self.assertEqual(40, summary["pairedFiltered"]["delta"]["score"])
+        self.assertAlmostEqual(40.0, summary["pairedFiltered"]["delta"]["scorePerRound"])
+        self.assertEqual([2], summary["pairedFiltered"]["pairs"][0]["validRounds"])
+        self.assertEqual([1], summary["pairedFiltered"]["pairs"][0]["baselineExcludedRounds"])
+        self.assertEqual([], summary["pairedFiltered"]["pairs"][0]["candidateExcludedRounds"])
+        round_comparison = summary["pairedFiltered"]["pairs"][0]["rounds"][0]
+        self.assertEqual(2, round_comparison["round"])
+        self.assertEqual(80, round_comparison["baselineScore"])
+        self.assertEqual(120, round_comparison["candidateScore"])
+        self.assertEqual(40, round_comparison["scoreDelta"])
+        self.assertEqual(0, round_comparison["baselineFirstPlaces"])
+        self.assertEqual(1, round_comparison["candidateFirstPlaces"])
+        self.assertEqual(1, round_comparison["firstPlacesDelta"])
+        self.assertAlmostEqual(0.2, round_comparison["baselineAccuracy"])
+        self.assertAlmostEqual(0.3, round_comparison["candidateAccuracy"])
+        self.assertAlmostEqual(0.1, round_comparison["accuracyDelta"])
+
+    def test_paired_filtered_separates_unpaired_rounds_from_glitch_exclusions(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            _write_run(
+                root / "baseline" / "run-01",
+                [
+                    {"round": 1, "score": 100, "survival": 50, "bulletDamage": 40, "ramDamage": 0, "firstPlaces": 1},
+                    {"round": 2, "score": 180, "survival": 50, "bulletDamage": 120, "ramDamage": 0, "firstPlaces": 1},
+                ],
+                [
+                    [_fired(1, "dynamic_cluster") for _ in range(10)] + [_hit("dynamic_cluster") for _ in range(2)],
+                    [_fired(2, "dynamic_cluster") for _ in range(10)] + [_hit("dynamic_cluster") for _ in range(8)],
+                ],
+            )
+            _write_run(
+                root / "candidate" / "run-01",
+                [{"round": 1, "score": 120, "survival": 50, "bulletDamage": 60, "ramDamage": 0, "firstPlaces": 1}],
+                [[_fired(1, "dynamic_cluster") for _ in range(10)] + [_hit("dynamic_cluster") for _ in range(2)]],
+            )
+
+            summary = analyze_experiment([root])
+
+        pair = summary["pairedFiltered"]["pairs"][0]
+        self.assertEqual([1], pair["validRounds"])
+        self.assertEqual([], pair["baselineExcludedRounds"])
+        self.assertEqual([], pair["candidateExcludedRounds"])
+        self.assertEqual([2], pair["baselineUnpairedRounds"])
+        self.assertEqual([], pair["candidateUnpairedRounds"])
+        self.assertEqual(0, summary["pairedFiltered"]["baseline"]["excludedRounds"])
+        self.assertEqual(1, summary["pairedFiltered"]["baseline"]["unpairedRounds"])
+
+    def test_paired_filtered_marks_zero_valid_round_pairs_unavailable(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            _write_run(
+                root / "baseline" / "run-01",
+                [{"round": 1, "score": 100, "survival": 50, "bulletDamage": 40, "ramDamage": 0, "firstPlaces": 1}],
+                [[_fired(1, "dynamic_cluster") for _ in range(10)] + [_hit("dynamic_cluster") for _ in range(8)]],
+            )
+            _write_run(
+                root / "candidate" / "run-01",
+                [{"round": 1, "score": 120, "survival": 50, "bulletDamage": 60, "ramDamage": 0, "firstPlaces": 1}],
+                [[_fired(1, "dynamic_cluster") for _ in range(10)] + [_hit("dynamic_cluster") for _ in range(8)]],
+            )
+
+            summary = analyze_experiment([root])
+
+        self.assertFalse(summary["pairedFiltered"]["available"])
+        self.assertEqual(1, summary["pairedFiltered"]["pairCount"])
+        self.assertNotIn("delta", summary["pairedFiltered"])
+        self.assertEqual([], summary["pairedFiltered"]["pairs"][0]["validRounds"])
+        self.assertEqual([1], summary["pairedFiltered"]["pairs"][0]["baselineExcludedRounds"])
+        self.assertEqual([1], summary["pairedFiltered"]["pairs"][0]["candidateExcludedRounds"])
+        self.assertTrue(any("no valid pairedFiltered rounds" in warning for warning in summary["warnings"]))
+
+    def test_paired_filtered_marks_no_matching_pairs_unavailable(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            _write_run(
+                root / "baseline" / "run-01",
+                [{"round": 1, "score": 100, "survival": 50, "bulletDamage": 40, "ramDamage": 0, "firstPlaces": 1}],
+                [[_fired(1, "dynamic_cluster"), _hit("dynamic_cluster", bullet_id=1)]],
+            )
+
+            summary = analyze_experiment([root])
+
+        self.assertFalse(summary["pairedFiltered"]["available"])
+        self.assertEqual(0, summary["pairedFiltered"]["pairCount"])
+        self.assertNotIn("delta", summary["pairedFiltered"])
+        self.assertTrue(any("no baseline/candidate pairs" in warning for warning in summary["warnings"]))
+
+    def test_paired_filtered_does_not_collide_across_multiple_roots(self) -> None:
+        with tempfile.TemporaryDirectory() as first_dir, tempfile.TemporaryDirectory() as second_dir:
+            roots = [Path(first_dir), Path(second_dir)]
+            for index, root in enumerate(roots, start=1):
+                _write_run(
+                    root / "baseline" / "run-01",
+                    [
+                        {
+                            "round": 1,
+                            "score": index * 100,
+                            "survival": 50,
+                            "bulletDamage": 40,
+                            "ramDamage": 0,
+                            "firstPlaces": 1,
+                        }
+                    ],
+                    [
+                        [_fired(bullet_id, "dynamic_cluster") for bullet_id in range(10)]
+                        + [_hit("dynamic_cluster", bullet_id=bullet_id) for bullet_id in range(2)]
+                    ],
+                )
+                _write_run(
+                    root / "candidate" / "run-01",
+                    [
+                        {
+                            "round": 1,
+                            "score": index * 100 + 10,
+                            "survival": 50,
+                            "bulletDamage": 50,
+                            "ramDamage": 0,
+                            "firstPlaces": 1,
+                        }
+                    ],
+                    [
+                        [_fired(bullet_id, "dynamic_cluster") for bullet_id in range(10)]
+                        + [_hit("dynamic_cluster", bullet_id=bullet_id) for bullet_id in range(2)]
+                    ],
+                )
+
+            summary = analyze_experiment(roots)
+
+        self.assertTrue(summary["pairedFiltered"]["available"])
+        self.assertEqual(2, summary["pairedFiltered"]["pairCount"])
+        self.assertEqual(300, summary["pairedFiltered"]["baseline"]["score"])
+        self.assertEqual(320, summary["pairedFiltered"]["candidate"]["score"])
+        self.assertEqual(20, summary["pairedFiltered"]["delta"]["score"])
 
     def test_reports_missing_required_data(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

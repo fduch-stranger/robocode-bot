@@ -77,6 +77,7 @@ class AggregateSummary:
     dynamicBandwidthVisits: int = 0
     dynamicAvgEffectiveBandwidth: float = 0.0
     excludedRounds: int = 0
+    unpairedRounds: int = 0
 
 
 @dataclass(frozen=True)
@@ -146,9 +147,11 @@ def analyze_experiment(
     sides = sorted({run.side for run in runs})
     raw = {side: _aggregate_runs([run.raw for run in runs if run.side == side]) for side in sides}
     filtered = {side: _aggregate_runs([run.filtered for run in runs if run.side == side]) for side in sides}
+    paired_filtered = _paired_filtered_summary(runs)
     warnings = [f"{run.runDir}: {warning}" for run in runs for warning in run.warnings]
     if not run_dirs:
         warnings.append("no run directories discovered")
+    warnings.extend(paired_filtered.pop("warnings", []))
     return {
         "threshold": threshold,
         "bot": bot,
@@ -158,6 +161,7 @@ def analyze_experiment(
         "runs": [run_to_dict(run) for run in runs],
         "raw": _with_delta(raw),
         "filtered": _with_delta(filtered),
+        "pairedFiltered": paired_filtered,
     }
 
 
@@ -446,14 +450,25 @@ def _aggregate_runs(aggregates: list[AggregateSummary]) -> dict[str, int | float
     dynamic_aim_confidence_visits = sum(aggregate.dynamicAimConfidenceVisits for aggregate in aggregates)
     dynamic_peak_ratio_visits = sum(aggregate.dynamicPeakRatioVisits for aggregate in aggregates)
     dynamic_bandwidth_visits = sum(aggregate.dynamicBandwidthVisits for aggregate in aggregates)
+    rounds = sum(aggregate.rounds for aggregate in aggregates)
+    score = sum(aggregate.score for aggregate in aggregates)
+    first_places = sum(aggregate.firstPlaces for aggregate in aggregates)
+    survival = sum(aggregate.survival for aggregate in aggregates)
+    bullet_damage = sum(aggregate.bulletDamage for aggregate in aggregates)
+    ram_damage = sum(aggregate.ramDamage for aggregate in aggregates)
     return {
         "runs": len(aggregates),
-        "rounds": sum(aggregate.rounds for aggregate in aggregates),
-        "score": sum(aggregate.score for aggregate in aggregates),
-        "survival": sum(aggregate.survival for aggregate in aggregates),
-        "bulletDamage": sum(aggregate.bulletDamage for aggregate in aggregates),
-        "ramDamage": sum(aggregate.ramDamage for aggregate in aggregates),
-        "firstPlaces": sum(aggregate.firstPlaces for aggregate in aggregates),
+        "rounds": rounds,
+        "score": score,
+        "scorePerRound": score / rounds if rounds else 0.0,
+        "survival": survival,
+        "survivalPerRound": survival / rounds if rounds else 0.0,
+        "bulletDamage": bullet_damage,
+        "bulletDamagePerRound": bullet_damage / rounds if rounds else 0.0,
+        "ramDamage": ram_damage,
+        "ramDamagePerRound": ram_damage / rounds if rounds else 0.0,
+        "firstPlaces": first_places,
+        "firstPlacesPerRound": first_places / rounds if rounds else 0.0,
         "shots": shots,
         "hits": hits,
         "accuracy": hits / shots if shots else 0.0,
@@ -483,6 +498,7 @@ def _aggregate_runs(aggregates: list[AggregateSummary]) -> dict[str, int | float
             [(aggregate.dynamicAvgEffectiveBandwidth, aggregate.dynamicBandwidthVisits) for aggregate in aggregates]
         ),
         "excludedRounds": sum(aggregate.excludedRounds for aggregate in aggregates),
+        "unpairedRounds": sum(aggregate.unpairedRounds for aggregate in aggregates),
     }
 
 
@@ -560,10 +576,15 @@ def _with_delta(summary_by_side: dict[str, dict[str, int | float]]) -> dict[str,
             for key in [
                 "rounds",
                 "score",
+                "scorePerRound",
                 "survival",
+                "survivalPerRound",
                 "bulletDamage",
+                "bulletDamagePerRound",
                 "ramDamage",
+                "ramDamagePerRound",
                 "firstPlaces",
+                "firstPlacesPerRound",
                 "shots",
                 "hits",
                 "dynamicShots",
@@ -575,30 +596,190 @@ def _with_delta(summary_by_side: dict[str, dict[str, int | float]]) -> dict[str,
                 "dynamicPeakRatioVisits",
                 "dynamicBandwidthVisits",
                 "excludedRounds",
+                "unpairedRounds",
             ]
+            if key in summary_by_side["candidate"] and key in summary_by_side["baseline"]
         }
     return result
+
+
+def _paired_filtered_summary(runs: list[RunSummary]) -> dict[str, Any]:
+    pairs: dict[str, dict[str, RunSummary]] = defaultdict(dict)
+    warnings: list[str] = []
+    for run in runs:
+        if run.side in {"baseline", "candidate"}:
+            key = _paired_run_key(run)
+            if run.side in pairs[key]:
+                warnings.append(f"duplicate paired {run.side} run for key {key}: {run.runDir}")
+            pairs[key][run.side] = run
+
+    paired_baseline: list[AggregateSummary] = []
+    paired_candidate: list[AggregateSummary] = []
+    pair_details: list[dict[str, Any]] = []
+    for key in sorted(pairs):
+        pair = pairs[key]
+        baseline = pair.get("baseline")
+        candidate = pair.get("candidate")
+        if baseline is None or candidate is None:
+            continue
+        valid_rounds = _paired_valid_rounds(baseline, candidate)
+        baseline_rounds = _rounds_by_number(baseline)
+        candidate_rounds = _rounds_by_number(candidate)
+        baseline_unpaired_rounds = _unpaired_round_numbers(baseline, candidate)
+        candidate_unpaired_rounds = _unpaired_round_numbers(candidate, baseline)
+        baseline_excluded_rounds = _shared_excluded_round_numbers(baseline, candidate)
+        candidate_excluded_rounds = _shared_excluded_round_numbers(candidate, baseline)
+        paired_baseline.append(
+            _aggregate_round_values(
+                [baseline_rounds[round_number] for round_number in valid_rounds],
+                runs=1,
+                excluded_rounds=len(baseline_excluded_rounds),
+            )
+        )
+        paired_candidate.append(
+            _aggregate_round_values(
+                [candidate_rounds[round_number] for round_number in valid_rounds],
+                runs=1,
+                excluded_rounds=len(candidate_excluded_rounds),
+            )
+        )
+        baseline_unpaired_count = len(baseline_unpaired_rounds)
+        candidate_unpaired_count = len(candidate_unpaired_rounds)
+        paired_baseline[-1] = _aggregate_with_unpaired(paired_baseline[-1], baseline_unpaired_count)
+        paired_candidate[-1] = _aggregate_with_unpaired(paired_candidate[-1], candidate_unpaired_count)
+        pair_details.append(
+            {
+                "key": key,
+                "validRounds": valid_rounds,
+                "baselineExcludedRounds": baseline_excluded_rounds,
+                "candidateExcludedRounds": candidate_excluded_rounds,
+                "baselineUnpairedRounds": baseline_unpaired_rounds,
+                "candidateUnpairedRounds": candidate_unpaired_rounds,
+                "rounds": [
+                    _paired_round_comparison(
+                        round_number,
+                        baseline_rounds[round_number],
+                        candidate_rounds[round_number],
+                    )
+                    for round_number in valid_rounds
+                ],
+            }
+        )
+
+    summary = _with_delta(
+        {
+            "baseline": _aggregate_runs(paired_baseline),
+            "candidate": _aggregate_runs(paired_candidate),
+        }
+    )
+    has_valid_rounds = any(pair["validRounds"] for pair in pair_details)
+    summary["available"] = has_valid_rounds
+    summary["pairCount"] = len(pair_details)
+    summary["pairs"] = pair_details
+    if runs and not pair_details:
+        summary.pop("delta", None)
+        warnings.append("no baseline/candidate pairs discovered for pairedFiltered comparison")
+    elif pair_details and not has_valid_rounds:
+        summary.pop("delta", None)
+        warnings.append("no valid pairedFiltered rounds discovered after glitch and round-pair filtering")
+    summary["warnings"] = warnings
+    return summary
+
+
+def _paired_run_key(run: RunSummary) -> str:
+    parts = list(Path(run.runDir).parts)
+    for reverse_index, part in enumerate(reversed(parts)):
+        if part in {"baseline", "candidate"}:
+            index = len(parts) - reverse_index - 1
+            parts[index] = "<side>"
+            return "/".join(parts)
+    return run.runDir
+
+
+def _paired_valid_rounds(baseline: RunSummary, candidate: RunSummary) -> list[int]:
+    baseline_rounds = _rounds_by_number(baseline)
+    candidate_rounds = _rounds_by_number(candidate)
+    return [
+        round_number
+        for round_number in sorted(set(baseline_rounds).intersection(candidate_rounds))
+        if not baseline_rounds[round_number].excludedGlitch
+        and not candidate_rounds[round_number].excludedGlitch
+    ]
+
+
+def _rounds_by_number(run: RunSummary) -> dict[int, RoundSummary]:
+    return {round_summary.round: round_summary for round_summary in run.rounds}
+
+
+def _excluded_round_numbers(run: RunSummary) -> list[int]:
+    return [round_summary.round for round_summary in run.rounds if round_summary.excludedGlitch]
+
+
+def _shared_excluded_round_numbers(left: RunSummary, right: RunSummary) -> list[int]:
+    right_rounds = set(_rounds_by_number(right))
+    return [
+        round_summary.round
+        for round_summary in left.rounds
+        if round_summary.round in right_rounds and round_summary.excludedGlitch
+    ]
+
+
+def _unpaired_round_numbers(left: RunSummary, right: RunSummary) -> list[int]:
+    right_rounds = set(_rounds_by_number(right))
+    return [round_summary.round for round_summary in left.rounds if round_summary.round not in right_rounds]
+
+
+def _aggregate_with_unpaired(aggregate: AggregateSummary, unpaired_rounds: int) -> AggregateSummary:
+    data = asdict(aggregate)
+    data["unpairedRounds"] = unpaired_rounds
+    return AggregateSummary(**data)
+
+
+def _paired_round_comparison(
+    round_number: int,
+    baseline: RoundSummary,
+    candidate: RoundSummary,
+) -> dict[str, int | float]:
+    return {
+        "round": round_number,
+        "baselineScore": baseline.score,
+        "candidateScore": candidate.score,
+        "scoreDelta": candidate.score - baseline.score,
+        "baselineFirstPlaces": baseline.firstPlaces,
+        "candidateFirstPlaces": candidate.firstPlaces,
+        "firstPlacesDelta": candidate.firstPlaces - baseline.firstPlaces,
+        "baselineAccuracy": baseline.accuracy,
+        "candidateAccuracy": candidate.accuracy,
+        "accuracyDelta": candidate.accuracy - baseline.accuracy,
+    }
 
 
 def _print_summary(summary: dict[str, Any]) -> None:
     print(f"runs: {summary['runCount']} threshold: {summary['threshold']}")
     for warning in summary["warnings"]:
         print(f"warning: {warning}", file=sys.stderr)
-    for label in ("raw", "filtered"):
+    for label in ("raw", "filtered", "pairedFiltered"):
         print(label)
         bucket = summary[label]
-        for side in sorted(key for key in bucket if key != "delta"):
+        if label == "pairedFiltered":
+            print(f"  pair_count={bucket.get('pairCount', 0)} available={bucket.get('available', False)}")
+        for side in sorted(
+            key for key in bucket if key not in {"delta", "pairs", "pairCount", "warnings", "available"}
+        ):
             values = bucket[side]
             print(
-                "  {side}: runs={runs} rounds={rounds} score={score} firsts={firsts} "
+                "  {side}: runs={runs} rounds={rounds} score={score} score/round={score_per_round:.2f} "
+                "firsts={firsts} firsts/round={firsts_per_round:.3f} "
                 "accuracy={accuracy:.3f} dynamic={dynamic_hits}/{dynamic_shots} "
                 "dynamic_accuracy={dynamic_accuracy:.3f} dyn_error={dynamic_error:.3f}/{dynamic_abs_error:.3f} "
-                "ambiguous={ambiguous:.3f} excluded={excluded}".format(
+                "ambiguous={ambiguous:.3f} excluded={excluded} unpaired={unpaired}".format(
                     side=side,
                     runs=values["runs"],
                     rounds=values["rounds"],
                     score=values["score"],
+                    score_per_round=values["scorePerRound"],
                     firsts=values["firstPlaces"],
+                    firsts_per_round=values["firstPlacesPerRound"],
                     accuracy=values["accuracy"],
                     dynamic_hits=values["dynamicHits"],
                     dynamic_shots=values["dynamicShots"],
@@ -607,19 +788,56 @@ def _print_summary(summary: dict[str, Any]) -> None:
                     dynamic_abs_error=values["dynamicAvgAbsError"],
                     ambiguous=values["dynamicAmbiguousRate"],
                     excluded=values["excludedRounds"],
+                    unpaired=values.get("unpairedRounds", 0),
                 )
             )
         if "delta" in bucket:
             delta = bucket["delta"]
             print(
-                "  delta: score={score} firsts={firsts} hits={hits} dynamic_hits={dynamic_hits} excluded={excluded}".format(
+                "  delta: score={score} score/round={score_per_round:.2f} "
+                "firsts={firsts} firsts/round={firsts_per_round:.3f} "
+                "hits={hits} dynamic_hits={dynamic_hits} excluded={excluded} unpaired={unpaired}".format(
                     score=delta["score"],
+                    score_per_round=delta["scorePerRound"],
                     firsts=delta["firstPlaces"],
+                    firsts_per_round=delta["firstPlacesPerRound"],
                     hits=delta["hits"],
                     dynamic_hits=delta["dynamicHits"],
                     excluded=delta["excludedRounds"],
+                    unpaired=delta.get("unpairedRounds", 0),
                 )
             )
+        if label == "pairedFiltered":
+            for pair in bucket.get("pairs", []):
+                print(
+                    "  pair {key}: valid_rounds={valid} "
+                    "baseline_excluded={baseline} candidate_excluded={candidate} "
+                    "baseline_unpaired={baseline_unpaired} candidate_unpaired={candidate_unpaired}".format(
+                        key=pair["key"],
+                        valid=pair["validRounds"],
+                        baseline=pair["baselineExcludedRounds"],
+                        candidate=pair["candidateExcludedRounds"],
+                        baseline_unpaired=pair["baselineUnpairedRounds"],
+                        candidate_unpaired=pair["candidateUnpairedRounds"],
+                    )
+                )
+                for round_row in pair.get("rounds", []):
+                    print(
+                        "    round {round}: score {baseline_score}->{candidate_score} delta={score_delta} "
+                        "firsts {baseline_firsts}->{candidate_firsts} delta={first_delta} "
+                        "accuracy {baseline_accuracy:.3f}->{candidate_accuracy:.3f} delta={accuracy_delta:.3f}".format(
+                            round=round_row["round"],
+                            baseline_score=round_row["baselineScore"],
+                            candidate_score=round_row["candidateScore"],
+                            score_delta=round_row["scoreDelta"],
+                            baseline_firsts=round_row["baselineFirstPlaces"],
+                            candidate_firsts=round_row["candidateFirstPlaces"],
+                            first_delta=round_row["firstPlacesDelta"],
+                            baseline_accuracy=round_row["baselineAccuracy"],
+                            candidate_accuracy=round_row["candidateAccuracy"],
+                            accuracy_delta=round_row["accuracyDelta"],
+                        )
+                    )
 
 
 def _accuracy_bucket() -> dict[str, int | float | bool]:

@@ -54,7 +54,9 @@ Radar helpers live in `bot_core.radar`.
 
 Common modes:
 
-- `lock`: target is fresh enough to track.
+- `lock`: target is fresh enough to track. Fresh locks lead the target by a
+  few ticks using current speed/direction and use distance-aware overscan so
+  the radar still crosses the target without a large fixed sweep.
 - `reacquire`: target exists but is stale or the radar needs overscan.
 - `search`: no usable target.
 

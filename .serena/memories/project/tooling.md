@@ -28,7 +28,7 @@ Battle/tool commands:
 - Telemetry viewer generations reset on `telemetry.session` for new processes/files and on bot-emitted `battle.reset` for same-process GUI game restarts; normal `round.reset` remains within the same generation unless it looks like an aborted/reset GUI run.
 - Telemetry audit: `tools/telemetry_audit.py battle-results/runs/<run>/telemetry --require-bot adaptive-prime`.
 - Gun/eval summary: `tools/gun_eval_summary.py battle-results/runs/<run>/telemetry --bot adaptive-prime`.
-- BasicGFSurfer glitch filtering: `tools/surfer_glitch_analysis.py battle-results/ab/<experiment>` filters rounds where Adaptive hit accuracy is greater than the default `0.30` cutoff and warns/fails on incomplete telemetry or short runs.
+- BasicGFSurfer glitch filtering: `tools/surfer_glitch_analysis.py battle-results/ab/<experiment>` filters rounds where Adaptive hit accuracy is greater than the default `0.30` cutoff and warns/fails on incomplete telemetry or short runs. Prefer `pairedFiltered` for A/B judging: it keeps only baseline/candidate round numbers that are valid on both sides, reports excluded glitch rounds separately from unpaired/missing rounds, and prints round-by-round score/first-place/accuracy deltas.
 - Focused BasicGFSurfer A/B: `scripts/run-ab.sh --preset adaptive-1v1-basic-gf-surfer --rounds 24 --repeats 3 --telemetry`, with repeatable `--baseline-env KEY=VALUE` / `--candidate-env KEY=VALUE` for forced-gun and tuning sweeps.
 
 A/B round guidance:

@@ -39,6 +39,9 @@ Gun architecture context:
 - Eval-wave env vars: `ROBOCODE_ADAPTIVE_GUN_EVAL`, `ROBOCODE_CHASE_GUN_EVAL`, `ROBOCODE_CIRCLE_GUN_EVAL`, `ROBOCODE_SWEEP_GUN_EVAL`, plus matching `_INTERVAL` vars.
 - Dynamic-cluster tuning env prefixes are shared by policy shape but per bot in name: `ROBOCODE_ADAPTIVE_DYNAMIC_*`, `ROBOCODE_CHASE_DYNAMIC_*`, `ROBOCODE_CIRCLE_DYNAMIC_*`, and `ROBOCODE_SWEEP_DYNAMIC_*`.
 
+Radar lock note:
+- Shared radar lock now leads fresh targets by a few ticks using current speed/direction and uses distance-aware overscan capped by `RadarLockConfig.lock_overscan`; stale reacquire/widen behavior still uses the broader legacy-style sweeps. `RadarCommand.bearing` remains the real target bearing for telemetry, not the predicted lock-point bearing.
+
 Telemetry event examples: `track`, `gun.switch`, `gun.switch_decision`, `gun.wave_visit`, `gun.eval_wave_visit`, `gun.fire_drift`, `enemy.fire_detected`, `enemy.gun_heat_wave`, `movement.profile_visit`, `movement.flatten`, `movement.minimum_risk`, `bullet.fired`, `bullet.hit_bot`, `hit.bullet`.
 
 Engine-assumption notes:

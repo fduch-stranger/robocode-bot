@@ -330,10 +330,15 @@ tools/surfer_glitch_analysis.py battle-results/legacy-filter/<experiment> \
 ```
 
 The tool reads cumulative `runner.log` round results and adaptive-prime
-telemetry. It reports raw totals and filtered totals after excluding rounds
-where Adaptive accuracy is greater than the threshold. Use the filtered totals
-when judging BasicGFSurfer gun experiments; raw improvements can be dominated
-by rounds where the legacy surfer was stuck or glitchy.
+telemetry. It reports raw totals, filtered totals, per-counted-round averages,
+and `pairedFiltered` metrics after excluding rounds where Adaptive accuracy is
+greater than the threshold. `pairedFiltered` keeps only round numbers that are
+valid on both baseline and candidate, reports excluded and unpaired rounds
+separately, and prints round-by-round score/first-place/accuracy deltas. Use
+`pairedFiltered` and per-round deltas when judging BasicGFSurfer gun
+experiments; summed filtered deltas can be misleading when baseline and
+candidate exclude different numbers of rounds. Raw improvements can be
+dominated by rounds where the legacy surfer was stuck or glitchy.
 Incomplete inputs and runs shorter than 20 scored rounds are reported as
 warnings and make the CLI exit nonzero unless `--allow-missing-data` is passed.
 For dynamic-cluster runs, the summary also reports kept/excluded diagnostic
