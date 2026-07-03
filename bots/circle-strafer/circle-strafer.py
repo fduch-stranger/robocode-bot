@@ -465,7 +465,6 @@ class CircleStrafer(Bot):
         self._wall_escape_until_turn = -1
         self._last_wall_hit_turn = -1000
         self._enemy_energy_corrections.clear()
-        self._last_enemy_power_prediction.clear()
         self._enemy_fire_power.clear()
         self._enemy_fire_detector.clear_round_state()
         self._evade_until_turn = -1

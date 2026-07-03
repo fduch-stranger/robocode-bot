@@ -426,7 +426,6 @@ class SweepPressure(Bot):
         self._target_id = None
         self._move_direction = 1
         self._enemy_energy_corrections.clear()
-        self._last_enemy_power_prediction.clear()
         self._enemy_fire_power.clear()
         self._enemy_fire_detector.clear_round_state()
         self._evade_until_turn = -1
