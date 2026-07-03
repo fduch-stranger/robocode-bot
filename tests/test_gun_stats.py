@@ -1,7 +1,9 @@
+import math
 import unittest
 from types import SimpleNamespace
 
 from bot_core.gun import (
+    AimContext,
     AimSolution,
     AimModeSelector,
     GunDecisionContext,
@@ -20,11 +22,14 @@ from bot_core.gun import (
     LINEAR_WALL_AWARE_MODE,
     TargetHistoryStore,
     TargetMotion,
+    TargetPosition,
     VirtualGunScorer,
     VirtualGunSystem,
+    movement_context_tags,
     should_log_switch_decision,
 )
 from bot_core.gun.factory import standard_runtime_config
+from bot_core.gun.policy import selector_config_from_policy
 from bot_core.gun.guns.anti_surfer.config import AntiSurferGunConfig
 from bot_core.gun.guns.anti_surfer.gun import AntiSurferGun
 from bot_core.gun.guns.displacement.config import DisplacementGunConfig
@@ -120,11 +125,53 @@ def make_selector(
     scorer: VirtualGunScorer,
     active_modes: dict[int, str],
     stats: dict[tuple[int, str], GunStats],
+    eval_scorer: VirtualGunScorer | None = None,
 ) -> AimModeSelector:
-    return AimModeSelector(selector_config(config), scorer, active_modes, stats, mode_policies(config))
+    return AimModeSelector(selector_config(config), scorer, active_modes, stats, mode_policies(config), eval_scorer)
 
 
 class GunStatsTest(unittest.TestCase):
+    def test_selector_config_from_policy_forwards_all_selector_knobs(self) -> None:
+        policy = SimpleNamespace(
+            selectable_modes=frozenset({"dynamic_cluster", "traditional_gf"}),
+            forced_mode="traditional_gf",
+            switch_margin=0.04,
+            primary_over_fallback_margin=0.01,
+            situational_over_primary_margin=0.07,
+            primary_slump_visits=42,
+            primary_slump_score=0.11,
+            primary_slump_situational_margin=0.02,
+            switch_confidence_visits=14,
+            switch_confidence_penalty=0.03,
+            primary_confidence_penalty_scale=0.5,
+            primary_role_bonus=0.06,
+            fallback_role_penalty=0.01,
+            experimental_role_penalty=0.02,
+            context_match_bonus=0.05,
+            sample_maturity_bonus=0.025,
+            sample_maturity_visits=33,
+            eval_influence_min_visits=9,
+            eval_influence_weight=0.4,
+            eval_influence_cap=0.02,
+            eval_visit_credit_ratio=0.25,
+        )
+
+        config = selector_config_from_policy(policy)
+
+        self.assertEqual(policy.selectable_modes, config.selectable_modes)
+        self.assertEqual(policy.forced_mode, config.forced_mode)
+        self.assertAlmostEqual(policy.switch_margin, config.switch_margin)
+        self.assertAlmostEqual(policy.primary_role_bonus, config.primary_role_bonus)
+        self.assertAlmostEqual(policy.fallback_role_penalty, config.fallback_role_penalty)
+        self.assertAlmostEqual(policy.experimental_role_penalty, config.experimental_role_penalty)
+        self.assertAlmostEqual(policy.context_match_bonus, config.context_match_bonus)
+        self.assertAlmostEqual(policy.sample_maturity_bonus, config.sample_maturity_bonus)
+        self.assertEqual(policy.sample_maturity_visits, config.sample_maturity_visits)
+        self.assertEqual(policy.eval_influence_min_visits, config.eval_influence_min_visits)
+        self.assertAlmostEqual(policy.eval_influence_weight, config.eval_influence_weight)
+        self.assertAlmostEqual(policy.eval_influence_cap, config.eval_influence_cap)
+        self.assertAlmostEqual(policy.eval_visit_credit_ratio, config.eval_visit_credit_ratio)
+
     def test_default_knn_memory_keeps_previous_duel_depth(self) -> None:
         config = DynamicClusterGunConfig()
 
@@ -643,6 +690,9 @@ class GunStatsTest(unittest.TestCase):
                 switch_margin=0.03,
                 switch_confidence_visits=100,
                 switch_confidence_penalty=0.10,
+                primary_role_bonus=0.0,
+                fallback_role_penalty=0.0,
+                sample_maturity_bonus=0.0,
             ),
             min_visits=1,
             min_switch_score=0.1,
@@ -678,6 +728,7 @@ class GunStatsTest(unittest.TestCase):
             selector=GunSelectorConfig(
                 selectable_modes=frozenset({"linear", "traditional_gf"}),
                 switch_margin=0.03,
+                fallback_role_penalty=0.0,
             ),
             min_visits=1,
             min_switch_score=0.1,
@@ -759,6 +810,457 @@ class GunStatsTest(unittest.TestCase):
         self.assertAlmostEqual(0.23, by_mode["traditional_gf"].score)
         self.assertEqual("coarse_blend", by_mode["traditional_gf"].decision_source)
 
+    def test_aim_mode_selector_uses_source_aware_traditional_gf_gates(self) -> None:
+        config = runtime_config(
+            selector=GunSelectorConfig(
+                selectable_modes=frozenset({"linear", "traditional_gf"}),
+                switch_margin=0.03,
+            ),
+            min_visits=1,
+            min_switch_score=0.1,
+            traditional_gf=TraditionalGfGunConfig(
+                min_switch_visits=45,
+                min_switch_score=0.10,
+                global_source_min_switch_visits=60,
+                global_source_min_switch_score=0.16,
+                trusted_source_min_switch_visits=32,
+                trusted_source_min_switch_score=0.08,
+                global_source_penalty=0.0,
+            ),
+        )
+        stats = {
+            (1, "linear"): GunStats(visits=100, hits=0, rolling_score=0.05),
+            (1, "traditional_gf"): GunStats(visits=40, hits=0, rolling_score=0.20),
+        }
+        scorer = VirtualGunScorer(scoring_config(config), stats, {})
+        selector = make_selector(config, scorer, {1: "linear"}, stats)
+
+        _, _, _, candidates = selector.select_with_diagnostics(
+            1,
+            {"linear": 0.0, "traditional_gf": 0.5},
+            None,
+            {"traditional_gf": GunDecisionContext("traditional_gf", {"source": "global", "blend": 0.0})},
+        )
+
+        by_mode = {candidate.mode: candidate for candidate in candidates}
+        self.assertEqual("visits", by_mode["traditional_gf"].reason)
+        self.assertEqual(60, by_mode["traditional_gf"].required_visits)
+        self.assertAlmostEqual(0.16, by_mode["traditional_gf"].min_score)
+
+        selected, _, changed, candidates = selector.select_with_diagnostics(
+            1,
+            {"linear": 0.0, "traditional_gf": 0.5},
+            None,
+            {"traditional_gf": GunDecisionContext("traditional_gf", {"source": "segment", "blend": 1.0})},
+        )
+
+        by_mode = {candidate.mode: candidate for candidate in candidates}
+        self.assertEqual("traditional_gf", selected)
+        self.assertTrue(changed)
+        self.assertEqual("selected", by_mode["traditional_gf"].reason)
+        self.assertEqual(32, by_mode["traditional_gf"].required_visits)
+        self.assertAlmostEqual(0.08, by_mode["traditional_gf"].min_score)
+
+    def test_traditional_gf_blend_gates_interpolate_by_source_weight(self) -> None:
+        config = TraditionalGfGunConfig(
+            min_switch_visits=45,
+            min_switch_score=0.10,
+            global_source_min_switch_visits=60,
+            global_source_min_switch_score=0.16,
+            trusted_source_min_switch_visits=32,
+            trusted_source_min_switch_score=0.08,
+        )
+        policy = config.mode_policy()
+        context = GunDecisionContext("traditional_gf", {"source": "blend", "blend": 0.5})
+
+        self.assertEqual(46, policy.visits_for(context))
+        self.assertAlmostEqual(0.12, policy.score_for(context))
+
+    def test_aim_mode_selector_applies_primary_knn_sample_bonus(self) -> None:
+        config = runtime_config(
+            selector=GunSelectorConfig(
+                selectable_modes=frozenset({"linear", "dynamic_cluster"}),
+                switch_margin=0.03,
+                primary_role_bonus=0.04,
+                sample_maturity_bonus=0.04,
+                sample_maturity_visits=60,
+            ),
+            min_visits=1,
+            min_switch_score=0.05,
+            dynamic_cluster=DynamicClusterGunConfig(min_switch_visits=1, min_switch_score=0.05),
+        )
+        stats = {
+            (1, "linear"): GunStats(visits=100, hits=10, rolling_score=0.10),
+            (1, "dynamic_cluster"): GunStats(visits=100, hits=10, rolling_score=0.10),
+        }
+        scorer = VirtualGunScorer(scoring_config(config), stats, {})
+        selector = make_selector(config, scorer, {1: "linear"}, stats)
+
+        selected, _, changed, candidates = selector.select_with_diagnostics(
+            1,
+            {"linear": 0.0, "dynamic_cluster": 0.5},
+            None,
+            {"dynamic_cluster": GunDecisionContext("dynamic_cluster", {"samples": 60})},
+        )
+
+        by_mode = {candidate.mode: candidate for candidate in candidates}
+        self.assertEqual("dynamic_cluster", selected)
+        self.assertTrue(changed)
+        self.assertEqual("selected", by_mode["dynamic_cluster"].reason)
+        self.assertAlmostEqual(0.08, by_mode["dynamic_cluster"].decision_bonus)
+
+    def test_aim_mode_selector_keeps_linear_situational_for_simple_motion(self) -> None:
+        config = runtime_config(
+            selector=GunSelectorConfig(
+                selectable_modes=frozenset({"linear", "dynamic_cluster"}),
+                switch_margin=0.03,
+                context_match_bonus=0.04,
+                fallback_role_penalty=0.03,
+            ),
+            min_visits=1,
+            min_switch_score=0.05,
+            dynamic_cluster=DynamicClusterGunConfig(min_switch_visits=1, min_switch_score=0.05),
+        )
+        stats = {
+            (1, "linear"): GunStats(visits=100, hits=10, rolling_score=0.10),
+            (1, "dynamic_cluster"): GunStats(visits=100, hits=10, rolling_score=0.10),
+        }
+        scorer = VirtualGunScorer(scoring_config(config), stats, {})
+        selector = make_selector(config, scorer, {1: "dynamic_cluster"}, stats)
+
+        _, _, _, candidates = selector.select_with_diagnostics(
+            1,
+            {"linear": 0.0, "dynamic_cluster": 0.5},
+            None,
+            {"linear": GunDecisionContext("linear", {"context_tags": frozenset({"low_lateral"})})},
+        )
+
+        by_mode = {candidate.mode: candidate for candidate in candidates}
+        self.assertAlmostEqual(0.01, by_mode["linear"].decision_bonus)
+
+    def test_aim_mode_selector_uses_primary_over_fallback_margin_and_penalty_scale(self) -> None:
+        config = runtime_config(
+            selector=GunSelectorConfig(
+                selectable_modes=frozenset({"linear", "dynamic_cluster"}),
+                switch_margin=0.06,
+                primary_over_fallback_margin=0.02,
+                switch_confidence_visits=100,
+                switch_confidence_penalty=0.10,
+                primary_confidence_penalty_scale=0.25,
+            ),
+            min_visits=1,
+            min_switch_score=0.03,
+            dynamic_cluster=DynamicClusterGunConfig(min_switch_visits=1, min_switch_score=0.03),
+        )
+        stats = {
+            (1, "linear"): GunStats(visits=100, hits=10, rolling_score=0.10),
+            (1, "dynamic_cluster"): GunStats(visits=10, hits=1, rolling_score=0.06),
+        }
+        scorer = VirtualGunScorer(scoring_config(config), stats, {})
+        selector = make_selector(config, scorer, {1: "linear"}, stats)
+
+        selected, _, changed, candidates = selector.select_with_diagnostics(
+            1,
+            {"linear": 0.0, "dynamic_cluster": 0.5},
+            None,
+            {"dynamic_cluster": GunDecisionContext("dynamic_cluster", {"samples": 60})},
+        )
+
+        by_mode = {candidate.mode: candidate for candidate in candidates}
+        self.assertEqual("dynamic_cluster", selected)
+        self.assertTrue(changed)
+        self.assertEqual("selected", by_mode["dynamic_cluster"].reason)
+        self.assertAlmostEqual(0.02, by_mode["dynamic_cluster"].margin)
+        self.assertAlmostEqual(0.0225, by_mode["dynamic_cluster"].confidence_penalty)
+
+    def test_aim_mode_selector_requires_extra_margin_for_situational_over_primary(self) -> None:
+        config = runtime_config(
+            selector=GunSelectorConfig(
+                selectable_modes=frozenset({"dynamic_cluster", "traditional_gf"}),
+                switch_margin=0.03,
+                situational_over_primary_margin=0.08,
+                primary_role_bonus=0.0,
+                sample_maturity_bonus=0.0,
+                context_match_bonus=0.0,
+            ),
+            min_visits=1,
+            min_switch_score=0.03,
+            dynamic_cluster=DynamicClusterGunConfig(min_switch_visits=1, min_switch_score=0.03),
+            traditional_gf=TraditionalGfGunConfig(min_switch_visits=1, min_switch_score=0.03),
+        )
+        stats = {
+            (1, "dynamic_cluster"): GunStats(visits=100, hits=10, rolling_score=0.10),
+            (1, "traditional_gf"): GunStats(visits=100, hits=16, rolling_score=0.16),
+        }
+        scorer = VirtualGunScorer(scoring_config(config), stats, {})
+        selector = make_selector(config, scorer, {1: "dynamic_cluster"}, stats)
+
+        selected, _, changed, candidates = selector.select_with_diagnostics(
+            1,
+            {"dynamic_cluster": 0.0, "traditional_gf": 0.5},
+            None,
+        )
+
+        by_mode = {candidate.mode: candidate for candidate in candidates}
+        self.assertEqual("dynamic_cluster", selected)
+        self.assertFalse(changed)
+        self.assertEqual("margin", by_mode["traditional_gf"].reason)
+        self.assertAlmostEqual(0.08, by_mode["traditional_gf"].margin)
+
+    def test_aim_mode_selector_relaxes_situational_margin_during_primary_slump(self) -> None:
+        config = runtime_config(
+            selector=GunSelectorConfig(
+                selectable_modes=frozenset({"dynamic_cluster", "traditional_gf"}),
+                switch_margin=0.03,
+                situational_over_primary_margin=0.08,
+                primary_slump_visits=80,
+                primary_slump_score=0.13,
+                primary_slump_situational_margin=0.025,
+                primary_role_bonus=0.0,
+                sample_maturity_bonus=0.0,
+                context_match_bonus=0.0,
+            ),
+            min_visits=1,
+            min_switch_score=0.03,
+            dynamic_cluster=DynamicClusterGunConfig(min_switch_visits=1, min_switch_score=0.03),
+            traditional_gf=TraditionalGfGunConfig(min_switch_visits=1, min_switch_score=0.03),
+        )
+        stats = {
+            (1, "dynamic_cluster"): GunStats(visits=100, hits=10, rolling_score=0.10),
+            (1, "traditional_gf"): GunStats(visits=100, hits=14, rolling_score=0.14),
+        }
+        scorer = VirtualGunScorer(scoring_config(config), stats, {})
+        selector = make_selector(config, scorer, {1: "dynamic_cluster"}, stats)
+
+        selected, _, changed, candidates = selector.select_with_diagnostics(
+            1,
+            {"dynamic_cluster": 0.0, "traditional_gf": 0.5},
+            None,
+            {
+                "traditional_gf": GunDecisionContext(
+                    "traditional_gf",
+                    {"source": "coarse_blend", "blend": 1.0, "context_tags": frozenset({"stable_pattern"})},
+                )
+            },
+        )
+
+        by_mode = {candidate.mode: candidate for candidate in candidates}
+        self.assertEqual("traditional_gf", selected)
+        self.assertTrue(changed)
+        self.assertEqual("selected", by_mode["traditional_gf"].reason)
+        self.assertAlmostEqual(0.025, by_mode["traditional_gf"].margin)
+
+    def test_aim_mode_selector_uses_segment_score_for_primary_slump(self) -> None:
+        segment_key = (1, 1, 1, 1, 1, 1)
+        config = runtime_config(
+            selector=GunSelectorConfig(
+                selectable_modes=frozenset({"dynamic_cluster", "traditional_gf"}),
+                switch_margin=0.03,
+                situational_over_primary_margin=0.08,
+                primary_slump_visits=80,
+                primary_slump_score=0.13,
+                primary_slump_situational_margin=0.025,
+                primary_role_bonus=0.0,
+                sample_maturity_bonus=0.0,
+                context_match_bonus=0.0,
+            ),
+            scoring=GunScoringConfig(
+                segment_min_visits=1,
+                segment_full_weight_visits=1,
+                selectable_modes=frozenset({"dynamic_cluster", "traditional_gf"}),
+            ),
+            min_visits=1,
+            min_switch_score=0.03,
+            dynamic_cluster=DynamicClusterGunConfig(min_switch_visits=1, min_switch_score=0.03),
+            traditional_gf=TraditionalGfGunConfig(min_switch_visits=1, min_switch_score=0.03),
+        )
+        stats = {
+            (1, "dynamic_cluster"): GunStats(visits=100, hits=50, rolling_score=0.50),
+            (1, "traditional_gf"): GunStats(visits=100, hits=14, rolling_score=0.14),
+        }
+        segment_stats = {
+            (1, "dynamic_cluster", segment_key): GunStats(visits=100, hits=10, rolling_score=0.10),
+        }
+        scorer = VirtualGunScorer(scoring_config(config), stats, segment_stats)
+        selector = make_selector(config, scorer, {1: "dynamic_cluster"}, stats)
+
+        selected, _, changed, candidates = selector.select_with_diagnostics(
+            1,
+            {"dynamic_cluster": 0.0, "traditional_gf": 0.5},
+            segment_key,
+            {
+                "traditional_gf": GunDecisionContext(
+                    "traditional_gf",
+                    {"source": "coarse_blend", "blend": 1.0, "context_tags": frozenset({"stable_pattern"})},
+                )
+            },
+        )
+
+        by_mode = {candidate.mode: candidate for candidate in candidates}
+        self.assertEqual("traditional_gf", selected)
+        self.assertTrue(changed)
+        self.assertEqual("selected", by_mode["traditional_gf"].reason)
+        self.assertAlmostEqual(0.025, by_mode["traditional_gf"].margin)
+
+    def test_aim_mode_selector_does_not_retain_situational_on_global_source(self) -> None:
+        config = runtime_config(
+            selector=GunSelectorConfig(
+                selectable_modes=frozenset({"dynamic_cluster", "traditional_gf"}),
+                switch_margin=0.03,
+                primary_role_bonus=0.0,
+                sample_maturity_bonus=0.0,
+                context_match_bonus=0.0,
+            ),
+            min_visits=1,
+            min_switch_score=0.03,
+            dynamic_cluster=DynamicClusterGunConfig(min_switch_visits=1, min_switch_score=0.03),
+            traditional_gf=TraditionalGfGunConfig(min_switch_visits=1, min_switch_score=0.03),
+        )
+        stats = {
+            (1, "dynamic_cluster"): GunStats(visits=100, hits=10, rolling_score=0.10),
+            (1, "traditional_gf"): GunStats(visits=100, hits=50, rolling_score=0.50),
+        }
+        scorer = VirtualGunScorer(scoring_config(config), stats, {})
+        selector = make_selector(config, scorer, {1: "traditional_gf"}, stats)
+
+        selected, _, changed, candidates = selector.select_with_diagnostics(
+            1,
+            {"traditional_gf": 0.5, "dynamic_cluster": 0.0},
+            None,
+            {"traditional_gf": GunDecisionContext("traditional_gf", {"source": "global"})},
+        )
+
+        by_mode = {candidate.mode: candidate for candidate in candidates}
+        self.assertEqual("dynamic_cluster", selected)
+        self.assertTrue(changed)
+        self.assertEqual("source_degraded", by_mode["traditional_gf"].reason)
+        self.assertEqual("selected", by_mode["dynamic_cluster"].reason)
+
+    def test_aim_mode_selector_requires_gates_before_leaving_degraded_situational(self) -> None:
+        config = runtime_config(
+            selector=GunSelectorConfig(
+                selectable_modes=frozenset({"linear", "dynamic_cluster", "traditional_gf"}),
+                switch_margin=0.03,
+                primary_role_bonus=0.0,
+                fallback_role_penalty=0.0,
+                sample_maturity_bonus=0.0,
+                context_match_bonus=0.0,
+            ),
+            min_visits=30,
+            min_switch_score=0.20,
+            dynamic_cluster=DynamicClusterGunConfig(min_switch_visits=30, min_switch_score=0.20),
+            traditional_gf=TraditionalGfGunConfig(min_switch_visits=30, min_switch_score=0.20),
+        )
+        stats = {
+            (1, "linear"): GunStats(visits=0, hits=0, rolling_score=0.0),
+            (1, "dynamic_cluster"): GunStats(visits=0, hits=0, rolling_score=0.0),
+            (1, "traditional_gf"): GunStats(visits=100, hits=50, rolling_score=0.50),
+        }
+        scorer = VirtualGunScorer(scoring_config(config), stats, {})
+        selector = make_selector(config, scorer, {1: "traditional_gf"}, stats)
+
+        selected, _, changed, candidates = selector.select_with_diagnostics(
+            1,
+            {"traditional_gf": 0.5, "dynamic_cluster": 0.0, "linear": 0.0},
+            None,
+            {"traditional_gf": GunDecisionContext("traditional_gf", {"source": "global"})},
+        )
+
+        by_mode = {candidate.mode: candidate for candidate in candidates}
+        self.assertEqual("traditional_gf", selected)
+        self.assertFalse(changed)
+        self.assertEqual("source_degraded", by_mode["traditional_gf"].reason)
+        self.assertEqual("visits", by_mode["dynamic_cluster"].reason)
+        self.assertEqual("visits", by_mode["linear"].reason)
+
+    def test_aim_mode_selector_can_use_eval_score_bonus_without_mutating_production_stats(self) -> None:
+        config = runtime_config(
+            selector=GunSelectorConfig(
+                selectable_modes=frozenset({"dynamic_cluster", "traditional_gf"}),
+                switch_margin=0.02,
+                eval_influence_min_visits=18,
+                eval_influence_weight=0.25,
+                eval_influence_cap=0.035,
+                eval_visit_credit_ratio=0.5,
+                primary_role_bonus=0.0,
+                sample_maturity_bonus=0.0,
+                context_match_bonus=0.0,
+            ),
+            min_visits=30,
+            min_switch_score=0.03,
+            dynamic_cluster=DynamicClusterGunConfig(min_switch_visits=30, min_switch_score=0.03),
+            traditional_gf=TraditionalGfGunConfig(min_switch_visits=30, min_switch_score=0.03),
+        )
+        stats = {
+            (1, "dynamic_cluster"): GunStats(visits=100, hits=10, rolling_score=0.10),
+            (1, "traditional_gf"): GunStats(visits=5, hits=1, rolling_score=0.10),
+        }
+        eval_stats = {
+            (1, "traditional_gf"): GunStats(visits=60, hits=24, rolling_score=0.32),
+        }
+        scorer = VirtualGunScorer(scoring_config(config), stats, {})
+        eval_scorer = VirtualGunScorer(scoring_config(config), eval_stats, {})
+        selector = make_selector(config, scorer, {1: "dynamic_cluster"}, stats, eval_scorer)
+
+        selected, _, changed, candidates = selector.select_with_diagnostics(
+            1,
+            {"dynamic_cluster": 0.0, "traditional_gf": 0.5},
+            None,
+        )
+
+        by_mode = {candidate.mode: candidate for candidate in candidates}
+        self.assertEqual("traditional_gf", selected)
+        self.assertTrue(changed)
+        self.assertEqual("selected", by_mode["traditional_gf"].reason)
+        self.assertEqual(5, by_mode["traditional_gf"].visits)
+        self.assertEqual(60, by_mode["traditional_gf"].eval_visits)
+        self.assertEqual(30, by_mode["traditional_gf"].effective_visits)
+        self.assertAlmostEqual(0.035, by_mode["traditional_gf"].eval_score_bonus)
+        self.assertEqual(5, stats[(1, "traditional_gf")].visits)
+
+    def test_aim_mode_selector_does_not_credit_eval_scores_before_eval_min_visits(self) -> None:
+        config = runtime_config(
+            selector=GunSelectorConfig(
+                selectable_modes=frozenset({"dynamic_cluster", "traditional_gf"}),
+                switch_margin=0.02,
+                eval_influence_min_visits=18,
+                eval_influence_weight=0.25,
+                eval_influence_cap=0.035,
+                eval_visit_credit_ratio=0.5,
+                primary_role_bonus=0.0,
+                sample_maturity_bonus=0.0,
+                context_match_bonus=0.0,
+            ),
+            min_visits=30,
+            min_switch_score=0.03,
+            dynamic_cluster=DynamicClusterGunConfig(min_switch_visits=30, min_switch_score=0.03),
+            traditional_gf=TraditionalGfGunConfig(min_switch_visits=30, min_switch_score=0.03),
+        )
+        stats = {
+            (1, "dynamic_cluster"): GunStats(visits=100, hits=10, rolling_score=0.10),
+            (1, "traditional_gf"): GunStats(visits=5, hits=1, rolling_score=0.10),
+        }
+        eval_stats = {
+            (1, "traditional_gf"): GunStats(visits=17, hits=10, rolling_score=0.40),
+        }
+        scorer = VirtualGunScorer(scoring_config(config), stats, {})
+        eval_scorer = VirtualGunScorer(scoring_config(config), eval_stats, {})
+        selector = make_selector(config, scorer, {1: "dynamic_cluster"}, stats, eval_scorer)
+
+        selected, _, changed, candidates = selector.select_with_diagnostics(
+            1,
+            {"dynamic_cluster": 0.0, "traditional_gf": 0.5},
+            None,
+        )
+
+        by_mode = {candidate.mode: candidate for candidate in candidates}
+        self.assertEqual("dynamic_cluster", selected)
+        self.assertFalse(changed)
+        self.assertEqual("visits", by_mode["traditional_gf"].reason)
+        self.assertEqual(17, by_mode["traditional_gf"].eval_visits)
+        self.assertEqual(5, by_mode["traditional_gf"].effective_visits)
+        self.assertAlmostEqual(0.0, by_mode["traditional_gf"].eval_score_bonus)
+
     def test_aim_mode_selector_honors_forced_available_mode(self) -> None:
         config = runtime_config(
             selector=GunSelectorConfig(
@@ -787,6 +1289,7 @@ class GunStatsTest(unittest.TestCase):
                 forced_mode="traditional_gf",
                 selectable_modes=frozenset({"linear", "traditional_gf"}),
                 switch_confidence_visits=0,
+                fallback_role_penalty=0.0,
             ),
         )
         stats = {
@@ -843,7 +1346,8 @@ class GunStatsTest(unittest.TestCase):
         self.assertFalse(by_mode["dynamic_cluster"].available)
         self.assertEqual("unavailable", by_mode["dynamic_cluster"].reason)
         self.assertEqual(12, by_mode["dynamic_cluster"].visits)
-        self.assertAlmostEqual(0.425, by_mode["dynamic_cluster"].score)
+        self.assertAlmostEqual(0.433, by_mode["dynamic_cluster"].score)
+        self.assertAlmostEqual(0.008, by_mode["dynamic_cluster"].decision_bonus)
         self.assertAlmostEqual(0.425, by_mode["dynamic_cluster"].raw_score or 0.0)
 
     def test_aim_mode_selector_allows_forced_non_selectable_mode(self) -> None:
@@ -979,6 +1483,75 @@ class GunStatsTest(unittest.TestCase):
         self.assertIsNone(gun.guess_factor(1, (0.0,) * 7))
         gun.sequence = 3
         self.assertIsNotNone(gun.guess_factor(1, (0.0,) * 7))
+
+    def test_movement_context_tags_classify_stable_and_curving_history(self) -> None:
+        bot = SimpleNamespace(x=100.0, y=100.0)
+        target = TargetSnapshot(1, 100.0, 0.0, 200.0, 100.0, 8.0, 12)
+        stable_history = [TargetPosition(turn, 100.0 + 8.0 * turn, 100.0, 8.0) for turn in range(12)]
+        stable_tags = movement_context_tags(
+            bot,
+            target,
+            (0.5, 0.7, 0.1, 0.0, 0.0, 0.8, 0.5),
+            stable_history,
+        )
+
+        self.assertIn("low_lateral", stable_tags)
+        self.assertIn("stable_velocity", stable_tags)
+        self.assertIn("stable_pattern", stable_tags)
+        self.assertNotIn("nonlinear_mover", stable_tags)
+
+        curving_history = [
+            TargetPosition(turn, 300.0 + 80.0 * math.cos(turn * 0.45), 300.0 + 80.0 * math.sin(turn * 0.45), 8.0)
+            for turn in range(12)
+        ]
+        curving_tags = movement_context_tags(
+            bot,
+            target,
+            (0.5, 0.7, 0.5, 0.0, 0.2, 0.1, 0.5),
+            curving_history,
+        )
+
+        self.assertIn("nonlinear_mover", curving_tags)
+        self.assertIn("adaptive_mover", curving_tags)
+        self.assertIn("surfer", curving_tags)
+
+        stationary_history = [TargetPosition(turn, 250.0, 250.0, 0.0) for turn in range(12)]
+        stationary_tags = movement_context_tags(
+            bot,
+            target,
+            (0.5, 0.7, 0.0, 0.0, 0.0, 0.8, 0.5),
+            stationary_history,
+        )
+
+        self.assertIn("low_lateral", stationary_tags)
+        self.assertIn("stable_velocity", stationary_tags)
+        self.assertNotIn("nonlinear_mover", stationary_tags)
+        self.assertNotIn("adaptive_mover", stationary_tags)
+        self.assertNotIn("surfer", stationary_tags)
+
+    def test_dynamic_cluster_context_tags_come_from_movement_history(self) -> None:
+        gun = DynamicClusterGun(DynamicClusterGunConfig(min_samples=1, min_effective_samples=1.0))
+        gun.memory.add(GunSample(1, 1, (0.0,) * 7, 0.25))
+        gun.sequence = 1
+        bot = SimpleNamespace(x=100.0, y=100.0, arena_width=800.0, arena_height=600.0)
+        target = TargetSnapshot(1, 100.0, 0.0, 300.0, 300.0, 8.0, 12)
+        context = AimContext(
+            bot=bot,
+            target=target,
+            distance=250.0,
+            firepower=2.0,
+            motion=TargetMotion(),
+            field_margin=18.0,
+            features=(0.0,) * 7,
+            segment_key=(0,) * 6,
+            movement_tags=frozenset({"nonlinear_mover", "stable_pattern"}),
+        )
+
+        bearing = gun.aim(context)
+
+        self.assertIsNotNone(bearing)
+        assert bearing is not None
+        self.assertEqual(frozenset({"nonlinear_mover"}), bearing.decision_context.data["context_tags"])
 
     def test_traditional_guess_factor_requires_effective_samples(self) -> None:
         gun = TraditionalGfGun(

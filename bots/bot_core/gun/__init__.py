@@ -1,13 +1,14 @@
 from bot_core.gun.aim import AimModeSelector
 from bot_core.gun.config import (
     GunDecisionContext,
+    GunModeTraits,
     GunModePolicy,
     GunRuntimeConfig,
     GunScoringConfig,
     GunSelectorConfig,
     GunSystemConfig,
 )
-from bot_core.gun.context import AimContext, GunBearing, GunVisit, TargetHistoryStore
+from bot_core.gun.context import AimContext, GunBearing, GunVisit, TargetHistoryStore, movement_context_tags
 from bot_core.gun.diagnostics import should_log_switch_decision
 from bot_core.gun.guns.base import GunComponent
 from bot_core.gun.guns.linear import (
@@ -24,6 +25,11 @@ from bot_core.gun.models import (
     TargetMotion,
     TargetPosition,
     WaveVisit,
+)
+from bot_core.gun.policy import (
+    DEFAULT_LIVE_GUN_MODES,
+    SHARED_GUN_POLICY_DEFAULTS,
+    selector_config_from_policy,
 )
 from bot_core.gun.prediction import (
     predict_linear_position,
@@ -51,6 +57,7 @@ __all__ = [
     "GunBearing",
     "GunComponent",
     "GunDecisionContext",
+    "GunModeTraits",
     "GunModePolicy",
     "GunRuntimeConfig",
     "GunSample",
@@ -65,6 +72,8 @@ __all__ = [
     "LINEAR_MODE",
     "LINEAR_VARIANT_MODES",
     "LINEAR_WALL_AWARE_MODE",
+    "DEFAULT_LIVE_GUN_MODES",
+    "SHARED_GUN_POLICY_DEFAULTS",
     "TargetMotion",
     "TargetPosition",
     "TargetHistoryStore",
@@ -77,10 +86,12 @@ __all__ = [
     "feature_distance",
     "guess_factor_to_bin",
     "lateral_direction",
+    "movement_context_tags",
     "point_on_bearing",
     "predict_linear_position",
     "predict_wall_aware_linear_position",
     "segment_features",
+    "selector_config_from_policy",
     "should_log_switch_decision",
     "signed_bucket",
 ]

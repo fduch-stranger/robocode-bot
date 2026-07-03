@@ -1,5 +1,5 @@
 from bot_core.geometry.angles import absolute_bearing_between
-from bot_core.gun.config import GunModePolicy
+from bot_core.gun.config import GunModePolicy, GunModeTraits
 from bot_core.gun.context import AimContext, GunBearing, GunVisit
 
 
@@ -7,7 +7,17 @@ class HeadOnGun:
     mode = "head_on"
 
     def __init__(self, min_switch_visits: int = 90, min_switch_score: float = 0.45) -> None:
-        self.mode_policy = GunModePolicy(self.mode, min_switch_visits, min_switch_score)
+        self.mode_policy = GunModePolicy(
+            self.mode,
+            min_switch_visits,
+            min_switch_score,
+            GunModeTraits(
+                role="fallback",
+                family="direct",
+                phases=frozenset({"early"}),
+                strengths=frozenset({"stationary"}),
+            ),
+        )
 
     def aim(self, context: AimContext) -> GunBearing:
         bearing = absolute_bearing_between(

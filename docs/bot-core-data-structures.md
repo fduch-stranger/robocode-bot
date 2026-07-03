@@ -105,10 +105,11 @@ Location: `bot_core.gun`
 | `GunStats` | Per-target/per-mode visits, hits, and rolling score. |
 | `GuessFactorProfile` | Component-local decayed histogram for profile guns. Traditional GF and anti-surfer keep separate profile types under their component packages. |
 | `AimSolution` | Output of aiming: predicted point, bearing error, selected mode, features, mode-change info, and component diagnostics keyed by mode. |
-| `GunSwitchCandidate` | Per-candidate selector diagnostic with adjusted/raw score, confidence/source penalties, visits, thresholds, margin, generic decision source, and rejection/selection reason. |
+| `GunModeTraits` | Generic gun labels used by the selector: role, family, phase, and context strengths. |
+| `GunSwitchCandidate` | Per-candidate selector diagnostic with adjusted/raw score, confidence/source penalties, trait/context bonus, visits, thresholds, margin, generic decision source, and rejection/selection reason. |
 | `WaveVisit` | Telemetry/learning result when a gun wave reaches the target, with component diagnostics keyed by mode. |
 | `RollingKnnBuffer` | Dynamic-cluster component memory for per-target bounded `GunSample` records. |
-| `AimContext` | Shared aiming input passed from the facade to concrete gun components. Includes bot/target state, firepower, normalized features, segment key, field margin, and disabled mode set. |
+| `AimContext` | Shared aiming input passed from the facade to concrete gun components. Includes bot/target state, firepower, normalized features, segment key, field margin, disabled mode set, and movement-history tags. |
 | `GunBearing` | Concrete gun output: mode, absolute bearing, optional guess factor, optional decision context, and generic metadata. |
 | `GunVisit` | Resolved production/eval wave data passed to gun components. Production visits update learners; eval visits remain isolated. |
 | `GunRegistry` | Holds concrete gun components and gathers available bearings for the facade. |
@@ -255,17 +256,30 @@ The selected candidate is reported as `selected`; the active gun is reported as
 When `GunSelectorConfig.switch_confidence_visits` and
 `GunSelectorConfig.switch_confidence_penalty` are enabled, selector decisions
 can apply a low-visit confidence penalty. Components can also provide
-mode-specific decision penalties, such as source-aware `traditional_gf`
-penalties for low-context profile sources. Selector decisions use an adjusted
-score:
+mode-specific decision penalties, context-aware gates, and trait/context
+bonuses. Examples include source-aware `traditional_gf` penalties and
+lower/higher visit or score floors based on profile source, KNN maturity
+bonuses for primary learning guns, and low-lateral bonuses for linear fallback
+guns. Selector decisions use an adjusted score:
 
 ```text
-adjusted_score = raw_score - confidence_penalty - source_penalty
+adjusted_score = raw_score - confidence_penalty - source_penalty + decision_bonus + eval_score_bonus
 ```
 
-The adjusted score is clamped at zero. Candidate telemetry reports `score` as
-the adjusted decision score and `raw_score` as the virtual-gun score before the
-decision penalties.
+The adjusted score is clamped to `[0, 1]`. Candidate telemetry reports `score`
+as the adjusted decision score and `raw_score` as the virtual-gun score before
+decision penalties and bonuses. `eval_score_bonus`, `eval_visits`, and
+`effective_visits` are selector-only evidence derived from the separate eval
+scorer; they do not mutate production stats or concrete gun learners.
+
+Role-aware switch margins are separate from scoring. The current repo configs
+use a small primary-over-fallback margin so mature KNN can leave linear early,
+a larger situational-over-primary margin so profile guns do not churn against
+KNN, and a smaller slump margin only when the current primary gun has enough
+low-score visits and the situational candidate has source/context evidence. If
+a situational current gun's source degrades to global-only context, the selector
+can mark that candidate with `reason=source_degraded` and lower its retention
+advantage while still requiring alternatives to pass their normal gates.
 
 `tools/gun_eval_summary.py` reports Traditional GF source diagnostics in three
 layers: real fired/hit conversion by source, profile-weight and selected-GF

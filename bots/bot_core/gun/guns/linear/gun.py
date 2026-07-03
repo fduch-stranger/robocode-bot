@@ -1,5 +1,5 @@
 from bot_core.geometry.angles import absolute_bearing_between
-from bot_core.gun.config import GunModePolicy
+from bot_core.gun.config import GunDecisionContext, GunModePolicy, GunModeTraits
 from bot_core.gun.context import AimContext, GunBearing, GunVisit
 from bot_core.gun.prediction import (
     LinearPrediction,
@@ -27,13 +27,27 @@ class LinearGun:
         if mode not in LINEAR_VARIANT_MODES:
             raise ValueError(f"unknown linear gun mode: {mode}")
         self.mode = mode
-        self.mode_policy = GunModePolicy(self.mode, min_switch_visits, min_switch_score)
+        self.mode_policy = GunModePolicy(
+            self.mode,
+            min_switch_visits,
+            min_switch_score,
+            GunModeTraits(
+                role="fallback",
+                family="linear_predictor",
+                phases=frozenset({"early"}),
+                strengths=frozenset({"low_lateral", "stable_velocity"}),
+            ),
+        )
 
     def aim(self, context: AimContext) -> GunBearing:
         prediction, metadata = self._predict_position(context)
         return GunBearing(
             self.mode,
             absolute_bearing_between(context.bot.x, context.bot.y, prediction.x, prediction.y),
+            decision_context=GunDecisionContext(
+                self.mode,
+                {"context_tags": self._context_tags(context)},
+            ),
             metadata=metadata,
         )
 
@@ -59,6 +73,16 @@ class LinearGun:
             context.field_margin,
         )
         return prediction, {}
+
+    @staticmethod
+    def _context_tags(context: AimContext) -> frozenset[str]:
+        _, _, lateral_speed, _, acceleration, velocity_change_age, _ = context.features
+        tags: set[str] = set(context.movement_tags.intersection({"low_lateral", "stable_velocity", "stable_pattern"}))
+        if lateral_speed <= 0.18:
+            tags.add("low_lateral")
+        if abs(acceleration) <= 0.05 and velocity_change_age >= 0.45:
+            tags.add("stable_velocity")
+        return frozenset(tags)
 
     def observe_visit(self, visit: GunVisit) -> None:
         return None

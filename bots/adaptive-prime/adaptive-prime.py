@@ -22,10 +22,10 @@ from bot_core.energy import (
 from bot_core.gun import (
     AimSolution,
     GunScoringConfig,
-    GunSelectorConfig,
     GunSystemConfig,
     TargetMotion,
     VirtualGunSystem,
+    selector_config_from_policy,
     should_log_switch_decision,
 )
 from bot_core.gun.factory import standard_runtime_config
@@ -110,13 +110,7 @@ class AdaptivePrime(Bot):
                     eval_waves_enabled=GUN_POLICY.eval_waves_enabled,
                     eval_wave_min_interval=GUN_POLICY.eval_wave_min_interval,
                 ),
-                selector=GunSelectorConfig(
-                    selectable_modes=GUN_POLICY.selectable_modes,
-                    forced_mode=GUN_POLICY.forced_mode,
-                    switch_margin=GUN_POLICY.switch_margin,
-                    switch_confidence_visits=GUN_POLICY.switch_confidence_visits,
-                    switch_confidence_penalty=GUN_POLICY.switch_confidence_penalty,
-                ),
+                selector=selector_config_from_policy(GUN_POLICY),
                 scoring=GunScoringConfig(selectable_modes=GUN_POLICY.selectable_modes),
                 min_visits=GUN_POLICY.min_visits,
                 min_switch_score=GUN_POLICY.min_switch_score,
@@ -133,6 +127,10 @@ class AdaptivePrime(Bot):
                     min_samples=traditional_gf_policy.min_samples,
                     min_switch_visits=traditional_gf_policy.min_switch_visits,
                     min_switch_score=traditional_gf_policy.min_switch_score,
+                    global_source_min_switch_visits=traditional_gf_policy.global_source_min_switch_visits,
+                    global_source_min_switch_score=traditional_gf_policy.global_source_min_switch_score,
+                    trusted_source_min_switch_visits=traditional_gf_policy.trusted_source_min_switch_visits,
+                    trusted_source_min_switch_score=traditional_gf_policy.trusted_source_min_switch_score,
                     global_source_centering_factor=traditional_gf_policy.global_source_centering_factor,
                     coarse_source_centering_factor=traditional_gf_policy.coarse_source_centering_factor,
                     coarse_blend_source_centering_factor=traditional_gf_policy.coarse_blend_source_centering_factor,

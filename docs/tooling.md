@@ -305,9 +305,11 @@ tools/gun_eval_summary.py battle-results/runs/<run>/telemetry --bot adaptive-pri
 
 `gun.wave_visit` reflects production virtual-gun switching evidence from real
 shots. `gun.eval_wave_visit` reflects optional neutral evaluation waves and
-must be interpreted separately. `gun.switch_decision` explains sampled selector
-choices, including candidates blocked by visits, score floor, margin, or a
-better superseding candidate.
+must be interpreted separately from production learning. When eval influence is
+enabled, `gun.switch_decision` can also show selector-only `eval_score_bonus`,
+`eval_visits`, and `effective_visits`. `gun.switch_decision` explains sampled
+selector choices, including candidates blocked by visits, score floor, margin,
+or a better superseding candidate.
 
 The summary also reports a `calibration` table by target id and gun mode. It
 compares adjusted score, raw score, confidence penalty, visits at switch time,

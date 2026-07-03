@@ -108,26 +108,75 @@
   function summarizeGunSwitchDecision(fields) {
     const parts = [];
     appendFieldPart(parts, fields, "target", "target");
-    appendFieldPart(parts, fields, "changed", "changed");
-    appendFieldPart(parts, fields, "previous", "previous");
-    appendFieldPart(parts, fields, "selected", fields.changed === true ? "selected" : "current");
+    if (fields.changed === true) {
+      const previous = format(fields.previous);
+      const selected = format(fields.selected);
+      parts.push(`switch=${previous}->${selected}`);
+    } else {
+      parts.push("switch=no");
+      appendFieldPart(parts, fields, "selected", "current");
+    }
 
     const candidates = Array.isArray(fields.candidates) ? fields.candidates : [];
-    const selected = candidates.find((candidate) => candidate?.reason === "selected");
-    const blocked = candidates.find((candidate) => (
-      candidate?.available === true
-      && candidate?.mode !== fields.selected
-      && ["visits", "score_floor", "margin", "superseded"].includes(candidate?.reason)
-    ));
-    const candidate = selected || blocked;
-    if (candidate) {
-      parts.push(`candidate=${format(candidate.mode)}`);
-      parts.push(`reason=${format(candidate.reason)}`);
-      appendFieldPart(parts, candidate, "score", "score");
-      appendFieldPart(parts, candidate, "visits", "visits");
-      appendFieldPart(parts, candidate, "required_visits", "required");
+    if (candidates.length > 0) {
+      parts.push(formatGunSwitchCandidateCounts(candidates));
+    }
+    if (candidates.length > 1) {
+      parts.push(`details=[${formatGunSwitchCandidateList(candidates)}]`);
     }
     return parts.length ? parts.join(" ") : summarizeFields(fields);
+  }
+
+  function formatGunSwitchCandidateCounts(candidates) {
+    const counts = { selected: 0, current: 0, blocked: 0, degraded: 0, unavailable: 0, other: 0 };
+    for (const candidate of candidates) {
+      const status = formatCandidateStatus(candidate);
+      if (status === "selected") counts.selected += 1;
+      else if (status === "current") counts.current += 1;
+      else if (status === "unavailable") counts.unavailable += 1;
+      else if (status === "source_degraded") counts.degraded += 1;
+      else if (String(status).startsWith("blocked:")) counts.blocked += 1;
+      else counts.other += 1;
+    }
+    const parts = [];
+    if (counts.selected > 0) parts.push(`selected=${counts.selected}`);
+    if (counts.blocked > 0) parts.push(`blocked=${counts.blocked}`);
+    if (counts.degraded > 0) parts.push(`degraded=${counts.degraded}`);
+    if (counts.unavailable > 0) parts.push(`unavailable=${counts.unavailable}`);
+    if (counts.other > 0) parts.push(`other=${counts.other}`);
+    return parts.join(" ");
+  }
+
+  function formatGunSwitchCandidateList(candidates) {
+    const maxDetails = 4;
+    const visible = candidates.slice(0, maxDetails).map(formatGunSwitchCandidate);
+    const hidden = candidates.length - visible.length;
+    if (hidden > 0) {
+      visible.push(`+${hidden} more`);
+    }
+    return visible.join("; ");
+  }
+
+  function formatGunSwitchCandidate(candidate) {
+    const mode = format(candidate?.mode);
+    const reason = formatCandidateStatus(candidate);
+    const score = candidate?.score == null ? "-" : format(candidate.score);
+    const parts = [`${mode} ${reason}`, `score=${score}`];
+    appendVisitsPart(parts, candidate, "visits");
+    appendNonZeroFieldPart(parts, candidate, "decision_bonus", "bonus");
+    appendNonZeroFieldPart(parts, candidate, "eval_score_bonus", "eval");
+    if (candidate?.effective_visits != null && candidate?.effective_visits !== candidate?.visits) {
+      parts.push(`eff=${format(candidate.effective_visits)}`);
+    }
+    return parts.join(" ");
+  }
+
+  function formatCandidateStatus(candidate) {
+    if (candidate?.available === false) return "unavailable";
+    const reason = candidate?.reason;
+    if (reason === "selected" || reason === "current" || reason === "superseded") return reason;
+    if (reason === "visits" || reason === "score_floor" || reason === "margin") return `blocked:${reason}`;
+    return format(reason);
   }
 
   function summarizeFields(fields) {
@@ -168,6 +217,24 @@
     if (value !== undefined && value !== null) {
       parts.push(`${label}=${format(value)}`);
     }
+  }
+
+  function appendNonZeroFieldPart(parts, fields, key, label) {
+    const value = fields[key];
+    if (value !== undefined && value !== null && value !== 0) {
+      parts.push(`${label}=${format(value)}`);
+    }
+  }
+
+  function appendVisitsPart(parts, fields, label) {
+    const visits = fields?.visits;
+    const required = fields?.required_visits;
+    if (visits === undefined || visits === null) return;
+    if (required !== undefined && required !== null) {
+      parts.push(`${label}=${format(visits)}/${format(required)}`);
+      return;
+    }
+    parts.push(`${label}=${format(visits)}`);
   }
 
   function displayEnergy(value) {

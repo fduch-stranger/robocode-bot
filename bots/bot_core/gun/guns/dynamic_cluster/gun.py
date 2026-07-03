@@ -1,6 +1,7 @@
 import math
 
 from bot_core.geometry.numeric import clamp
+from bot_core.gun.config import GunDecisionContext
 from bot_core.gun.context import AimContext, GunBearing, GunVisit, guess_factor_aim_bearing
 from bot_core.gun.guns.dynamic_cluster.config import DynamicClusterGunConfig
 from bot_core.gun.guns.dynamic_cluster.memory import RollingKnnBuffer
@@ -30,13 +31,23 @@ class DynamicClusterGun:
         return {"target_sample_count": self.target_sample_count(target_id)}
 
     def aim(self, context: AimContext) -> GunBearing | None:
-        guess_factor = self.guess_factor(context.target.bot_id, context.features)
+        samples = self.memory.samples_for(context.target.bot_id)
+        sample_count = len(samples)
+        guess_factor = self.guess_factor_from_samples(context.target.bot_id, context.features, samples)
         if guess_factor is None:
             return None
         return GunBearing(
             self.mode,
             guess_factor_aim_bearing(context.bot, context.target, context.firepower, guess_factor),
             guess_factor=guess_factor,
+            decision_context=GunDecisionContext(
+                self.mode,
+                {
+                    "samples": sample_count,
+                    "blend": self._warmup_blend(sample_count),
+                    "context_tags": self._context_tags(context),
+                },
+            ),
         )
 
     def observe_visit(self, visit: GunVisit) -> None:
@@ -46,8 +57,20 @@ class DynamicClusterGun:
     def visit_diagnostics(self, visit: GunVisit) -> dict[str, object]:
         return {}
 
+    @staticmethod
+    def _context_tags(context: AimContext) -> frozenset[str]:
+        return context.movement_tags.intersection({"surfer", "nonlinear_mover", "adaptive_mover"})
+
     def guess_factor(self, target_id: int, features: tuple[float, ...]) -> float | None:
         samples = self.memory.samples_for(target_id)
+        return self.guess_factor_from_samples(target_id, features, samples)
+
+    def guess_factor_from_samples(
+        self,
+        target_id: int,
+        features: tuple[float, ...],
+        samples: list[GunSample],
+    ) -> float | None:
         sample_count = len(samples)
         if sample_count < self.config.min_samples:
             return None
@@ -94,11 +117,17 @@ class DynamicClusterGun:
                 guess_factor = candidate
 
         if sample_count < self.config.blend_samples:
-            blend = (sample_count - self.config.min_samples) / (
-                self.config.blend_samples - self.config.min_samples
-            )
-            guess_factor *= clamp(blend, 0.0, 1.0)
+            guess_factor *= self._warmup_blend(sample_count)
         return clamp(guess_factor, -1.0, 1.0)
+
+    def _warmup_blend(self, sample_count: int) -> float:
+        if sample_count >= self.config.blend_samples:
+            return 1.0
+        return clamp(
+            (sample_count - self.config.min_samples) / max(1, self.config.blend_samples - self.config.min_samples),
+            0.0,
+            1.0,
+        )
 
     def clear_round_state(self) -> None:
         return None

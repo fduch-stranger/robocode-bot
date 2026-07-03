@@ -31,10 +31,10 @@ from bot_core.energy import (
 from bot_core.gun import (
     AimSolution,
     GunScoringConfig,
-    GunSelectorConfig,
     GunSystemConfig,
     TargetMotion,
     VirtualGunSystem,
+    selector_config_from_policy,
     should_log_switch_decision,
 )
 from bot_core.gun.factory import standard_runtime_config
@@ -92,11 +92,7 @@ class SweepPressure(Bot):
                     eval_waves_enabled=GUN_POLICY.eval_waves_enabled,
                     eval_wave_min_interval=GUN_POLICY.eval_wave_min_interval,
                 ),
-                selector=GunSelectorConfig(
-                    selectable_modes=GUN_POLICY.selectable_modes,
-                    forced_mode=GUN_POLICY.forced_mode,
-                    switch_margin=GUN_POLICY.switch_margin,
-                ),
+                selector=selector_config_from_policy(GUN_POLICY),
                 scoring=GunScoringConfig(selectable_modes=GUN_POLICY.selectable_modes),
                 min_visits=GUN_POLICY.min_visits,
                 min_switch_score=GUN_POLICY.min_switch_score,

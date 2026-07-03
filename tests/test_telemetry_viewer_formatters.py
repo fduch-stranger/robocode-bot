@@ -100,7 +100,7 @@ class TelemetryViewerFormattersTest(unittest.TestCase):
         self.assertIsNone(result["aimMode"])
         self.assertIsNone(result["gunMode"])
         self.assertIsNone(result["normalizedGunMode"])
-        self.assertIn("changed=false", result["summary"])
+        self.assertIn("switch=no", result["summary"])
         self.assertIn("current=traditional_gf", result["summary"])
 
     def test_changed_gun_switch_decision_can_report_selected_mode(self) -> None:
@@ -131,8 +131,64 @@ class TelemetryViewerFormattersTest(unittest.TestCase):
 
         self.assertEqual("dynamic_cluster", result["gunMode"])
         self.assertEqual("dynamic_cluster", result["normalizedGunMode"])
-        self.assertIn("changed=true", result["summary"])
-        self.assertIn("candidate=dynamic_cluster", result["summary"])
+        self.assertIn("switch=linear->dynamic_cluster", result["summary"])
+        self.assertIn("selected=1", result["summary"])
+
+    def test_gun_switch_decision_summary_lists_all_candidates(self) -> None:
+        summary = self.run_js(
+            """
+            view.summarizeEvent({
+              event: "gun.switch_decision",
+              fields: {
+                target: 1,
+                previous: "linear",
+                selected: "linear",
+                changed: false,
+                candidates: [
+                  {mode: "linear", available: true, score: 0.12, visits: 80, required_visits: 65, reason: "current"},
+                  {mode: "traditional_gf", available: true, score: 0.10, visits: 40, required_visits: 60, reason: "visits"},
+                  {mode: "dynamic_cluster", available: true, score: 0.18, visits: 70, required_visits: 65, reason: "margin"},
+                  {mode: "anti_surfer", available: true, score: 0.08, visits: 70, required_visits: 65, reason: "source_degraded"}
+                ]
+              }
+            })
+            """
+        )
+
+        self.assertIn("blocked=2", summary)
+        self.assertIn("degraded=1", summary)
+        self.assertIn("visits=40/60", summary)
+        self.assertIn(
+            "details=[linear current score=0.1 visits=80/65; traditional_gf blocked:visits score=0.1 visits=40/60; dynamic_cluster blocked:margin score=0.2 visits=70/65; anti_surfer source_degraded score=0.1 visits=70/65]",
+            summary,
+        )
+
+    def test_gun_switch_decision_summary_caps_long_candidate_lists(self) -> None:
+        summary = self.run_js(
+            """
+            view.summarizeEvent({
+              event: "gun.switch_decision",
+              fields: {
+                target: 1,
+                previous: "linear",
+                selected: "linear",
+                changed: false,
+                candidates: [
+                  {mode: "linear", available: true, score: 0.12, visits: 80, required_visits: 65, reason: "current"},
+                  {mode: "traditional_gf", available: true, score: 0.10, visits: 40, required_visits: 60, reason: "visits"},
+                  {mode: "dynamic_cluster", available: true, score: 0.18, visits: 70, required_visits: 65, reason: "margin"},
+                  {mode: "anti_surfer", available: false, score: 0.08, visits: 12, required_visits: 65, reason: "unavailable"},
+                  {mode: "displacement", available: true, score: 0.06, visits: 90, required_visits: 65, reason: "score_floor"}
+                ]
+              }
+            })
+            """
+        )
+
+        self.assertIn("blocked=3", summary)
+        self.assertIn("unavailable=1", summary)
+        self.assertIn("+1 more", summary)
+        self.assertNotIn("displacement", summary)
 
     def test_stream_filter_matches_event_categories(self) -> None:
         result = self.run_js(

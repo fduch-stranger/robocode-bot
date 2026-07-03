@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from bot_core.gun.config import GunModePolicy
+from bot_core.gun.config import GunModePolicy, GunModeTraits
 
 
 @dataclass(frozen=True)
@@ -18,6 +18,16 @@ class DynamicClusterGunConfig:
     min_switch_score: float = 0.30
 
     def mode_policy(self) -> GunModePolicy:
-        return GunModePolicy("dynamic_cluster", self.min_switch_visits, self.min_switch_score)
+        return GunModePolicy(
+            "dynamic_cluster",
+            self.min_switch_visits,
+            self.min_switch_score,
+            GunModeTraits(
+                role="primary",
+                family="knn_gf",
+                phases=frozenset({"warmup", "late"}),
+                strengths=frozenset({"surfer", "nonlinear_mover", "adaptive_mover"}),
+            ),
+        )
 
 __all__ = ["DynamicClusterGunConfig"]

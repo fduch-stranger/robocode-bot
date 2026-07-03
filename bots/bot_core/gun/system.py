@@ -11,6 +11,7 @@ from bot_core.gun.context import (
     GunVisit,
     TargetHistoryStore,
     build_gun_features,
+    movement_context_tags,
 )
 from bot_core.gun.models import (
     AimSolution,
@@ -66,6 +67,7 @@ class VirtualGunSystem:
             self._active_modes,
             self._stats,
             self._registry.mode_policies,
+            self._eval_scorer,
         )
 
     @property
@@ -273,6 +275,7 @@ class VirtualGunSystem:
         disabled_modes: frozenset[str] | None,
     ) -> AimContext:
         features = build_gun_features(bot, target, distance, firepower, motion)
+        history = self._target_history_store.history_for(target.bot_id)
         return AimContext(
             bot=bot,
             target=target,
@@ -283,6 +286,7 @@ class VirtualGunSystem:
             features=features,
             segment_key=segment_features(features),
             disabled_modes=disabled_modes or frozenset(),
+            movement_tags=movement_context_tags(bot, target, features, history),
         )
 
     @staticmethod

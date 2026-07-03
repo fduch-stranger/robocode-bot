@@ -93,10 +93,35 @@ churn. `gun.switch_decision` records sampled candidate diagnostics so tuning
 can distinguish unavailable guns from candidates blocked by visits, score
 floor, margin, or a better superseding candidate.
 
+Guns also declare generic `GunModeTraits` so selector heuristics are not tied
+to concrete gun names. Current shared labels treat `dynamic_cluster` as the
+primary KNN-GF learner, `traditional_gf` as a situational profile-GF gun, and
+`linear` as an early/simple-motion fallback. The selector converts those labels
+plus generic decision context into a `decision_bonus`: KNN gains confidence as
+samples mature and recent target history looks nonlinear/adaptive, linear
+receives help only when current or recent target motion matches low-lateral or
+stable-velocity strengths, and profile guns can match trusted segment/source
+contexts plus stable-pattern history.
+Selector margins can also depend on roles. Repo bot configs let the primary
+KNN gun replace fallback linear with a smaller margin, require situational guns
+to beat primary KNN by a larger normal margin, and relax that larger margin only
+when primary KNN is in a low-score slump and the situational candidate has
+source/context evidence. A situational current gun with a global-only degraded
+source loses its normal sticky score advantage, but replacement candidates must
+still pass their visit and score gates; the next `gun.switch_decision` can show
+`reason=source_degraded`.
+
+Optional eval waves remain separate from production wave learning, but the
+selector can use them as read-only decision evidence. After
+`eval_influence_min_visits`, eval scores can add a capped `eval_score_bonus`
+and partial `effective_visits` credit in `gun.switch_decision`; these values do
+not update production `GunStats` or concrete gun learners.
+
 `VirtualGunSystem` remains the stable facade. Internally, it builds an
-`AimContext`, asks a `GunRegistry` of concrete gun components for available
-bearings, passes those bearings to `AimModeSelector`, and publishes resolved
-production-wave visits back to the components for learning. Wave storage,
+`AimContext`, including shared movement tags derived from recent target path
+curvature and speed stability, asks a `GunRegistry` of concrete gun components
+for available bearings, passes those bearings to `AimModeSelector`, and
+publishes resolved production-wave visits back to the components for learning. Wave storage,
 virtual-gun scoring, and aim-mode switching are isolated in `GunWaveTracker`,
 `VirtualGunScorer`, and `AimModeSelector`. Concrete guns live under
 [`bot_core.gun.guns`](../bots/bot_core/gun/guns/README.md): stateless
@@ -134,6 +159,10 @@ coarse segment profiles normally. Source-bias correction remains neutral unless
 a bot config opts in. Selector thresholds and source penalties are supplied as
 per-mode policy data, so the selector does not need concrete gun classes or
 mode-specific threshold branches.
+Mode policies can also provide source-aware visit and score floors through the
+same generic decision context. Adaptive uses this for local Traditional GF
+experiments: global profile sources remain more conservative, while exact and
+coarse segment sources can promote earlier.
 `tools/gun_eval_summary.py` groups Traditional GF real hit rate, model
 diagnostics, and GF error by profile source so source-trust changes can be
 validated before changing selector policy.
@@ -267,7 +296,9 @@ Telemetry is JSONL. Common event names:
 - `gun.wave_visit`: virtual gun scoring result, including optional
   traditional-GF aim/error/source diagnostics.
 - `gun.eval_wave_visit`: optional neutral gun-evaluation result. These visits
-  are separate from production switcher stats.
+  are separate from production switcher stats and concrete gun learners, though
+  they can provide selector-only score/visit evidence when eval influence is
+  enabled.
 - `gun.fire_drift`: planned production wave compared with the actual
   `BulletFiredEvent` bullet state.
 - `enemy.fire_detected`: confirmed enemy fire, including optional inferred fire

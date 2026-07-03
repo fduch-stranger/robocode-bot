@@ -2,11 +2,11 @@ import os
 from dataclasses import dataclass
 
 from bot_core.energy import EnergyDropConfig, FireGate, FireGateConfig
-from bot_core.gun import LINEAR_VARIANT_MODES
+from bot_core.gun import DEFAULT_LIVE_GUN_MODES, LINEAR_VARIANT_MODES, SHARED_GUN_POLICY_DEFAULTS
 from bot_core.radar import RadarLockConfig
 
 
-CHASE_SELECTABLE_GUN_MODES = frozenset({"linear", "traditional_gf", "dynamic_cluster"})
+CHASE_SELECTABLE_GUN_MODES = DEFAULT_LIVE_GUN_MODES
 CHASE_FORCE_GUN_MODES = CHASE_SELECTABLE_GUN_MODES | LINEAR_VARIANT_MODES | frozenset({"displacement"})
 
 
@@ -35,12 +35,17 @@ class GunPolicy:
     forced_mode: str | None = _forced_gun_mode()
     eval_waves_enabled: bool = _env_flag("ROBOCODE_CHASE_GUN_EVAL")
     eval_wave_min_interval: int = _env_int("ROBOCODE_CHASE_GUN_EVAL_INTERVAL", 8)
-    knn_min_samples: int = 60
-    min_visits: int = 90
-    switch_margin: float = 0.08
-    min_switch_score: float = 0.30
-    traditional_gf_min_switch_visits: int = 120
-    traditional_gf_min_switch_score: float = 0.30
+    knn_min_samples: int = SHARED_GUN_POLICY_DEFAULTS.knn_min_samples
+    min_visits: int = SHARED_GUN_POLICY_DEFAULTS.min_visits
+    switch_margin: float = SHARED_GUN_POLICY_DEFAULTS.switch_margin
+    primary_over_fallback_margin: float = SHARED_GUN_POLICY_DEFAULTS.primary_over_fallback_margin
+    situational_over_primary_margin: float = SHARED_GUN_POLICY_DEFAULTS.situational_over_primary_margin
+    primary_slump_visits: int = SHARED_GUN_POLICY_DEFAULTS.primary_slump_visits
+    primary_slump_score: float = SHARED_GUN_POLICY_DEFAULTS.primary_slump_score
+    primary_slump_situational_margin: float = SHARED_GUN_POLICY_DEFAULTS.primary_slump_situational_margin
+    min_switch_score: float = SHARED_GUN_POLICY_DEFAULTS.min_switch_score
+    traditional_gf_min_switch_visits: int = SHARED_GUN_POLICY_DEFAULTS.traditional_gf_min_switch_visits
+    traditional_gf_min_switch_score: float = SHARED_GUN_POLICY_DEFAULTS.traditional_gf_min_switch_score
     switch_diagnostics_interval: int = 30
 
 

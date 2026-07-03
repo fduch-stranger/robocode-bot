@@ -24,6 +24,7 @@ class AimContext:
     features: tuple[float, ...]
     segment_key: tuple[int, ...]
     disabled_modes: frozenset[str] = frozenset()
+    movement_tags: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -116,6 +117,68 @@ class TargetHistoryStore:
 
     def remove_target(self, target_id: int) -> None:
         self._history.pop(target_id, None)
+
+
+def movement_context_tags(
+    bot: Bot,
+    target: TargetSnapshot,
+    features: tuple[float, ...],
+    history: list[TargetPosition],
+) -> frozenset[str]:
+    _, _, lateral_speed, _, acceleration, velocity_change_age, _ = features
+    tags: set[str] = set()
+    if lateral_speed <= 0.18:
+        tags.add("low_lateral")
+    if abs(acceleration) <= 0.05 and velocity_change_age >= 0.45:
+        tags.add("stable_velocity")
+
+    recent = history[-12:]
+    if len(recent) < 4:
+        return frozenset(tags)
+
+    speeds = [position.speed for position in recent]
+    speed_mean = sum(speeds) / len(speeds)
+    speed_variance = sum((speed - speed_mean) ** 2 for speed in speeds) / len(speeds)
+    speed_stdev = math.sqrt(speed_variance)
+    if speed_stdev <= 0.55:
+        tags.add("stable_velocity")
+
+    headings: list[float] = []
+    path_length = 0.0
+    for previous, current in zip(recent, recent[1:]):
+        dx = current.x - previous.x
+        dy = current.y - previous.y
+        step = math.hypot(dx, dy)
+        if step <= 0.25:
+            continue
+        path_length += step
+        headings.append(math.degrees(math.atan2(dy, dx)))
+
+    if path_length < 12.0 or len(headings) < 3:
+        return frozenset(tags)
+
+    heading_turns = [
+        abs(_angle_delta_degrees(current, previous))
+        for previous, current in zip(headings, headings[1:])
+    ]
+    mean_turn = sum(heading_turns) / len(heading_turns) if heading_turns else 0.0
+    net_distance = math.hypot(recent[-1].x - recent[0].x, recent[-1].y - recent[0].y)
+    path_efficiency = net_distance / max(path_length, 1.0)
+
+    if mean_turn <= 4.0 and speed_stdev <= 0.8 and path_efficiency >= 0.9:
+        tags.add("stable_pattern")
+    if mean_turn >= 7.0 or path_efficiency <= 0.88:
+        tags.add("nonlinear_mover")
+    if mean_turn >= 10.0 or speed_stdev >= 1.4:
+        tags.add("adaptive_mover")
+    if lateral_speed >= 0.35 and (path_efficiency <= 0.85 or mean_turn >= 9.0):
+        tags.add("surfer")
+
+    return frozenset(tags)
+
+
+def _angle_delta_degrees(current: float, previous: float) -> float:
+    return (current - previous + 180.0) % 360.0 - 180.0
 
 
 def build_gun_features(

@@ -232,6 +232,7 @@ class TelemetryEmitterTest(unittest.TestCase):
         self.assertEqual("visits", sink.records[1][2]["candidates"][1]["reason"])
         self.assertEqual(0.18, sink.records[1][2]["candidates"][1]["raw_score"])
         self.assertEqual(0.0, sink.records[1][2]["candidates"][1]["confidence_penalty"])
+        self.assertEqual(0.0, sink.records[1][2]["candidates"][1]["decision_bonus"])
         self.assertEqual(-0.234, sink.records[2][2]["guess_factor"])
         self.assertEqual(-0.1, sink.records[2][2]["traditional_gf_guess_factor"])
         self.assertEqual(-0.2, sink.records[2][2]["traditional_gf_raw_guess_factor"])

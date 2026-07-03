@@ -84,6 +84,12 @@ class GunSwitchCandidate:
     source_penalty: float = 0.0
     current_source_penalty: float = 0.0
     decision_source: str | None = None
+    decision_bonus: float = 0.0
+    current_decision_bonus: float = 0.0
+    eval_score_bonus: float = 0.0
+    current_eval_score_bonus: float = 0.0
+    eval_visits: int = 0
+    effective_visits: int = 0
 
 
 @dataclass

@@ -17,8 +17,12 @@ Every gun implements `GunComponent` from `base.py`:
 - `metrics()`, `clear_round_state()`, and `remove_target()` expose lifecycle
   hooks to the facade.
 
-Mode-specific selector thresholds belong to the component configuration through
-`GunModePolicy`. The selector should not need concrete-gun branches.
+Mode-specific selector thresholds and generic labels belong to the component
+configuration through `GunModePolicy` and `GunModeTraits`. Components should
+prefer shared `AimContext.movement_tags` over static movement labels when
+building decision context. The selector should not need concrete-gun branches;
+it uses role, family, phase, strengths, and generic decision context to apply
+priors.
 
 ## Runtime Flow
 

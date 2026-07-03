@@ -99,13 +99,18 @@ long range, gun bearing error is too high, or energy margin is too small.
 ## Gun Policy
 
 Sweep Pressure keeps bot-specific `GunPolicy`, fire, target, radar, and
-movement surfaces in `sweep_config.py`. Its gun policy uses shared-default
-switch thresholds. It live-selects `linear`, `traditional_gf`, and
+movement surfaces in `sweep_config.py`. Its live gun policy follows the shared
+experimental selector shape: `dynamic_cluster` is the primary learning gun,
+`traditional_gf` is a situational profile gun, and `linear` is an early/simple
+movement fallback. It live-selects `linear`, `traditional_gf`, and
 `dynamic_cluster` in 1v1. Melee keeps segmented gun stats and live
 `traditional_gf` bearings disabled, so `traditional_gf` candidates can appear
-as unavailable in switch diagnostics. The current policy keeps shared switch
-gates while exposing switch-decision telemetry. `displacement` is available
-only for forced experiments:
+as unavailable in switch diagnostics. The current policy uses aligned
+aggressive KNN and Traditional GF gates with the shared trait-based selector
+priors. Primary KNN can leave fallback linear early, situational profile guns
+need a larger margin over KNN unless KNN is in a low-score slump with trusted
+source/context evidence, and global-source situational trials are not retained.
+`displacement` is available only for forced experiments:
 
 ```sh
 ROBOCODE_SWEEP_GUN_MODE=displacement scripts/run-battle.sh --rounds 8 bots/sweep-pressure bots/circle-strafer

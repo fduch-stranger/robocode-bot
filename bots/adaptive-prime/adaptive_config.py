@@ -2,12 +2,12 @@ import os
 from dataclasses import dataclass, field
 
 from bot_core.energy import EnergyDropConfig, FireGate, FireGateConfig
-from bot_core.gun import LINEAR_VARIANT_MODES
+from bot_core.gun import DEFAULT_LIVE_GUN_MODES, LINEAR_VARIANT_MODES, SHARED_GUN_POLICY_DEFAULTS
 from bot_core.gun.guns.traditional_gf.config import TraditionalGfGunConfig
 from bot_core.radar import RadarLockConfig
 
 
-ADAPTIVE_SELECTABLE_GUN_MODES = frozenset({"linear", "traditional_gf", "dynamic_cluster"})
+ADAPTIVE_SELECTABLE_GUN_MODES = DEFAULT_LIVE_GUN_MODES
 ADAPTIVE_FORCE_GUN_MODES = ADAPTIVE_SELECTABLE_GUN_MODES | LINEAR_VARIANT_MODES | frozenset({"anti_surfer", "displacement"})
 TRADITIONAL_GF_PEAK_SELECTIONS = frozenset({"max", "density"})
 TRADITIONAL_GF_DEFAULTS = TraditionalGfGunConfig()
@@ -54,8 +54,12 @@ def _forced_gun_mode() -> str | None:
 
 @dataclass(frozen=True)
 class TraditionalGfPolicy:
-    min_switch_visits: int = 160
-    min_switch_score: float = 0.24
+    min_switch_visits: int = 45
+    min_switch_score: float = 0.10
+    global_source_min_switch_visits: int = 60
+    global_source_min_switch_score: float = 0.16
+    trusted_source_min_switch_visits: int = 32
+    trusted_source_min_switch_score: float = 0.08
     min_samples: int = _env_int(
         "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_MIN_SAMPLES",
         TRADITIONAL_GF_DEFAULTS.min_samples,
@@ -102,17 +106,23 @@ class GunPolicy:
     forced_mode: str | None = _forced_gun_mode()
     eval_waves_enabled: bool = _env_flag("ROBOCODE_ADAPTIVE_GUN_EVAL")
     eval_wave_min_interval: int = _env_int("ROBOCODE_ADAPTIVE_GUN_EVAL_INTERVAL", 8)
-    knn_min_samples: int = 55
-    min_visits: int = 65
-    switch_margin: float = 0.06
-    min_switch_score: float = 0.10
+    knn_min_samples: int = SHARED_GUN_POLICY_DEFAULTS.knn_min_samples
+    min_visits: int = SHARED_GUN_POLICY_DEFAULTS.min_visits
+    switch_margin: float = 0.035
+    primary_over_fallback_margin: float = SHARED_GUN_POLICY_DEFAULTS.primary_over_fallback_margin
+    situational_over_primary_margin: float = SHARED_GUN_POLICY_DEFAULTS.situational_over_primary_margin
+    primary_slump_visits: int = SHARED_GUN_POLICY_DEFAULTS.primary_slump_visits
+    primary_slump_score: float = SHARED_GUN_POLICY_DEFAULTS.primary_slump_score
+    primary_slump_situational_margin: float = SHARED_GUN_POLICY_DEFAULTS.primary_slump_situational_margin
+    min_switch_score: float = SHARED_GUN_POLICY_DEFAULTS.min_switch_score
     displacement_min_switch_visits: int = 150
     displacement_min_switch_score: float = 0.16
     traditional_gf: TraditionalGfPolicy = field(default_factory=TraditionalGfPolicy)
     anti_surfer_min_switch_visits: int = 95
     anti_surfer_min_switch_score: float = 0.28
-    switch_confidence_visits: int = 240
-    switch_confidence_penalty: float = 0.06
+    switch_confidence_visits: int = 120
+    switch_confidence_penalty: float = 0.04
+    primary_confidence_penalty_scale: float = 0.25
     switch_diagnostics_interval: int = 24
 
 

@@ -91,15 +91,19 @@ far while energy is low, or gun bearing error is too large.
 ## Gun Policy
 
 Circle Strafer keeps bot-specific `GunPolicy`, fire, target, radar, and
-movement surfaces in `circle_config.py`. Its defensive gun policy uses
-shared-default switch thresholds plus a shorter base visit gate for
-`dynamic_cluster` warmup. It live-selects `linear`, `traditional_gf`, and
-`dynamic_cluster` in 1v1. Melee keeps segmented gun stats and live
+movement surfaces in `circle_config.py`. Its live gun policy follows the
+shared experimental selector shape: `dynamic_cluster` is the primary learning
+gun, `traditional_gf` is a situational profile gun, and `linear` is an
+early/simple movement fallback. It live-selects `linear`, `traditional_gf`,
+and `dynamic_cluster` in 1v1. Melee keeps segmented gun stats and live
 `traditional_gf` bearings disabled, so `traditional_gf` candidates can appear
 as unavailable in switch diagnostics.
-The current policy lowers the base visit gate while keeping traditional GF's
-separate conservative override. `displacement` is available only for forced
-experiments:
+The current policy uses aligned aggressive KNN and Traditional GF gates with
+the shared trait-based selector priors. Primary KNN can leave fallback linear
+early, situational profile guns need a larger margin over KNN unless KNN is in
+a low-score slump with trusted source/context evidence, and global-source
+situational trials are not retained. `displacement` is available only for
+forced experiments:
 
 ```sh
 ROBOCODE_CIRCLE_GUN_MODE=displacement scripts/run-battle.sh --rounds 8 bots/circle-strafer bots/sweep-pressure

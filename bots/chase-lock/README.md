@@ -102,20 +102,25 @@ mid/far:
 ## Gun Policy
 
 Chase Lock keeps bot-specific `GunPolicy`, fire, target, radar, and movement
-surfaces in `chase_config.py`. Its gun policy uses sticky shared-default
-thresholds plus a narrower `traditional_gf` activation gate. It live-selects
-`linear`, `traditional_gf`, and `dynamic_cluster` in 1v1. Melee keeps segmented
-gun stats and live `traditional_gf` bearings disabled, so `traditional_gf`
-candidates can appear as unavailable in switch diagnostics.
+surfaces in `chase_config.py`. Its live gun policy follows the shared
+experimental selector shape: `dynamic_cluster` is the primary learning gun,
+`traditional_gf` is a situational profile gun, and `linear` is an early/simple
+movement fallback. It live-selects `linear`, `traditional_gf`, and
+`dynamic_cluster` in 1v1. Melee keeps segmented gun stats and live
+`traditional_gf` bearings disabled, so `traditional_gf` candidates can appear
+as unavailable in switch diagnostics.
 `displacement` is available only for forced experiments:
 
 ```sh
 ROBOCODE_CHASE_GUN_MODE=displacement scripts/run-battle.sh --rounds 8 bots/chase-lock bots/sweep-pressure
 ```
 
-The retained policy lowers only Chase's `traditional_gf` switch visits and
-score floor relative to the standard shared defaults; other switch gates stay
-on the shared policy surface.
+The retained policy uses aligned aggressive KNN and Traditional GF gates with
+the shared trait-based selector priors. Primary KNN can leave fallback linear
+early, situational profile guns need a larger margin over KNN unless KNN is in
+a low-score slump with trusted source/context evidence, and global-source
+situational trials are not retained. `gun.switch_decision` reports raw score,
+adjusted score, penalties, and `decision_bonus` for calibration.
 
 For neutral gun-evaluation telemetry, set:
 

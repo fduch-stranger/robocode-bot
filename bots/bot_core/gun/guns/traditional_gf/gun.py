@@ -43,7 +43,11 @@ class TraditionalGfGun:
             guess_factor=guess_factor,
             decision_context=GunDecisionContext(
                 self.mode,
-                {"source": diagnostics.source, "blend": diagnostics.blend},
+                {
+                    "source": diagnostics.source,
+                    "blend": diagnostics.blend,
+                    "context_tags": self._context_tags(diagnostics.source, context),
+                },
             ),
             metadata={self.mode: diagnostics},
         )
@@ -87,6 +91,16 @@ class TraditionalGfGun:
         if source_bias_samples is not None:
             diagnostics["source_bias_samples"] = source_bias_samples
         return diagnostics
+
+    @staticmethod
+    def _context_tags(source: str, context: AimContext) -> frozenset[str]:
+        tags = set(context.movement_tags.intersection({"stable_pattern"}))
+        if source in {"segment", "coarse"}:
+            tags.update({"trusted_segment", "stable_pattern"})
+            return frozenset(tags)
+        if source in {"blend", "coarse_blend"}:
+            tags.add("stable_pattern")
+        return frozenset(tags)
 
     def metrics(self, target_id: int | None = None) -> dict[str, int | float]:
         return {}

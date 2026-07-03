@@ -129,16 +129,22 @@ less linear-biased than the shared defaults. Traditional GF's larger tuning
 surface is grouped under `TraditionalGfPolicy`:
 
 - `dynamic_cluster` can warm up earlier through lower KNN sample, score, and
-  switch visit thresholds.
-- `traditional_gf` has an Adaptive-specific activation path so it can replace
-  `linear` in 1v1 when virtual scoring shows a clear advantage.
+  switch visit thresholds and is labeled as the primary learning gun.
+- `traditional_gf` is treated as a situational profile gun. Its trusted
+  exact/coarse sources can challenge KNN early, while weak global sources stay
+  more conservative.
+- If primary KNN is in a low-score slump after enough visits, trusted
+  Traditional GF sources get a smaller challenge margin. If a Traditional GF
+  trial degrades to global-only source, the selector lowers its retention
+  advantage while still requiring replacement guns to pass their normal gates.
 - `traditional_gf` uses exact and coarse segmented guess-factor profile
   blending with global fallback from the shared gun defaults, so the actual
   bearing can track current movement context without waiting too long for
   exact-segment samples.
-- `traditional_gf` uses shared source-aware trust penalties: global profile
-  shots need a higher adjusted score, blend penalties shrink as segment weight
-  grows, and exact/coarse segment sources are trusted normally.
+- `traditional_gf` uses source-aware selector gates and trust penalties:
+  global profile shots need more visits and a higher adjusted score, blended
+  sources interpolate toward trusted gates as segment weight grows, and
+  exact/coarse segment sources can switch earliest.
 - `traditional_gf` uses the shared density-supported peak selection and
   source-specific centering for lower-trust global/coarse sources to reduce
   sparse-profile over-aiming.
@@ -149,8 +155,16 @@ surface is grouped under `TraditionalGfPolicy`:
   standard runtime and can be forced for isolated experiments, but they are not
   part of Adaptive's normal selectable-mode set.
 - Switching uses a small confidence penalty until a mode has enough virtual
-  visits. `gun.switch_decision` reports both adjusted `score` and `raw_score`
-  so score-vs-hit calibration can separate weak evidence from weak aim logic.
+  visits. The shared selector also applies trait-based priors: KNN gets a
+  maturity bonus and can match nonlinear/adaptive movement history, linear is
+  penalized unless current or recent target motion matches its simple movement
+  strengths, and profile guns can match trusted source contexts plus
+  stable-pattern history.
+  `gun.switch_decision` reports adjusted `score`, `raw_score`, and
+  `decision_bonus` so score-vs-hit calibration can separate weak evidence from
+  heuristic preference. When eval waves are enabled, the selector can also use
+  capped `eval_score_bonus` and partial `effective_visits` credit without
+  feeding eval visits into the production learners.
 
 For isolated gun testing, set:
 
@@ -198,9 +212,10 @@ ROBOCODE_ADAPTIVE_GUN_EVAL=1 scripts/run-battle.sh --telemetry --rounds 24 bots/
 ```
 
 This emits `gun.eval_wave_visit` at fresh, gun-ready opportunities. Eval-wave
-stats are separate from production `gun.wave_visit` stats and do not influence
-virtual-gun switching. Use `ROBOCODE_ADAPTIVE_GUN_EVAL_INTERVAL=1` for denser
-analysis when telemetry volume is acceptable.
+stats are separate from production `gun.wave_visit` stats and concrete gun
+learners. They can provide selector-only decision evidence after enough eval
+visits. Use `ROBOCODE_ADAPTIVE_GUN_EVAL_INTERVAL=1` for denser analysis when
+telemetry volume is acceptable.
 
 Use `tools/gun_eval_summary.py <telemetry-dir> --bot adaptive-prime
 --post-switch-shots 6` to compare switch-time score/visits, production
