@@ -102,6 +102,7 @@ class AdaptivePrime(Bot):
             self._last_enemy_power_prediction,
         )
         self._target_selector = TargetSelector(TARGET_POLICY.reacquire_turns)
+        traditional_gf_policy = GUN_POLICY.traditional_gf
         self._gun = VirtualGunSystem(
             standard_runtime_config(
                 system=GunSystemConfig(
@@ -128,29 +129,15 @@ class AdaptivePrime(Bot):
                     min_switch_score=GUN_POLICY.min_switch_score,
                 ),
                 traditional_gf=TraditionalGfGunConfig(
-                    min_samples=GUN_POLICY.traditional_gf_min_samples,
-                    min_switch_visits=GUN_POLICY.traditional_gf_min_switch_visits,
-                    min_switch_score=GUN_POLICY.traditional_gf_min_switch_score,
-                    smoothing_bins=GUN_POLICY.traditional_gf_smoothing_bins,
-                    decay=GUN_POLICY.traditional_gf_decay,
-                    centering_factor=GUN_POLICY.traditional_gf_centering_factor,
-                    global_source_centering_factor=GUN_POLICY.traditional_gf_global_source_centering_factor,
-                    blend_source_centering_factor=GUN_POLICY.traditional_gf_blend_source_centering_factor,
-                    segment_source_centering_factor=GUN_POLICY.traditional_gf_segment_source_centering_factor,
-                    coarse_source_centering_factor=GUN_POLICY.traditional_gf_coarse_source_centering_factor,
-                    coarse_blend_source_centering_factor=GUN_POLICY.traditional_gf_coarse_blend_source_centering_factor,
-                    source_bias_min_samples=GUN_POLICY.traditional_gf_source_bias_min_samples,
-                    source_bias_learning_rate=GUN_POLICY.traditional_gf_source_bias_learning_rate,
-                    source_bias_max_correction=GUN_POLICY.traditional_gf_source_bias_max_correction,
-                    segment_min_samples=GUN_POLICY.traditional_gf_segment_min_samples,
-                    segment_full_weight_samples=GUN_POLICY.traditional_gf_segment_full_weight_samples,
-                    coarse_segment_min_samples=GUN_POLICY.traditional_gf_coarse_segment_min_samples,
-                    coarse_segment_full_weight_samples=GUN_POLICY.traditional_gf_coarse_segment_full_weight_samples,
-                    peak_selection=GUN_POLICY.traditional_gf_peak_selection,
-                    peak_support_radius=GUN_POLICY.traditional_gf_peak_support_radius,
-                    global_source_penalty=GUN_POLICY.traditional_gf_global_source_penalty,
-                    blend_source_penalty=GUN_POLICY.traditional_gf_blend_source_penalty,
-                    coarse_blend_source_penalty=GUN_POLICY.traditional_gf_coarse_blend_source_penalty,
+                    min_samples=traditional_gf_policy.min_samples,
+                    min_switch_visits=traditional_gf_policy.min_switch_visits,
+                    min_switch_score=traditional_gf_policy.min_switch_score,
+                    global_source_centering_factor=traditional_gf_policy.global_source_centering_factor,
+                    coarse_source_centering_factor=traditional_gf_policy.coarse_source_centering_factor,
+                    coarse_blend_source_centering_factor=traditional_gf_policy.coarse_blend_source_centering_factor,
+                    coarse_segment_min_samples=traditional_gf_policy.coarse_segment_min_samples,
+                    coarse_segment_full_weight_samples=traditional_gf_policy.coarse_segment_full_weight_samples,
+                    peak_selection=traditional_gf_policy.peak_selection,
                 ),
                 anti_surfer=AntiSurferGunConfig(
                     min_switch_visits=GUN_POLICY.anti_surfer_min_switch_visits,

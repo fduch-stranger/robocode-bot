@@ -6,6 +6,8 @@ from pathlib import Path
 from types import ModuleType
 from unittest.mock import patch
 
+from bot_core.gun.guns.traditional_gf.config import TraditionalGfGunConfig
+
 
 ROOT = Path(__file__).resolve().parents[1]
 BOTS_ROOT = ROOT / "bots"
@@ -37,33 +39,55 @@ class BotConfigTest(unittest.TestCase):
 
         default_config = _load_config(path)
         default_policy = default_config.GunPolicy()
+        default_traditional_gf = default_policy.traditional_gf
+        default_gun_config = TraditionalGfGunConfig()
         self.assertEqual(default_policy.selectable_modes, {"linear", "traditional_gf", "dynamic_cluster"})
         self.assertIsNone(default_policy.forced_mode)
-        self.assertEqual(default_policy.traditional_gf_coarse_segment_min_samples, 12)
-        self.assertEqual(default_policy.traditional_gf_coarse_segment_full_weight_samples, 48)
-        self.assertEqual(default_policy.traditional_gf_global_source_centering_factor, 0.8)
-        self.assertEqual(default_policy.traditional_gf_coarse_source_centering_factor, 0.7)
-        self.assertEqual(default_policy.traditional_gf_coarse_blend_source_centering_factor, 0.8)
-        self.assertEqual(default_policy.traditional_gf_peak_selection, "density")
+        self.assertIsInstance(default_traditional_gf, default_config.TraditionalGfPolicy)
+        self.assertEqual(default_traditional_gf.min_samples, default_gun_config.min_samples)
+        self.assertEqual(default_traditional_gf.coarse_segment_min_samples, default_gun_config.coarse_segment_min_samples)
+        self.assertEqual(default_traditional_gf.coarse_segment_full_weight_samples, default_gun_config.coarse_segment_full_weight_samples)
+        self.assertEqual(default_traditional_gf.global_source_centering_factor, default_gun_config.global_source_centering_factor)
+        self.assertEqual(default_traditional_gf.coarse_source_centering_factor, default_gun_config.coarse_source_centering_factor)
+        self.assertEqual(
+            default_traditional_gf.coarse_blend_source_centering_factor,
+            default_gun_config.coarse_blend_source_centering_factor,
+        )
+        self.assertEqual(default_traditional_gf.peak_selection, default_gun_config.peak_selection)
+        self.assertEqual(default_gun_config.segment_min_samples, 12)
+        self.assertEqual(default_gun_config.global_source_penalty, 0.06)
+        self.assertEqual(default_gun_config.smoothing_bins, 1.25)
+        self.assertEqual(default_gun_config.decay, 0.985)
+        self.assertEqual(default_gun_config.source_bias_max_correction, 0.0)
 
         env_config = _load_config(
             path,
             {
+                "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_MIN_SAMPLES": "9",
                 "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_COARSE_SEGMENT_MIN_SAMPLES": "8",
                 "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_COARSE_SEGMENT_FULL_WEIGHT_SAMPLES": "36",
                 "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_GLOBAL_SOURCE_CENTERING_FACTOR": "1.0",
                 "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_COARSE_SOURCE_CENTERING_FACTOR": "1.0",
                 "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_COARSE_BLEND_SOURCE_CENTERING_FACTOR": "1.0",
                 "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_PEAK_SELECTION": "max",
+                "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_SMOOTHING_BINS": "0.5",
+                "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_SOURCE_BIAS_MAX_CORRECTION": "0.5",
+                "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_SEGMENT_MIN_SAMPLES": "2",
+                "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_GLOBAL_SOURCE_PENALTY": "0.5",
             },
         )
-        env_policy = env_config.GunPolicy()
-        self.assertEqual(env_policy.traditional_gf_coarse_segment_min_samples, 8)
-        self.assertEqual(env_policy.traditional_gf_coarse_segment_full_weight_samples, 36)
-        self.assertEqual(env_policy.traditional_gf_global_source_centering_factor, 1.0)
-        self.assertEqual(env_policy.traditional_gf_coarse_source_centering_factor, 1.0)
-        self.assertEqual(env_policy.traditional_gf_coarse_blend_source_centering_factor, 1.0)
-        self.assertEqual(env_policy.traditional_gf_peak_selection, "max")
+        env_traditional_gf = env_config.GunPolicy().traditional_gf
+        self.assertEqual(env_traditional_gf.min_samples, 9)
+        self.assertEqual(env_traditional_gf.coarse_segment_min_samples, 8)
+        self.assertEqual(env_traditional_gf.coarse_segment_full_weight_samples, 36)
+        self.assertEqual(env_traditional_gf.global_source_centering_factor, 1.0)
+        self.assertEqual(env_traditional_gf.coarse_source_centering_factor, 1.0)
+        self.assertEqual(env_traditional_gf.coarse_blend_source_centering_factor, 1.0)
+        self.assertEqual(env_traditional_gf.peak_selection, "max")
+        self.assertFalse(hasattr(env_traditional_gf, "segment_min_samples"))
+        self.assertFalse(hasattr(env_traditional_gf, "global_source_penalty"))
+        self.assertFalse(hasattr(env_traditional_gf, "smoothing_bins"))
+        self.assertFalse(hasattr(env_traditional_gf, "source_bias_max_correction"))
 
     def test_chase_gun_policy_defaults_and_env(self) -> None:
         path = ROOT / "bots" / "chase-lock" / "chase_config.py"

@@ -108,7 +108,11 @@ class TraditionalGfGun:
                 GuessFactorProfile.with_bins(self.config.guess_factor_bins),
             )
             self.record_profile(segment_profile, guess_factor, self.config.smoothing_bins, self.config.decay)
-        if self.config.coarse_segment_min_samples > 0 and segment_key is not None:
+        if (
+            self.config.segment_min_samples > 0
+            and self.config.coarse_segment_min_samples > 0
+            and segment_key is not None
+        ):
             coarse_key = self.coarse_segment_key(segment_key)
             coarse_profile = self.coarse_segment_profiles.setdefault(
                 (target_id, coarse_key),

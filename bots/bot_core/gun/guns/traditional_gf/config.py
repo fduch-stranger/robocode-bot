@@ -5,30 +5,30 @@ from bot_core.gun.config import GunDecisionContext, GunModePolicy
 
 @dataclass(frozen=True)
 class TraditionalGfGunConfig:
-    min_samples: int = 28
+    min_samples: int = 12
     smoothing_bins: float = 1.25
     decay: float = 0.985
     centering_factor: float = 1.0
-    global_source_centering_factor: float = 1.0
+    global_source_centering_factor: float = 0.8
     blend_source_centering_factor: float = 1.0
     segment_source_centering_factor: float = 1.0
-    coarse_source_centering_factor: float = 1.0
-    coarse_blend_source_centering_factor: float = 1.0
+    coarse_source_centering_factor: float = 0.7
+    coarse_blend_source_centering_factor: float = 0.8
     source_bias_min_samples: int = 12
     source_bias_learning_rate: float = 0.08
     source_bias_max_correction: float = 0.0
-    segment_min_samples: int = 0
-    segment_full_weight_samples: int = 80
-    coarse_segment_min_samples: int = 8
-    coarse_segment_full_weight_samples: int = 36
-    peak_selection: str = "max"
+    segment_min_samples: int = 12
+    segment_full_weight_samples: int = 48
+    coarse_segment_min_samples: int = 12
+    coarse_segment_full_weight_samples: int = 48
+    peak_selection: str = "density"
     peak_support_radius: int = 1
     guess_factor_bins: int = 31
     min_switch_visits: int = 260
     min_switch_score: float = 0.42
-    global_source_penalty: float = 0.0
-    blend_source_penalty: float = 0.0
-    coarse_blend_source_penalty: float = 0.0
+    global_source_penalty: float = 0.06
+    blend_source_penalty: float = 0.035
+    coarse_blend_source_penalty: float = 0.02
 
     def decision_score_penalty(self, context: GunDecisionContext | None) -> tuple[float, str | None]:
         if context is None or context.mode != "traditional_gf":

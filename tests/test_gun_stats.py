@@ -162,6 +162,23 @@ class GunStatsTest(unittest.TestCase):
         self.assertAlmostEqual(0.07, penalty)
         self.assertEqual("global", source)
 
+    def test_runtime_config_uses_shared_traditional_gf_model_defaults(self) -> None:
+        traditional_gf = component_config(runtime_config(), "traditional_gf")
+
+        self.assertIsInstance(traditional_gf, TraditionalGfGunConfig)
+        self.assertEqual(12, traditional_gf.min_samples)
+        self.assertEqual(12, traditional_gf.segment_min_samples)
+        self.assertEqual(48, traditional_gf.segment_full_weight_samples)
+        self.assertEqual(12, traditional_gf.coarse_segment_min_samples)
+        self.assertEqual(48, traditional_gf.coarse_segment_full_weight_samples)
+        self.assertEqual("density", traditional_gf.peak_selection)
+        self.assertAlmostEqual(0.8, traditional_gf.global_source_centering_factor)
+        self.assertAlmostEqual(0.7, traditional_gf.coarse_source_centering_factor)
+        self.assertAlmostEqual(0.8, traditional_gf.coarse_blend_source_centering_factor)
+        self.assertAlmostEqual(0.06, traditional_gf.global_source_penalty)
+        self.assertAlmostEqual(0.035, traditional_gf.blend_source_penalty)
+        self.assertAlmostEqual(0.02, traditional_gf.coarse_blend_source_penalty)
+
     def test_direct_runtime_config_bypasses_legacy_gun_config(self) -> None:
         runtime = standard_runtime_config(
             system=GunSystemConfig(max_waves=3),
@@ -372,9 +389,11 @@ class GunStatsTest(unittest.TestCase):
         config = TraditionalGfGunConfig(
             min_samples=1,
             guess_factor_bins=11,
+            global_source_centering_factor=1.0,
             source_bias_min_samples=2,
             source_bias_learning_rate=1.0,
             source_bias_max_correction=0.25,
+            peak_selection="max",
         )
         gun = TraditionalGfGun(config)
         wave = make_wave()
@@ -414,9 +433,11 @@ class GunStatsTest(unittest.TestCase):
         config = TraditionalGfGunConfig(
             min_samples=1,
             guess_factor_bins=11,
+            global_source_centering_factor=1.0,
             source_bias_min_samples=2,
             source_bias_learning_rate=1.0,
             source_bias_max_correction=0.0,
+            peak_selection="max",
         )
         gun = TraditionalGfGun(config)
         wave = make_wave()
@@ -458,6 +479,7 @@ class GunStatsTest(unittest.TestCase):
             segment_min_samples=4,
             coarse_segment_min_samples=2,
             coarse_segment_full_weight_samples=4,
+            coarse_source_centering_factor=1.0,
         )
         gun = TraditionalGfGun(config)
         target_id = 1
@@ -497,6 +519,19 @@ class GunStatsTest(unittest.TestCase):
         self.assertIsNotNone(diagnostics)
         self.assertEqual("global", diagnostics.source)
         self.assertAlmostEqual(0.0, diagnostics.selected_guess_factor or 0.0)
+
+    def test_traditional_gf_does_not_record_coarse_profile_when_segmentation_disabled(self) -> None:
+        gun = TraditionalGfGun(
+            TraditionalGfGunConfig(
+                segment_min_samples=0,
+                coarse_segment_min_samples=2,
+            )
+        )
+
+        gun.record(1, 0.5, (0, 1, 2, 0, 1, 2))
+
+        self.assertEqual({}, gun.segment_profiles)
+        self.assertEqual({}, gun.coarse_segment_profiles)
 
     def test_aim_mode_selector_respects_visit_and_score_thresholds(self) -> None:
         config = runtime_config(

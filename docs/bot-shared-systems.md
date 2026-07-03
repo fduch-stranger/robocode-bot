@@ -105,17 +105,17 @@ virtual-gun scoring, and aim-mode switching are isolated in `GunWaveTracker`,
 `anti_surfer`. Each package README documents its behavior flow, owned state,
 selector policy surface, and telemetry notes.
 
-Traditional guess-factor aiming always keeps a global profile per target; that
-global profile is the shared default. Bots that enable segmented traditional GF
-can blend normalized global and exact-segment profile peaks when enough samples
-exist in the current exact segment. If the exact segment is sparse, a coarse
-segment can blend fixed distance, lateral speed, and wall-margin context before
-falling back to the global profile. Profile interpretation defaults to the
-strongest histogram bin, but bots can opt into a density-supported peak selector
-for experiments that should prefer broader local mass over isolated spikes.
-Bots can also apply source-specific centering factors to pull selected
-guess-factors toward head-on for lower-trust profile sources without changing
-the underlying histogram samples.
+Traditional guess-factor aiming always keeps a global profile per target and,
+when a bot provides segmented gun stats, records exact and coarse segment
+profiles. Shared defaults blend normalized global and exact-segment profile
+peaks after `12/48` samples in the current exact segment. If the exact segment
+is sparse, a coarse segment can blend fixed distance, lateral speed, and
+wall-margin context after `12/48` samples before falling back to the global
+profile. Profile interpretation defaults to a density-supported peak selector
+so broader local mass can beat isolated spikes.
+Shared defaults also apply source-specific centering factors to pull selected
+guess-factors toward head-on for lower-trust global/coarse sources without
+changing the underlying histogram samples.
 Traditional GF can additionally learn a bounded per-target, per-source residual
 between the pre-bias selected GF after source centering and the resolved actual
 GF. This source-bias correction is applied after enough visits for that source
@@ -128,11 +128,10 @@ selected GF, blend, and source.
 model event, which keeps scripted telemetry useful even when selector or `track`
 samples are sparse.
 
-Bots may optionally apply a source-trust penalty to `traditional_gf` selection.
-This lets a bot require more evidence from low-context global profiles while
-trusting exact or coarse segment profiles normally. Shared defaults leave source
-centering, source-bias correction, and source penalties neutral unless a bot
-config opts in. Selector thresholds and source penalties are supplied as
+Traditional GF applies source-trust penalties to selection by default. This
+requires more evidence from low-context global profiles while trusting exact or
+coarse segment profiles normally. Source-bias correction remains neutral unless
+a bot config opts in. Selector thresholds and source penalties are supplied as
 per-mode policy data, so the selector does not need concrete gun classes or
 mode-specific threshold branches.
 `tools/gun_eval_summary.py` groups Traditional GF real hit rate, model
