@@ -3,7 +3,9 @@ const state = {
   bots: new Map(),
   selected: null,
   cursor: 0,
+  generation: 0,
   maxEvents: 12000,
+  inactiveBotSeconds: 15,
   palette: ["#5ab0ff", "#69d391", "#f2bf62", "#ff7373", "#b68cff", "#65d6cf"],
 };
 
@@ -31,6 +33,7 @@ const modePalette = [
 
 const {
   displayEnergy,
+  eventMatchesStreamFilter,
   format,
   gunModeFromEvent,
   movementModeFromEvent,
@@ -38,8 +41,13 @@ const {
   summarizeEvent,
 } = window.TelemetryView;
 
+document.getElementById("eventFilter").addEventListener("change", renderEvents);
 document.getElementById("onlySelected").addEventListener("change", renderEvents);
 document.getElementById("showSamples").addEventListener("change", renderEvents);
+document.getElementById("showInactiveBots").addEventListener("change", () => {
+  rebuildBots();
+  render();
+});
 document.getElementById("resetTelemetry").addEventListener("click", resetTelemetry);
 
 poll();
@@ -59,6 +67,7 @@ async function resetTelemetry() {
     state.bots.clear();
     state.selected = null;
     state.cursor = payload.cursor || 0;
+    state.generation = payload.generation || 0;
     document.getElementById("source").textContent = `reset ${payload.reset?.length || 0} telemetry files`;
     document.getElementById("eventCount").textContent = "0 events";
     render();
@@ -70,10 +79,15 @@ async function resetTelemetry() {
 
 async function poll() {
   try {
-    const response = await fetch(`/api/events?limit=${state.maxEvents}&cursor=${state.cursor}`, { cache: "no-store" });
+    const response = await fetch(`/api/events?limit=${state.maxEvents}&cursor=${state.cursor}&generation=${state.generation}`, { cache: "no-store" });
     const payload = await response.json();
     const events = payload.events || [];
-    if (state.cursor && !payload.truncated) {
+    const previousGeneration = state.generation;
+    const generationChanged = Boolean(previousGeneration && payload.generation && previousGeneration !== payload.generation);
+    if (generationChanged) {
+      state.selected = null;
+    }
+    if (state.cursor && !payload.truncated && !generationChanged) {
       state.events.push(...events);
       if (state.events.length > state.maxEvents) {
         state.events = state.events.slice(-state.maxEvents);
@@ -82,6 +96,7 @@ async function poll() {
       state.events = events.slice(-state.maxEvents);
     }
     state.cursor = payload.cursor || state.cursor;
+    state.generation = payload.generation || state.generation;
     document.getElementById("source").textContent = `${payload.dir || ""} (${(payload.files || []).length} files)`;
     document.getElementById("eventCount").textContent = `${state.events.length} events`;
     document.getElementById("lastUpdate").textContent = new Date().toLocaleTimeString();
@@ -93,20 +108,47 @@ async function poll() {
 }
 
 function rebuildBots() {
-  state.bots.clear();
+  const allBots = new Map();
+  const showInactive = document.getElementById("showInactiveBots").checked;
+  const newestTimestamp = newestEventTimestamp(state.events);
   for (const event of state.events) {
     event.normalized = normalizeEvent(event);
     const bot = event.bot || "unknown";
-    if (!state.bots.has(bot)) {
-      state.bots.set(bot, { name: bot, events: [], latest: null, color: state.palette[state.bots.size % state.palette.length] });
+    if (!allBots.has(bot)) {
+      allBots.set(bot, { name: bot, events: [], latest: null, color: state.palette[allBots.size % state.palette.length] });
     }
-    const record = state.bots.get(bot);
+    const record = allBots.get(bot);
     record.events.push(event);
     record.latest = event;
+  }
+  state.bots.clear();
+  for (const bot of allBots.values()) {
+    if (showInactive || !isInactiveBot(bot, newestTimestamp)) {
+      state.bots.set(bot.name, bot);
+    }
   }
   if (!state.selected || !state.bots.has(state.selected)) {
     state.selected = state.bots.keys().next().value || null;
   }
+}
+
+function newestEventTimestamp(events) {
+  let newest = null;
+  for (const event of events) {
+    const timestamp = typeof event.ts === "number" && Number.isFinite(event.ts) ? event.ts : null;
+    if (timestamp != null && (newest == null || timestamp > newest)) {
+      newest = timestamp;
+    }
+  }
+  return newest;
+}
+
+function isInactiveBot(bot, newestTimestamp) {
+  if (newestTimestamp == null || !bot?.latest) return false;
+  const latestEnergy = displayEnergy(numberAt(bot.latest, "state.energy"));
+  if (latestEnergy.dead) return true;
+  const timestamp = typeof bot.latest.ts === "number" && Number.isFinite(bot.latest.ts) ? bot.latest.ts : null;
+  return timestamp != null && newestTimestamp - timestamp > state.inactiveBotSeconds;
 }
 
 function render() {
@@ -292,7 +334,7 @@ function renderPerformance() {
       `${stats.gunSwitches} gun switches`,
       `${stats.gunInitialSelections} initial gun selections, ${stats.movementSwitches} movement switches`,
     ),
-    performanceTable("Gun Modes", stats.gunModeRows, ["mode", "shots", "hits", "damage"]),
+    performanceTable("Gun Modes", stats.gunModeRows, ["mode", "shots", "hits", "accuracy", "damage"]),
     performanceTable("Movement Modes", stats.movementModeRows, ["mode", "samples"]),
   ];
 
@@ -431,6 +473,7 @@ function rowsForGunModes(gunModes, gunModeHits, gunModeDamage) {
     mode,
     shots,
     hits: gunModeHits.get(mode) || 0,
+    accuracy: percent(gunModeHits.get(mode) || 0, shots),
     damage: format(gunModeDamage.get(mode) || 0),
   }));
 }
@@ -490,11 +533,13 @@ function colorMapForModes(modes) {
 }
 
 function renderEvents() {
+  const eventFilter = document.getElementById("eventFilter").value;
   const onlySelected = document.getElementById("onlySelected").checked;
   const showSamples = document.getElementById("showSamples").checked;
   const root = document.getElementById("events");
   root.replaceChildren();
   let events = state.events.slice(-500).reverse();
+  events = events.filter((event) => eventMatchesStreamFilter(event, eventFilter));
   if (onlySelected && state.selected) {
     events = events.filter((event) => event.bot === state.selected);
   }
@@ -503,7 +548,7 @@ function renderEvents() {
   }
   for (const event of events.slice(0, 220)) {
     const row = document.createElement("div");
-    row.className = "event";
+    row.className = ["event", eventClassName(event.event)].filter(Boolean).join(" ");
     const fields = summarizeEvent(event);
     row.innerHTML = [
       `<span class="turn">t${escapeHtml(event.turn ?? "-")}</span>`,
@@ -513,6 +558,10 @@ function renderEvents() {
     ].join("");
     root.appendChild(row);
   }
+}
+
+function eventClassName(eventName) {
+  return eventName ? `event-${String(eventName).replaceAll(/[^a-z0-9]+/gi, "-").toLowerCase()}` : "";
 }
 
 function lastEvent(bot, name) {

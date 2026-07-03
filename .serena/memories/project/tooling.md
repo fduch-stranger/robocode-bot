@@ -25,6 +25,7 @@ Battle/tool commands:
 - Legacy discovery when configured: `scripts/run-battle.sh --list-legacy`.
 - Active legacy boss aliases: `drussgt`, `saguaro`, `basic-gf-surfer`, `diamond`.
 - Telemetry viewer commands: `scripts/telemetry-ui.sh start|stop|stop-all|disable|status`.
+- Telemetry viewer generations reset on `telemetry.session` for new processes/files and on bot-emitted `battle.reset` for same-process GUI game restarts; normal `round.reset` remains within the same generation unless it looks like an aborted/reset GUI run.
 - Telemetry audit: `tools/telemetry_audit.py battle-results/runs/<run>/telemetry --require-bot adaptive-prime`.
 - Gun/eval summary: `tools/gun_eval_summary.py battle-results/runs/<run>/telemetry --bot adaptive-prime`.
 

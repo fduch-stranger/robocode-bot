@@ -136,6 +136,14 @@ h3 {
   justify-content: flex-end;
 }
 
+.tabToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
 .tabs button {
   color: var(--text);
   cursor: pointer;
@@ -274,8 +282,25 @@ h3 {
 
 .filters {
   display: flex;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 14px;
   color: var(--muted);
+}
+
+.filters label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.filters select {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+  padding: 5px 28px 5px 8px;
 }
 
 .events {
@@ -292,6 +317,27 @@ h3 {
   gap: 10px;
   padding: 6px 0;
   border-bottom: 1px solid rgba(54, 66, 77, 0.55);
+}
+
+.event-gun-switch,
+.event-gun-switch-decision {
+  margin: 2px 0;
+  padding: 7px 8px;
+  border-left: 3px solid var(--green);
+  background: rgba(105, 211, 145, 0.09);
+}
+
+.event-gun-switch-decision {
+  border-left-color: var(--amber);
+  background: rgba(242, 191, 98, 0.09);
+}
+
+.event-gun-switch .name {
+  color: var(--green);
+}
+
+.event-gun-switch-decision .name {
+  color: #ffd98a;
 }
 
 .event .turn,

@@ -351,6 +351,17 @@ class MovementFlattener:
         self._shadow_bullets.clear()
         self._last_switch_turn.clear()
 
+    def clear_battle_state(self) -> None:
+        self._wave_store = MovementWaveStore()
+        self._profile_store = MovementProfile(self.config)
+        self._danger_model = MovementDangerModel(self.config, self._profile_store)
+        self._surfing = SurfingPlanner(self.config, self._wave_store)
+        self._profile = self._profile_store.profile
+        self._stats_buffers = self._profile_store.stats_buffers
+        self._waves = self._wave_store.waves
+        self._shadow_bullets.clear()
+        self._last_switch_turn.clear()
+
     def remove_target(self, target_id: int, clear_profile: bool = True) -> None:
         self._wave_store.remove_target(target_id)
         if clear_profile:

@@ -4,6 +4,7 @@ from robocode_tank_royale.bot_api.events import (
     BotDeathEvent,
     BulletFiredEvent,
     BulletHitBotEvent,
+    GameStartedEvent,
     HitBotEvent,
     HitByBulletEvent,
     HitWallEvent,
@@ -192,6 +193,14 @@ class AdaptivePrime(Bot):
             self._update_own_motion_stats()
             self._track_or_search()
             self.go()
+
+    def on_game_started(self, event: GameStartedEvent) -> None:
+        self._clear_opponent_learning()
+        self._log(
+            "battle.reset",
+            rounds=event.game_setup.number_of_rounds,
+            game_type=event.game_setup.game_type,
+        )
 
     def on_scanned_bot(self, event: ScannedBotEvent) -> None:
         self._reset_if_new_round()
@@ -851,6 +860,29 @@ class AdaptivePrime(Bot):
                 current_turn=self.turn_number,
             )
         self._last_turn_number = self.turn_number
+
+    def _clear_opponent_learning(self) -> None:
+        self._targets.clear()
+        self._target_id = None
+        self._recent_threat_id = None
+        self._recent_threat_turn = -1000
+        self._evade_until_turn = -1
+        self._last_enemy_fire_turn = -1000
+        self._enemy_energy_corrections.clear()
+        self._last_enemy_power_prediction.clear()
+        self._enemy_fire_power.clear()
+        self._gun.clear_battle_state()
+        self._movement.clear_battle_state()
+        self._minimum_risk.clear_round_state()
+        self._enemy_gun_heat.clear_round_state()
+        self._fired_bullets.clear()
+        self._last_gun_decision_log_turn.clear()
+        self._last_traditional_gf_profile_log_turn.clear()
+        self._target_accel.clear()
+        self._last_velocity_change_turn.clear()
+        self._own_motion.reset()
+        self._melee_round = False
+        self._last_turn_number = -1
 
     def _drop_lost_target(self, target: TargetSnapshot, age: int, distance: float) -> None:
         self._targets.pop(target.bot_id, None)

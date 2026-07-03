@@ -1,6 +1,7 @@
 (function exposeTelemetryView(root) {
   function gunModeFromEvent(event) {
     if (!event) return null;
+    if (event.event === "gun.switch_decision" && event.fields?.changed !== true) return null;
     return event.normalized?.gunMode || null;
   }
 
@@ -16,10 +17,12 @@
       ? fields.evading
       : evasion != null ? String(evasion).startsWith("active_") : null;
     const movementMode = firstValue(fields.movement_mode, fields.mode) || movementModeFromEventName(event.event);
-    const gunMode = firstValue(
+    const isUnchangedGunDecision = event.event === "gun.switch_decision" && fields.changed !== true;
+    const gunMode = isUnchangedGunDecision ? null : firstValue(
       fields.aim_mode,
       fields.gun_mode,
       event.event === "gun.switch" ? fields.selected : null,
+      event.event === "gun.switch_decision" ? fields.selected : null,
       event.event === "gun.wave_visit" ? fields.selected_gun : null,
     );
     return {
@@ -28,7 +31,7 @@
       power: numeric(firstValue(fields.power, fields.firepower)),
       damage: numeric(firstValue(fields.damage)),
       bulletId: firstValue(fields.bullet_id),
-      aimMode: firstValue(fields.aim_mode, gunMode),
+      aimMode: isUnchangedGunDecision ? null : firstValue(fields.aim_mode, gunMode),
       gunMode,
       movementMode,
       evasion,
@@ -93,7 +96,38 @@
     if (event.event === "telemetry.session") {
       return summarizeKeys(fields, [["pid", "pid"], ["queue_size", "queue_size"]]);
     }
+    if (event.event === "gun.switch") {
+      return summarizeKeys(fields, [["target", "target"], ["previous", "previous"], ["selected", "selected"]]);
+    }
+    if (event.event === "gun.switch_decision") {
+      return summarizeGunSwitchDecision(fields);
+    }
     return summarizeFields(fields);
+  }
+
+  function summarizeGunSwitchDecision(fields) {
+    const parts = [];
+    appendFieldPart(parts, fields, "target", "target");
+    appendFieldPart(parts, fields, "changed", "changed");
+    appendFieldPart(parts, fields, "previous", "previous");
+    appendFieldPart(parts, fields, "selected", fields.changed === true ? "selected" : "current");
+
+    const candidates = Array.isArray(fields.candidates) ? fields.candidates : [];
+    const selected = candidates.find((candidate) => candidate?.reason === "selected");
+    const blocked = candidates.find((candidate) => (
+      candidate?.available === true
+      && candidate?.mode !== fields.selected
+      && ["visits", "score_floor", "margin", "superseded"].includes(candidate?.reason)
+    ));
+    const candidate = selected || blocked;
+    if (candidate) {
+      parts.push(`candidate=${format(candidate.mode)}`);
+      parts.push(`reason=${format(candidate.reason)}`);
+      appendFieldPart(parts, candidate, "score", "score");
+      appendFieldPart(parts, candidate, "visits", "visits");
+      appendFieldPart(parts, candidate, "required_visits", "required");
+    }
+    return parts.length ? parts.join(" ") : summarizeFields(fields);
   }
 
   function summarizeFields(fields) {
@@ -143,6 +177,18 @@
     return { value: number, label: format(number), dead: false };
   }
 
+  function eventMatchesStreamFilter(event, filter) {
+    const name = event?.event || "";
+    if (!filter || filter === "all") return true;
+    if (filter === "gun") return name.startsWith("gun.");
+    if (filter === "gun-switch") return name === "gun.switch" || name === "gun.switch_decision";
+    if (filter === "movement") return name.startsWith("movement.") || ["wall.avoid", "separate"].includes(name);
+    if (filter === "targeting") return name.startsWith("target.") || name.startsWith("scan.") || name === "search";
+    if (filter === "combat") return name.startsWith("hit.") || name.startsWith("bullet.") || name.startsWith("enemy.");
+    if (filter === "telemetry") return name.startsWith("telemetry.") || name === "round.reset" || name === "battle.reset";
+    return true;
+  }
+
   function numeric(value) {
     return typeof value === "number" && Number.isFinite(value) ? value : null;
   }
@@ -164,6 +210,7 @@
 
   const api = {
     displayEnergy,
+    eventMatchesStreamFilter,
     format,
     gunModeFromEvent,
     movementModeFromEvent,

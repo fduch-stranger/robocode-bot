@@ -78,6 +78,91 @@ class TelemetryViewerFormattersTest(unittest.TestCase):
         self.assertEqual("minimum_risk", normalized["movementMode"])
         self.assertTrue(normalized["wallRisk"])
 
+    def test_unchanged_gun_switch_decision_is_diagnostic_not_current_mode(self) -> None:
+        result = self.run_js(
+            """
+            (() => {
+              const event = {
+                event: "gun.switch_decision",
+                fields: {selected: "traditional_gf", changed: false, aim_mode: "traditional_gf"}
+              };
+              event.normalized = view.normalizeEvent(event);
+              return {
+                aimMode: event.normalized.aimMode,
+                gunMode: view.gunModeFromEvent(event),
+                normalizedGunMode: event.normalized.gunMode,
+                summary: view.summarizeEvent(event)
+              };
+            })()
+            """
+        )
+
+        self.assertIsNone(result["aimMode"])
+        self.assertIsNone(result["gunMode"])
+        self.assertIsNone(result["normalizedGunMode"])
+        self.assertIn("changed=false", result["summary"])
+        self.assertIn("current=traditional_gf", result["summary"])
+
+    def test_changed_gun_switch_decision_can_report_selected_mode(self) -> None:
+        result = self.run_js(
+            """
+            (() => {
+              const event = {
+                event: "gun.switch_decision",
+                fields: {
+                  target: 4,
+                  previous: "linear",
+                  selected: "dynamic_cluster",
+                  changed: true,
+                  candidates: [
+                    {mode: "dynamic_cluster", available: true, score: 0.42, visits: 120, required_visits: 90, reason: "selected"}
+                  ]
+                }
+              };
+              event.normalized = view.normalizeEvent(event);
+              return {
+                gunMode: view.gunModeFromEvent(event),
+                normalizedGunMode: event.normalized.gunMode,
+                summary: view.summarizeEvent(event)
+              };
+            })()
+            """
+        )
+
+        self.assertEqual("dynamic_cluster", result["gunMode"])
+        self.assertEqual("dynamic_cluster", result["normalizedGunMode"])
+        self.assertIn("changed=true", result["summary"])
+        self.assertIn("candidate=dynamic_cluster", result["summary"])
+
+    def test_stream_filter_matches_event_categories(self) -> None:
+        result = self.run_js(
+            """
+            ({
+              gunSwitch: view.eventMatchesStreamFilter({event: "gun.switch"}, "gun"),
+              gunWave: view.eventMatchesStreamFilter({event: "gun.wave_visit"}, "gun"),
+              gunExcludesBullet: view.eventMatchesStreamFilter({event: "bullet.fired"}, "gun"),
+              gunSwitchFilterIncludesSwitch: view.eventMatchesStreamFilter({event: "gun.switch"}, "gun-switch"),
+              gunSwitchFilterIncludesDecision: view.eventMatchesStreamFilter({event: "gun.switch_decision"}, "gun-switch"),
+              gunSwitchFilterExcludesWave: view.eventMatchesStreamFilter({event: "gun.wave_visit"}, "gun-switch"),
+              movementIncludesWall: view.eventMatchesStreamFilter({event: "wall.avoid"}, "movement"),
+              targetingIncludesScan: view.eventMatchesStreamFilter({event: "scan.reacquired"}, "targeting"),
+              combatIncludesEnemy: view.eventMatchesStreamFilter({event: "enemy.fire_detected"}, "combat"),
+              allIncludesTrack: view.eventMatchesStreamFilter({event: "track"}, "all")
+            })
+            """
+        )
+
+        self.assertTrue(result["gunSwitch"])
+        self.assertTrue(result["gunWave"])
+        self.assertFalse(result["gunExcludesBullet"])
+        self.assertTrue(result["gunSwitchFilterIncludesSwitch"])
+        self.assertTrue(result["gunSwitchFilterIncludesDecision"])
+        self.assertFalse(result["gunSwitchFilterExcludesWave"])
+        self.assertTrue(result["movementIncludesWall"])
+        self.assertTrue(result["targetingIncludesScan"])
+        self.assertTrue(result["combatIncludesEnemy"])
+        self.assertTrue(result["allIncludesTrack"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -25,6 +25,7 @@
       <div class="panelHeader">
         <h2>Arena</h2>
         <div id="botTabs" class="tabs"></div>
+        <label class="tabToggle"><input id="showInactiveBots" type="checkbox"> inactive</label>
       </div>
       <canvas id="arena" width="920" height="620"></canvas>
     </section>
@@ -67,6 +68,18 @@
       <div class="panelHeader">
         <h2>Decision Stream</h2>
         <div class="filters">
+          <label>
+            <span>type</span>
+            <select id="eventFilter" aria-label="Event type filter">
+              <option value="all">All events</option>
+              <option value="gun">Gun events</option>
+              <option value="gun-switch">Gun switches</option>
+              <option value="movement">Movement</option>
+              <option value="targeting">Targeting</option>
+              <option value="combat">Combat</option>
+              <option value="telemetry">Telemetry</option>
+            </select>
+          </label>
           <label><input id="onlySelected" type="checkbox" checked> selected</label>
           <label><input id="showSamples" type="checkbox" checked> samples</label>
         </div>

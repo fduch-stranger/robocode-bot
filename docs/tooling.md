@@ -266,11 +266,15 @@ Useful direct options:
 Server API:
 
 - `GET /api/health`: status, telemetry directory, files.
-- `GET /api/events?limit=N&cursor=C`: incremental event stream.
+- `GET /api/events?limit=N&cursor=C&generation=G`: incremental event stream.
 - `POST /api/reset`: truncate JSONL files and clear server cache.
 - `GET /api/shutdown`: stop the viewer server.
 
 Reset truncates JSONL files; it does not delete them.
+The viewer also starts a new in-memory generation when it sees a new bot
+session after an existing battle, so GUI restarts or changed bot sets do not
+keep stale bots in the dashboard even when old JSONL files remain in the live
+telemetry directory.
 
 ## Telemetry Audit
 

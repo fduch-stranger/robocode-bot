@@ -243,6 +243,17 @@ class VirtualGunSystem:
         self._target_history_store.clear_round_state()
         self._registry.clear_round_state()
 
+    def clear_battle_state(self) -> None:
+        self._waves.clear()
+        self._eval_waves.clear()
+        self._stats.clear()
+        self._segment_stats.clear()
+        self._eval_stats.clear()
+        self._eval_segment_stats.clear()
+        self._active_modes.clear()
+        self._last_eval_wave_turn.clear()
+        self.__post_init__()
+
     def remove_target(self, target_id: int) -> None:
         self._wave_tracker.remove_target(target_id)
         self._eval_waves = [wave for wave in self._eval_waves if wave.target_id != target_id]

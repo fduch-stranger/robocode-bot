@@ -45,6 +45,7 @@ class TelemetryEventSpec:
 EVENT_SPECS: dict[str, TelemetryEventSpec] = {
     "telemetry.session": TelemetryEventSpec("lifecycle"),
     "telemetry.dropped": TelemetryEventSpec("lifecycle", required_fields=("count",)),
+    "battle.reset": TelemetryEventSpec("lifecycle", optional_fields=("rounds", "game_type")),
     "round.reset": TelemetryEventSpec("lifecycle", optional_fields=("previous_turn", "current_turn")),
     "scan.new": TelemetryEventSpec(
         "targeting",
@@ -115,7 +116,6 @@ EVENT_SPECS: dict[str, TelemetryEventSpec] = {
         "fire",
         required_fields=("selected",),
         optional_fields=("target", "previous", "changed", "candidates"),
-        aliases={"aim_mode": ("selected",), "gun_mode": ("selected",)},
     ),
     "gun.traditional_gf_profile": TelemetryEventSpec(
         "fire",

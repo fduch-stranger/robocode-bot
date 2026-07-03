@@ -909,6 +909,26 @@ class GunStatsTest(unittest.TestCase):
         self.assertFalse(gun.maybe_add_eval_wave(bot, target, 1.0, aim))
         self.assertEqual(0, gun.eval_wave_count)
 
+    def test_clear_round_state_keeps_active_gun_mode_and_scores(self) -> None:
+        gun = VirtualGunSystem(runtime_config())
+        gun._active_modes[1] = "dynamic_cluster"
+        gun._stats[(1, "dynamic_cluster")] = GunStats(visits=12, rolling_score=0.4)
+
+        gun.clear_round_state()
+
+        self.assertEqual({1: "dynamic_cluster"}, gun._active_modes)
+        self.assertIn("dynamic_cluster", gun.score_summary(1, None))
+
+    def test_clear_battle_state_drops_active_gun_mode_and_scores(self) -> None:
+        gun = VirtualGunSystem(runtime_config())
+        gun._active_modes[1] = "dynamic_cluster"
+        gun._stats[(1, "dynamic_cluster")] = GunStats(visits=12, rolling_score=0.4)
+
+        gun.clear_battle_state()
+
+        self.assertEqual({}, gun._active_modes)
+        self.assertEqual({}, gun.score_summary(1, None))
+
     def test_switch_decision_diagnostics_sampling(self) -> None:
         aim = AimSolution(
             predicted_x=100.0,

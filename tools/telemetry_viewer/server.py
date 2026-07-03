@@ -16,10 +16,15 @@ class TelemetryHandler(SimpleHTTPRequestHandler):
     telemetry_dir: Path
     static_dir: Path
     event_limit = 50000
+    session_generation_gap_seconds = 5.0
+    reset_generation_gap_seconds = 2.0
     _cache_lock = threading.Lock()
     _event_cache: deque[dict[str, object]] = deque(maxlen=event_limit)
     _positions: dict[str, int] = {}
+    _active_files: set[str] = set()
     _next_cursor = 1
+    _generation = 1
+    _battle_reset_group_timestamp: float | None = None
 
     def __init__(self, *args: object, **kwargs: object) -> None:
         super().__init__(*args, directory=str(self.static_dir), **kwargs)
@@ -48,15 +53,21 @@ class TelemetryHandler(SimpleHTTPRequestHandler):
     def log_message(self, format: str, *args: object) -> None:
         return
 
+    def end_headers(self) -> None:
+        self.send_header("Cache-Control", "no-store")
+        super().end_headers()
+
     def _events(self, query: dict[str, list[str]]) -> dict[str, object]:
         limit = _int_query(query, "limit", 5000, 100, 50000)
         cursor = _int_query(query, "cursor", 0, 0, 2**63 - 1)
+        generation = _int_query(query, "generation", 0, 0, 2**63 - 1)
         with self._cache_lock:
             handler = type(self)
             files = self._files()
             self._scan_files(files)
             latest_cursor = handler._next_cursor - 1
-            if cursor:
+            generation_changed = bool(generation and generation != handler._generation)
+            if cursor and not generation_changed:
                 events = [event for event in handler._event_cache if int(event.get("cursor", 0)) > cursor]
             else:
                 events = list(handler._event_cache)
@@ -65,8 +76,9 @@ class TelemetryHandler(SimpleHTTPRequestHandler):
             "dir": str(self.telemetry_dir),
             "files": files,
             "cursor": latest_cursor,
+            "generation": handler._generation,
             "events": events,
-            "truncated": bool(cursor and events and int(events[0].get("cursor", 0)) > cursor + 1),
+            "truncated": bool(generation_changed or (cursor and events and int(events[0].get("cursor", 0)) > cursor + 1)),
         }
 
     def _files(self) -> list[str]:
@@ -90,8 +102,10 @@ class TelemetryHandler(SimpleHTTPRequestHandler):
                     errors.append(f"{path.name}: {error}")
             handler._event_cache.clear()
             handler._positions.clear()
+            handler._active_files.clear()
             handler._next_cursor = 1
-        return {"ok": not errors, "reset": reset, "errors": errors, "cursor": 0}
+            handler._generation += 1
+        return {"ok": not errors, "reset": reset, "errors": errors, "cursor": 0, "generation": handler._generation}
 
     def _scan_files(self, files: list[str]) -> None:
         handler = type(self)
@@ -125,15 +139,92 @@ class TelemetryHandler(SimpleHTTPRequestHandler):
 
         batch.sort(key=lambda item: (item.get("ts", 0), item.get("pid", 0), item.get("turn", 0), item.get("file", "")))
         for event in batch:
+            self._maybe_start_new_generation(event)
+            if not self._accept_event(event):
+                continue
             event["cursor"] = handler._next_cursor
             handler._next_cursor += 1
             handler._event_cache.append(event)
+
+    def _accept_event(self, event: dict[str, object]) -> bool:
+        handler = type(self)
+        file_name = event.get("file")
+        if event.get("event") in {"telemetry.session", "battle.reset"}:
+            if isinstance(file_name, str):
+                handler._active_files.add(file_name)
+            return True
+        return not handler._active_files or file_name in handler._active_files
+
+    def _maybe_start_new_generation(self, event: dict[str, object]) -> None:
+        event_name = event.get("event")
+        if event_name == "battle.reset":
+            self._maybe_start_battle_generation(event)
+            return
+        if event_name != "telemetry.session":
+            return
+
+        handler = type(self)
+        if not handler._event_cache:
+            return
+
+        bot = event.get("bot")
+        pid = event.get("pid")
+        fields = event.get("fields")
+        if pid in (None, "") and isinstance(fields, dict):
+            pid = fields.get("pid")
+        timestamp = _numeric(event.get("ts"))
+        latest_session = _latest_session(handler._event_cache)
+        has_battle_events = any(cached.get("event") != "telemetry.session" for cached in handler._event_cache)
+        has_previous_bot_session = any(
+            cached.get("event") == "telemetry.session"
+            and cached.get("bot") == bot
+            and _event_pid(cached) != pid
+            for cached in handler._event_cache
+        )
+        session_gap = (
+            timestamp is not None
+            and latest_session is not None
+            and timestamp - latest_session > handler.session_generation_gap_seconds
+        )
+        if has_battle_events or has_previous_bot_session or session_gap:
+            self._start_new_generation()
+
+    def _maybe_start_battle_generation(self, event: dict[str, object]) -> None:
+        handler = type(self)
+        timestamp = _numeric(event.get("ts"))
+        if not handler._event_cache:
+            handler._battle_reset_group_timestamp = timestamp
+            return
+
+        if self._in_current_battle_reset_group(timestamp):
+            return
+
+        if any(cached.get("event") != "battle.reset" for cached in handler._event_cache):
+            self._start_new_generation()
+        handler._battle_reset_group_timestamp = timestamp
+
+    def _in_current_battle_reset_group(self, timestamp: float | None) -> bool:
+        handler = type(self)
+        group_timestamp = handler._battle_reset_group_timestamp
+        if group_timestamp is None:
+            return all(cached.get("event") == "battle.reset" for cached in handler._event_cache)
+        if timestamp is None:
+            return True
+        return abs(timestamp - group_timestamp) <= handler.reset_generation_gap_seconds
+
+    def _start_new_generation(self) -> None:
+        handler = type(self)
+        if not handler._event_cache:
+            return
+        handler._event_cache.clear()
+        handler._active_files.clear()
+        handler._battle_reset_group_timestamp = None
+        handler._generation += 1
 
     def _write_json(self, payload: dict[str, object]) -> None:
         body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
-        self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -145,6 +236,29 @@ def _int_query(query: dict[str, list[str]], name: str, default: int, minimum: in
     except ValueError:
         value = default
     return max(minimum, min(maximum, value))
+
+
+def _numeric(value: object) -> float | None:
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+def _event_pid(event: dict[str, object]) -> object:
+    pid = event.get("pid")
+    fields = event.get("fields")
+    if pid in (None, "") and isinstance(fields, dict):
+        pid = fields.get("pid")
+    return pid
+
+
+def _latest_session(events: deque[dict[str, object]]) -> float | None:
+    latest: float | None = None
+    for event in events:
+        if event.get("event") != "telemetry.session":
+            continue
+        timestamp = _numeric(event.get("ts"))
+        if timestamp is not None and (latest is None or timestamp > latest):
+            latest = timestamp
+    return latest
 
 
 def _parse_args() -> argparse.Namespace:

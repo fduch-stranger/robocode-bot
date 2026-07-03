@@ -33,6 +33,13 @@ class TelemetrySchemaTest(unittest.TestCase):
         self.assertEqual(1.2, track["power"])
         self.assertEqual("gun_alignment", track["reason"])
 
+    def test_gun_switch_decision_selected_is_not_normalized_as_current_mode(self) -> None:
+        fields = normalize_fields("gun.switch_decision", {"selected": "dynamic_cluster", "changed": False})
+
+        self.assertEqual("dynamic_cluster", fields["selected"])
+        self.assertNotIn("aim_mode", fields)
+        self.assertNotIn("gun_mode", fields)
+
     def test_missing_required_fields_uses_aliases(self) -> None:
         self.assertEqual((), missing_required_fields("target.select", {"selected": 2}))
         self.assertEqual(("aim_mode",), missing_required_fields("bullet.fired", {"bullet_id": 9, "power": 1.6}))

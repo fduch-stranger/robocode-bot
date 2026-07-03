@@ -164,6 +164,20 @@ class MinimumRiskMovementTest(unittest.TestCase):
         self.assertEqual([], movement._waves)
         self.assertEqual({}, movement._last_switch_turn)
 
+    def test_movement_profile_resets_for_new_battle(self) -> None:
+        movement = MovementFlattener()
+        movement._profile[(1, 0, 15)] = 3.0
+        movement._stats_buffers.record(self._incoming_wave(1), 15, 1.0)
+        movement._waves.append(object())
+        movement._last_switch_turn[1] = 42
+
+        movement.clear_battle_state()
+
+        self.assertNotIn((1, 0, 15), movement._profile)
+        self.assertEqual(0.0, movement._stats_buffers.danger(self._incoming_wave(1), 15).danger)
+        self.assertEqual([], movement._waves)
+        self.assertEqual({}, movement._last_switch_turn)
+
     def test_surf_wall_smoothing_uses_wall_stick_before_next_step_hits_wall(self) -> None:
         movement = MovementFlattener(MovementFlatteningConfig(wall_stick=140.0))
         wave = MovementWave(

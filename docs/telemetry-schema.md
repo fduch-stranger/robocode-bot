@@ -48,7 +48,7 @@ The browser viewer and telemetry audit normalize bot-specific fields into a comm
 | `gun.eval_wave_visit` | - | `target`, `guess_factor`, `samples`, `traveled`, `distance`, `selected_gun`, `virtual_scores`, `gun_scores`, `traditional_gf_guess_factor`, `traditional_gf_raw_guess_factor`, `traditional_gf_error`, `traditional_gf_abs_error`, `traditional_gf_source`, `traditional_gf_source_bias_correction`, `traditional_gf_source_bias_samples`, `linear_wall_aware_wall_hit`, `linear_wall_aware_ticks`, `linear_wall_aware_final_speed` | `aim_mode` from `selected_gun`<br>`gun_mode` from `selected_gun` |
 | `gun.fire_drift` | `bullet_id` | `target`, `aim_mode`, `planned_x`, `planned_y`, `actual_x`, `actual_y`, `source_error`, `planned_direction`, `actual_direction`, `direction_error`, `abs_direction_error`, `planned_power`, `actual_power`, `power_error`, `planned_speed`, `actual_speed`, `speed_error` | - |
 | `gun.switch` | `selected` | `target`, `previous`, `scores` | `aim_mode` from `selected`<br>`gun_mode` from `selected` |
-| `gun.switch_decision` | `selected` | `target`, `previous`, `changed`, `candidates` | `aim_mode` from `selected`<br>`gun_mode` from `selected` |
+| `gun.switch_decision` | `selected` | `target`, `previous`, `changed`, `candidates` | - |
 | `gun.traditional_gf_profile` | `target` | `aim_mode`, `global_guess_factor`, `global_weight`, `segment_guess_factor`, `segment_weight`, `blend`, `raw_guess_factor`, `selected_guess_factor`, `source_bias_correction`, `source_bias_samples`, `source` | - |
 | `gun.wave_visit` | - | `target`, `guess_factor`, `samples`, `traveled`, `distance`, `selected_gun`, `virtual_scores`, `gun_scores`, `traditional_gf_guess_factor`, `traditional_gf_raw_guess_factor`, `traditional_gf_error`, `traditional_gf_abs_error`, `traditional_gf_source`, `traditional_gf_source_bias_correction`, `traditional_gf_source_bias_samples`, `linear_wall_aware_wall_hit`, `linear_wall_aware_ticks`, `linear_wall_aware_final_speed` | `aim_mode` from `selected_gun`<br>`gun_mode` from `selected_gun` |
 | `track` | `target`, `distance`, `gun_bearing`, `aim_mode` | `age`, `radar_bearing`, `radar_turn`, `radar_mode`, `radar_target`, `radar_age`, `predicted_x`, `predicted_y`, `aim_guess_factor`, `traditional_gf_global`, `traditional_gf_global_weight`, `traditional_gf_segment`, `traditional_gf_segment_weight`, `traditional_gf_blend`, `traditional_gf_raw`, `traditional_gf_selected`, `traditional_gf_source_bias`, `traditional_gf_source_bias_samples`, `traditional_gf_source`, `gun_samples`, `gun_scores`, `firepower`, `hold_reason`, `fire_alignment_limit`, `movement_mode`, `known_targets` | `power` from `firepower`<br>`reason` from `hold_reason` |
@@ -57,6 +57,7 @@ The browser viewer and telemetry audit normalize bot-specific fields into a comm
 
 | Event | Required Fields | Optional Fields | Aliases |
 | --- | --- | --- | --- |
+| `battle.reset` | - | `rounds`, `game_type` | - |
 | `round.reset` | - | `previous_turn`, `current_turn` | - |
 | `telemetry.dropped` | `count` | - | - |
 | `telemetry.session` | - | - | - |

@@ -5,6 +5,7 @@ from robocode_tank_royale.bot_api.events import (
     BotDeathEvent,
     BulletFiredEvent,
     BulletHitBotEvent,
+    GameStartedEvent,
     HitBotEvent,
     HitByBulletEvent,
     HitWallEvent,
@@ -215,6 +216,14 @@ class CircleStrafer(Bot):
             or self.x > self.arena_width - MOVEMENT_POLICY.wall_margin
             or self.y < MOVEMENT_POLICY.wall_margin
             or self.y > self.arena_height - MOVEMENT_POLICY.wall_margin
+        )
+
+    def on_game_started(self, event: GameStartedEvent) -> None:
+        self._clear_opponent_learning()
+        self._log(
+            "battle.reset",
+            rounds=event.game_setup.number_of_rounds,
+            game_type=event.game_setup.game_type,
         )
 
     def on_scanned_bot(self, event: ScannedBotEvent) -> None:
@@ -447,6 +456,28 @@ class CircleStrafer(Bot):
                 current_turn=self.turn_number,
             )
         self._last_turn_number = self.turn_number
+
+    def _clear_opponent_learning(self) -> None:
+        self._targets.clear()
+        self._target_id = None
+        self._collision_escape_until_turn = -1
+        self._last_collision_turn = -1000
+        self._wall_escape_until_turn = -1
+        self._last_wall_hit_turn = -1000
+        self._enemy_energy_corrections.clear()
+        self._last_enemy_power_prediction.clear()
+        self._enemy_fire_power.clear()
+        self._enemy_fire_detector.clear_round_state()
+        self._evade_until_turn = -1
+        self._gun.clear_battle_state()
+        self._movement.clear_battle_state()
+        self._minimum_risk.clear_round_state()
+        self._fired_bullets.clear()
+        self._last_gun_decision_log_turn.clear()
+        self._target_accel.clear()
+        self._last_velocity_change_turn.clear()
+        self._own_motion.reset()
+        self._last_turn_number = -1
 
     def _maybe_log_gun_switch_decision(self, target_id: int, aim: AimSolution) -> None:
         last_turn = self._last_gun_decision_log_turn.get(target_id, -100000)
