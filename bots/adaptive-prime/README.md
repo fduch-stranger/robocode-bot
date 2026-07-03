@@ -195,14 +195,12 @@ scripts/run-battle.sh --telemetry --rounds 12 bots/adaptive-prime --legacy basic
 
 Use these as telemetry sweep knobs before changing committed defaults. Core
 Traditional GF values such as smoothing, decay, exact segment thresholds,
-source penalties, source-bias internals, and peak support radius come from the
-shared `TraditionalGfGunConfig`; Adaptive only overrides its selector gates and
-the experiment knobs listed above. The coarse key is fixed in code to distance,
+source penalties, and peak support radius come from the shared
+`TraditionalGfGunConfig`; Adaptive only overrides its selector gates and the
+experiment knobs listed above. The coarse key is fixed in code to distance,
 lateral speed, and wall margin. Source centering factors pull sparse/global
-profile peaks toward head-on without changing trusted segment sources.
-Source-bias correction remains implemented in the shared Traditional GF gun but
-disabled by default. Peak selection uses `density` by default; `max` remains
-available for strongest-bin
+profile peaks toward head-on without changing trusted segment sources. Peak
+selection uses `density` by default; `max` remains available for strongest-bin
 comparisons.
 
 For neutral gun-evaluation telemetry, set:

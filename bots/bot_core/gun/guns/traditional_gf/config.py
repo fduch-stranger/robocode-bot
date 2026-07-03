@@ -14,9 +14,6 @@ class TraditionalGfGunConfig:
     segment_source_centering_factor: float = 1.0
     coarse_source_centering_factor: float = 0.7
     coarse_blend_source_centering_factor: float = 0.8
-    source_bias_min_samples: int = 12
-    source_bias_learning_rate: float = 0.08
-    source_bias_max_correction: float = 0.0
     segment_min_samples: int = 12
     segment_full_weight_samples: int = 48
     coarse_segment_min_samples: int = 12

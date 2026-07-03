@@ -148,8 +148,6 @@ class TelemetryEmitterTest(unittest.TestCase):
                     "traditional_gf": {
                         "aim_guess_factor": -0.1,
                         "raw_guess_factor": -0.2,
-                        "source_bias_correction": 0.1,
-                        "source_bias_samples": 12,
                         "error": -0.1345,
                         "abs_error": 0.1345,
                     },
@@ -236,8 +234,6 @@ class TelemetryEmitterTest(unittest.TestCase):
         self.assertEqual(-0.234, sink.records[2][2]["guess_factor"])
         self.assertEqual(-0.1, sink.records[2][2]["traditional_gf_guess_factor"])
         self.assertEqual(-0.2, sink.records[2][2]["traditional_gf_raw_guess_factor"])
-        self.assertEqual(0.1, sink.records[2][2]["traditional_gf_source_bias_correction"])
-        self.assertEqual(12, sink.records[2][2]["traditional_gf_source_bias_samples"])
         self.assertEqual(-0.135, sink.records[2][2]["traditional_gf_error"])
         self.assertEqual(0.135, sink.records[2][2]["traditional_gf_abs_error"])
         self.assertEqual("dynamic_cluster", sink.records[3][2]["selected_gun"])
@@ -275,8 +271,6 @@ class TelemetryEmitterTest(unittest.TestCase):
                     raw_guess_factor=0.5,
                     selected_guess_factor=0.4,
                     source="blend",
-                    source_bias_correction=-0.1,
-                    source_bias_samples=12,
                 ),
             },
         )
@@ -293,8 +287,6 @@ class TelemetryEmitterTest(unittest.TestCase):
         self.assertEqual(0.35, fields["traditional_gf_blend"])
         self.assertEqual(0.5, fields["traditional_gf_raw"])
         self.assertEqual(0.4, fields["traditional_gf_selected"])
-        self.assertEqual(-0.1, fields["traditional_gf_source_bias"])
-        self.assertEqual(12, fields["traditional_gf_source_bias_samples"])
         self.assertEqual("blend", fields["traditional_gf_source"])
 
     def test_fire_telemetry_records_traditional_gf_profile_event(self) -> None:
@@ -318,8 +310,6 @@ class TelemetryEmitterTest(unittest.TestCase):
                     raw_guess_factor=0.5,
                     selected_guess_factor=0.4,
                     source="blend",
-                    source_bias_correction=-0.1,
-                    source_bias_samples=12,
                 ),
             },
         )
@@ -337,8 +327,6 @@ class TelemetryEmitterTest(unittest.TestCase):
         self.assertEqual(0.35, fields["blend"])
         self.assertEqual(0.5, fields["raw_guess_factor"])
         self.assertEqual(0.4, fields["selected_guess_factor"])
-        self.assertEqual(-0.1, fields["source_bias_correction"])
-        self.assertEqual(12, fields["source_bias_samples"])
         self.assertEqual("blend", fields["source"])
 
     def test_fire_telemetry_records_linear_variant_wave_diagnostics(self) -> None:

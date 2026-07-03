@@ -75,7 +75,6 @@ class BotConfigTest(unittest.TestCase):
         self.assertEqual(default_gun_config.global_source_penalty, 0.06)
         self.assertEqual(default_gun_config.smoothing_bins, 1.25)
         self.assertEqual(default_gun_config.decay, 0.985)
-        self.assertEqual(default_gun_config.source_bias_max_correction, 0.0)
 
         env_config = _load_config(
             path,
@@ -88,7 +87,6 @@ class BotConfigTest(unittest.TestCase):
                 "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_COARSE_BLEND_SOURCE_CENTERING_FACTOR": "1.0",
                 "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_PEAK_SELECTION": "max",
                 "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_SMOOTHING_BINS": "0.5",
-                "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_SOURCE_BIAS_MAX_CORRECTION": "0.5",
                 "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_SEGMENT_MIN_SAMPLES": "2",
                 "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_GLOBAL_SOURCE_PENALTY": "0.5",
             },
@@ -104,7 +102,6 @@ class BotConfigTest(unittest.TestCase):
         self.assertFalse(hasattr(env_traditional_gf, "segment_min_samples"))
         self.assertFalse(hasattr(env_traditional_gf, "global_source_penalty"))
         self.assertFalse(hasattr(env_traditional_gf, "smoothing_bins"))
-        self.assertFalse(hasattr(env_traditional_gf, "source_bias_max_correction"))
 
     def test_chase_gun_policy_defaults_and_env(self) -> None:
         path = ROOT / "bots" / "chase-lock" / "chase_config.py"

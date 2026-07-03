@@ -152,11 +152,6 @@ so broader local mass can beat isolated spikes.
 Shared defaults also apply source-specific centering factors to pull selected
 guess-factors toward head-on for lower-trust global/coarse sources without
 changing the underlying histogram samples.
-Traditional GF can additionally learn a bounded per-target, per-source residual
-between the pre-bias selected GF after source centering and the resolved actual
-GF. This source-bias correction is applied after enough visits for that source
-and is reported in telemetry as a separate correction from the raw selected
-profile GF.
 Track telemetry can include
 `traditional_gf_*` fields showing global/segment peaks, profile weights,
 selected GF, blend, and source.
@@ -166,10 +161,9 @@ samples are sparse.
 
 Traditional GF applies source-trust penalties to selection by default. This
 requires more evidence from low-context global profiles while trusting exact or
-coarse segment profiles normally. Source-bias correction remains neutral unless
-a bot config opts in. Selector thresholds and source penalties are supplied as
-per-mode policy data, so the selector does not need concrete gun classes or
-mode-specific threshold branches.
+coarse segment profiles normally. Selector thresholds and source penalties are
+supplied as per-mode policy data, so the selector does not need concrete gun
+classes or mode-specific threshold branches.
 Mode policies can also provide source-aware visit and score floors through the
 same generic decision context. Adaptive uses this for local Traditional GF
 experiments: global profile sources remain more conservative, while exact and

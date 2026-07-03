@@ -28,12 +28,11 @@ apply mode policy without importing this package.
 
 Global profile aiming is the fallback. Exact segment and coarse segment logic
 belong here, including blend weights, density/peak selection, source-specific
-centering, learned source-bias correction, and source diagnostics.
+centering, source-aware selector context, and source diagnostics.
 
 The shared default model uses a 12-sample warmup, exact and coarse segment
 activation at `12/48`, density-supported peak selection, and lower-trust source
-centering for global/coarse sources. Source-bias correction remains implemented
-but disabled by default.
+centering for global/coarse sources.
 Bots may optionally configure source-aware selector gates. When enabled,
 global, blended, and trusted exact/coarse sources can report different
 minimum-switch visits and score floors through the generic gun decision

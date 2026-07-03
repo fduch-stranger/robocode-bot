@@ -223,8 +223,6 @@ def _track_base_fields(
                 "traditional_gf_blend": round(getattr(traditional_gf, "blend", 0.0), 3),
                 "traditional_gf_raw": rounded(getattr(traditional_gf, "raw_guess_factor", None), 3),
                 "traditional_gf_selected": rounded(getattr(traditional_gf, "selected_guess_factor", None), 3),
-                "traditional_gf_source_bias": rounded(getattr(traditional_gf, "source_bias_correction", None), 3),
-                "traditional_gf_source_bias_samples": getattr(traditional_gf, "source_bias_samples", 0),
                 "traditional_gf_source": getattr(traditional_gf, "source", None),
             }
         )
@@ -297,8 +295,6 @@ def _traditional_gf_profile_fields(target_id: int, aim: AimSolution) -> dict[str
         "blend": round(getattr(traditional_gf, "blend", 0.0), 3),
         "raw_guess_factor": rounded(getattr(traditional_gf, "raw_guess_factor", None), 3),
         "selected_guess_factor": rounded(getattr(traditional_gf, "selected_guess_factor", None), 3),
-        "source_bias_correction": rounded(getattr(traditional_gf, "source_bias_correction", None), 3),
-        "source_bias_samples": getattr(traditional_gf, "source_bias_samples", 0),
         "source": getattr(traditional_gf, "source", None),
     }
 
@@ -509,8 +505,6 @@ def _wave_visit_fields(visit: WaveVisit) -> dict[str, object]:
     traditional_gf = visit.gun_diagnostics.get("traditional_gf", {})
     aim_guess_factor = _diagnostic_float(traditional_gf, "aim_guess_factor")
     raw_guess_factor = _diagnostic_float(traditional_gf, "raw_guess_factor")
-    source_bias_correction = _diagnostic_float(traditional_gf, "source_bias_correction")
-    source_bias_samples = _diagnostic_int(traditional_gf, "source_bias_samples")
     error = _diagnostic_float(traditional_gf, "error")
     abs_error = _diagnostic_float(traditional_gf, "abs_error")
     source = _diagnostic_str(traditional_gf, "source")
@@ -518,10 +512,6 @@ def _wave_visit_fields(visit: WaveVisit) -> dict[str, object]:
         fields["traditional_gf_guess_factor"] = round(aim_guess_factor, 3)
     if raw_guess_factor is not None:
         fields["traditional_gf_raw_guess_factor"] = round(raw_guess_factor, 3)
-    if source_bias_correction is not None:
-        fields["traditional_gf_source_bias_correction"] = round(source_bias_correction, 3)
-    if source_bias_samples is not None:
-        fields["traditional_gf_source_bias_samples"] = source_bias_samples
     if error is not None:
         fields["traditional_gf_error"] = round(error, 3)
     if abs_error is not None:
