@@ -355,6 +355,103 @@ class GunStatsTest(unittest.TestCase):
         self.assertAlmostEqual(0.3, gun.center_guess_factor(0.5))
         self.assertAlmostEqual(-0.3, gun.center_guess_factor(-0.5))
 
+    def test_traditional_gf_source_centering_factor_shrinks_only_matching_source(self) -> None:
+        gun = TraditionalGfGun(
+            TraditionalGfGunConfig(
+                centering_factor=1.0,
+                global_source_centering_factor=0.75,
+                coarse_source_centering_factor=0.9,
+            )
+        )
+
+        self.assertAlmostEqual(0.375, gun.center_guess_factor(0.5, "global"))
+        self.assertAlmostEqual(0.45, gun.center_guess_factor(0.5, "coarse"))
+        self.assertAlmostEqual(0.5, gun.center_guess_factor(0.5, "blend"))
+
+    def test_traditional_gf_source_bias_learns_from_raw_guess_factor_error(self) -> None:
+        config = TraditionalGfGunConfig(
+            min_samples=1,
+            guess_factor_bins=11,
+            source_bias_min_samples=2,
+            source_bias_learning_rate=1.0,
+            source_bias_max_correction=0.25,
+        )
+        gun = TraditionalGfGun(config)
+        wave = make_wave()
+        wave.gun_metadata["traditional_gf"] = TraditionalGfDiagnostics(
+            global_guess_factor=0.4,
+            global_weight=2.0,
+            raw_guess_factor=0.4,
+            selected_guess_factor=0.4,
+            source="global",
+        )
+        visit = GunVisit(
+            wave=wave,
+            actual_bearing=0.0,
+            target_distance=200.0,
+            guess_factor=0.1,
+            segment_key=wave.segment_key,
+        )
+
+        gun.observe_visit(visit)
+        self.assertEqual((0.0, 1), gun.source_bias_correction(1, "global"))
+        gun.observe_visit(visit)
+        self.assertEqual((-0.25, 2), gun.source_bias_correction(1, "global"))
+
+        profile = GuessFactorProfile(visits=4, effective_weight=4.0, bins=[0.0] * config.guess_factor_bins)
+        profile.bins[7] = 4.0
+        gun.profiles[1] = profile
+
+        diagnostics = gun.diagnostics(1)
+
+        self.assertIsNotNone(diagnostics)
+        self.assertAlmostEqual(0.4, diagnostics.raw_guess_factor or 0.0)
+        self.assertAlmostEqual(0.15, diagnostics.selected_guess_factor or 0.0)
+        self.assertAlmostEqual(-0.25, diagnostics.source_bias_correction)
+        self.assertEqual(2, diagnostics.source_bias_samples)
+
+    def test_traditional_gf_source_bias_default_does_not_change_selected_guess_factor(self) -> None:
+        config = TraditionalGfGunConfig(
+            min_samples=1,
+            guess_factor_bins=11,
+            source_bias_min_samples=2,
+            source_bias_learning_rate=1.0,
+            source_bias_max_correction=0.0,
+        )
+        gun = TraditionalGfGun(config)
+        wave = make_wave()
+        wave.gun_metadata["traditional_gf"] = TraditionalGfDiagnostics(
+            global_guess_factor=0.4,
+            global_weight=2.0,
+            raw_guess_factor=0.4,
+            selected_guess_factor=0.4,
+            source="global",
+        )
+        visit = GunVisit(
+            wave=wave,
+            actual_bearing=0.0,
+            target_distance=200.0,
+            guess_factor=-0.2,
+            segment_key=wave.segment_key,
+        )
+        profile = GuessFactorProfile(visits=4, effective_weight=4.0, bins=[0.0] * config.guess_factor_bins)
+        profile.bins[7] = 4.0
+        gun.profiles[1] = profile
+
+        before = gun.diagnostics(1)
+        self.assertIsNotNone(before)
+        assert before is not None
+        gun.observe_visit(visit)
+        gun.observe_visit(visit)
+        after = gun.diagnostics(1)
+
+        self.assertIsNotNone(after)
+        assert after is not None
+        self.assertAlmostEqual(before.raw_guess_factor or 0.0, after.raw_guess_factor or 0.0)
+        self.assertAlmostEqual(before.selected_guess_factor or 0.0, after.selected_guess_factor or 0.0)
+        self.assertAlmostEqual(0.0, after.source_bias_correction)
+        self.assertEqual(2, after.source_bias_samples)
+
     def test_traditional_gf_uses_coarse_segment_when_exact_segment_is_sparse(self) -> None:
         config = TraditionalGfGunConfig(
             min_samples=1,

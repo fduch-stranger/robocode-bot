@@ -64,6 +64,11 @@ class GunPolicy:
     displacement_min_switch_score: float = 0.16
     traditional_gf_min_switch_visits: int = 160
     traditional_gf_min_switch_score: float = 0.24
+    traditional_gf_min_samples: int = _env_int(
+        "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_MIN_SAMPLES",
+        12,
+        minimum=1,
+    )
     traditional_gf_smoothing_bins: float = _env_float(
         "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_SMOOTHING_BINS",
         1.25,
@@ -81,21 +86,76 @@ class GunPolicy:
         minimum=0.0,
         maximum=1.0,
     )
-    traditional_gf_segment_min_samples: int = 12
-    traditional_gf_segment_full_weight_samples: int = 48
+    traditional_gf_global_source_centering_factor: float = _env_float(
+        "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_GLOBAL_SOURCE_CENTERING_FACTOR",
+        0.8,
+        minimum=0.0,
+        maximum=1.0,
+    )
+    traditional_gf_blend_source_centering_factor: float = _env_float(
+        "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_BLEND_SOURCE_CENTERING_FACTOR",
+        1.0,
+        minimum=0.0,
+        maximum=1.0,
+    )
+    traditional_gf_segment_source_centering_factor: float = _env_float(
+        "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_SEGMENT_SOURCE_CENTERING_FACTOR",
+        1.0,
+        minimum=0.0,
+        maximum=1.0,
+    )
+    traditional_gf_coarse_source_centering_factor: float = _env_float(
+        "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_COARSE_SOURCE_CENTERING_FACTOR",
+        0.7,
+        minimum=0.0,
+        maximum=1.0,
+    )
+    traditional_gf_coarse_blend_source_centering_factor: float = _env_float(
+        "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_COARSE_BLEND_SOURCE_CENTERING_FACTOR",
+        0.8,
+        minimum=0.0,
+        maximum=1.0,
+    )
+    traditional_gf_source_bias_min_samples: int = _env_int(
+        "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_SOURCE_BIAS_MIN_SAMPLES",
+        12,
+        minimum=1,
+    )
+    traditional_gf_source_bias_learning_rate: float = _env_float(
+        "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_SOURCE_BIAS_LEARNING_RATE",
+        0.08,
+        minimum=0.0,
+        maximum=1.0,
+    )
+    traditional_gf_source_bias_max_correction: float = _env_float(
+        "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_SOURCE_BIAS_MAX_CORRECTION",
+        0.0,
+        minimum=0.0,
+        maximum=1.0,
+    )
+    traditional_gf_segment_min_samples: int = _env_int(
+        "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_SEGMENT_MIN_SAMPLES",
+        12,
+        minimum=0,
+    )
+    traditional_gf_segment_full_weight_samples: int = _env_int(
+        "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_SEGMENT_FULL_WEIGHT_SAMPLES",
+        48,
+        minimum=0,
+    )
     traditional_gf_coarse_segment_min_samples: int = _env_int(
         "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_COARSE_SEGMENT_MIN_SAMPLES",
-        8,
+        12,
         minimum=0,
     )
     traditional_gf_coarse_segment_full_weight_samples: int = _env_int(
         "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_COARSE_SEGMENT_FULL_WEIGHT_SAMPLES",
-        36,
+        48,
         minimum=0,
     )
     traditional_gf_peak_selection: str = _env_choice(
         "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_PEAK_SELECTION",
-        "max",
+        "density",
         TRADITIONAL_GF_PEAK_SELECTIONS,
     )
     traditional_gf_peak_support_radius: int = _env_int(

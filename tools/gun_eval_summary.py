@@ -271,7 +271,10 @@ def _record_traditional_gf_diagnostics(
         "segment_guess_factor": ("segment_guess_factor", "traditional_gf_segment"),
         "segment_weight": ("segment_weight", "traditional_gf_segment_weight"),
         "blend": ("blend", "traditional_gf_blend"),
+        "raw_guess_factor": ("raw_guess_factor", "traditional_gf_raw"),
         "selected_guess_factor": ("selected_guess_factor", "traditional_gf_selected"),
+        "source_bias_correction": ("source_bias_correction", "traditional_gf_source_bias"),
+        "source_bias_samples": ("source_bias_samples", "traditional_gf_source_bias_samples"),
     }.items():
         value = next((_float_or_none(fields.get(field)) for field in field_names if field in fields), None)
         if value is not None:

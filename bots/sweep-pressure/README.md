@@ -98,7 +98,8 @@ long range, gun bearing error is too high, or energy margin is too small.
 
 ## Gun Policy
 
-Sweep Pressure uses a bot-specific `GunPolicy` surface with shared-default
+Sweep Pressure keeps bot-specific `GunPolicy`, fire, target, radar, and
+movement surfaces in `sweep_config.py`. Its gun policy uses shared-default
 switch thresholds. It live-selects `linear`, `traditional_gf`, and
 `dynamic_cluster` in 1v1. Melee keeps segmented gun stats and live
 `traditional_gf` bearings disabled, so `traditional_gf` candidates can appear

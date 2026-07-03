@@ -1,6 +1,4 @@
 import math
-import os
-from dataclasses import dataclass
 
 from robocode_tank_royale.bot_api import Bot, BotInfo, Color
 from robocode_tank_royale.bot_api.events import (
@@ -13,21 +11,27 @@ from robocode_tank_royale.bot_api.events import (
     ScannedBotEvent,
 )
 
+from sweep_config import (
+    FIRE_POLICY,
+    GUN_POLICY,
+    MOVEMENT_POLICY,
+    RADAR_POLICY,
+    TARGET_POLICY,
+    build_energy_drop_config,
+    build_fire_gate,
+    build_radar_config,
+)
 from bot_core.debug import DebugLogger, FiredBulletTracker
 from bot_core.energy import (
     EnemyEnergyCorrectionLedger,
     EnemyFireDetector,
     EnemyFirePowerPredictor,
-    EnergyDropConfig,
-    FireGate,
-    FireGateConfig,
 )
 from bot_core.gun import (
     AimSolution,
     GunScoringConfig,
     GunSelectorConfig,
     GunSystemConfig,
-    LINEAR_VARIANT_MODES,
     TargetMotion,
     VirtualGunSystem,
     should_log_switch_decision,
@@ -37,7 +41,7 @@ from bot_core.gun.guns.dynamic_cluster.config import DynamicClusterGunConfig
 from bot_core.gun.guns.traditional_gf.config import TraditionalGfGunConfig
 from bot_core.movement import MinimumRiskMovement, MovementCommand, MovementFlattener, MovementFlatteningConfig
 from bot_core.motion import OwnMotionTracker
-from bot_core.radar import RadarLockConfig, lock_priority_radar
+from bot_core.radar import lock_priority_radar
 from bot_core.geometry.angles import body_bearing_to
 from bot_core.geometry.numeric import clamp
 from bot_core.geometry.position import distance_to
@@ -50,104 +54,6 @@ from bot_core.telemetry.fire import (
 )
 from bot_core.telemetry.movement import MovementTelemetry
 from bot_core.telemetry.targeting import TargetingTelemetry
-
-
-FIRE_ALIGNMENT_DEGREES = 8
-SWEEP_SELECTABLE_GUN_MODES = frozenset({"linear", "traditional_gf", "dynamic_cluster"})
-SWEEP_FORCE_GUN_MODES = SWEEP_SELECTABLE_GUN_MODES | LINEAR_VARIANT_MODES | frozenset({"displacement"})
-
-
-def _forced_gun_mode() -> str | None:
-    mode = os.environ.get("ROBOCODE_SWEEP_GUN_MODE", "").strip()
-    return mode if mode in SWEEP_FORCE_GUN_MODES else None
-
-
-def _env_flag(name: str) -> bool:
-    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _env_int(name: str, default: int) -> int:
-    raw = os.environ.get(name, "").strip()
-    if not raw:
-        return default
-    try:
-        return max(1, int(raw))
-    except ValueError:
-        return default
-
-
-@dataclass(frozen=True)
-class GunPolicy:
-    selectable_modes: frozenset[str] = SWEEP_SELECTABLE_GUN_MODES
-    forced_mode: str | None = _forced_gun_mode()
-    eval_waves_enabled: bool = _env_flag("ROBOCODE_SWEEP_GUN_EVAL")
-    eval_wave_min_interval: int = _env_int("ROBOCODE_SWEEP_GUN_EVAL_INTERVAL", 8)
-    knn_min_samples: int = 60
-    min_visits: int = 90
-    switch_margin: float = 0.08
-    min_switch_score: float = 0.30
-    traditional_gf_min_switch_visits: int = 260
-    traditional_gf_min_switch_score: float = 0.42
-    switch_diagnostics_interval: int = 24
-
-
-GUN_POLICY = GunPolicy()
-TARGET_MEMORY_TURNS = 30
-FIRE_MEMORY_TURNS = 4
-CURRENT_TARGET_BONUS = 160
-TARGET_SWITCH_MARGIN = 95
-FORCE_SWITCH_TARGET_AGE = 10
-ENEMY_FIRE_MIN_DROP = 0.1
-ENEMY_FIRE_MAX_DROP = 3.0
-ENEMY_FIRE_SCAN_GAP_TURNS = 4
-ENEMY_FIRE_CLOSE_COLLISION_DISTANCE = 75
-ENEMY_FIRE_CLOSE_COLLISION_MAX_DROP = 0.8
-LOW_ENERGY_HOLD = 18
-CRITICAL_ENERGY_HOLD = 10
-FIELD_MARGIN = 18
-WALL_MARGIN = 45
-WALL_LOOKAHEAD_TICKS = 12
-WALL_ESCAPE_SPEED = 7
-SWEEP_SPEED = 7
-SWEEP_TURN_RATE = 3.5
-FLATTENER_STRAFE_OFFSET = 92
-RADAR_SEARCH_RATE = 16
-RADAR_LOCK_RATE = 24
-RADAR_REACQUIRE_RATE = 24
-RADAR_RESCAN_INTERVAL = 30
-RADAR_RESCAN_TURNS = 5
-RADAR_REACQUIRE_MIN_ERROR = 8
-RADAR_LOCK_OVERSCAN = 12
-RADAR_REACQUIRE_OVERSCAN = 24
-RADAR_CONFIG = RadarLockConfig(
-    search_rate=RADAR_SEARCH_RATE,
-    lock_rate=RADAR_LOCK_RATE,
-    reacquire_rate=RADAR_REACQUIRE_RATE,
-    rescan_interval=RADAR_RESCAN_INTERVAL,
-    rescan_turns=RADAR_RESCAN_TURNS,
-    reacquire_min_error=RADAR_REACQUIRE_MIN_ERROR,
-    lock_overscan=RADAR_LOCK_OVERSCAN,
-    reacquire_overscan=RADAR_REACQUIRE_OVERSCAN,
-)
-ENERGY_DROP_CONFIG = EnergyDropConfig(
-    min_fire_power=ENEMY_FIRE_MIN_DROP,
-    max_fire_power=ENEMY_FIRE_MAX_DROP,
-    max_scan_gap=ENEMY_FIRE_SCAN_GAP_TURNS,
-    close_collision_distance=ENEMY_FIRE_CLOSE_COLLISION_DISTANCE,
-    close_collision_max_drop=ENEMY_FIRE_CLOSE_COLLISION_MAX_DROP,
-)
-FIRE_GATE = FireGate(
-    FireGateConfig(
-        fire_memory_turns=FIRE_MEMORY_TURNS,
-        alignment_degrees=FIRE_ALIGNMENT_DEGREES,
-        energy_margin=6,
-        critical_energy_hold=CRITICAL_ENERGY_HOLD,
-        low_energy_hold=LOW_ENERGY_HOLD,
-        low_energy_max_distance=220,
-        far_alignment_distance=360,
-        far_alignment_degrees=5,
-    )
-)
 
 
 class SweepPressure(Bot):
@@ -168,8 +74,11 @@ class SweepPressure(Bot):
         self._last_turn_number = -1
         self._enemy_energy_corrections = EnemyEnergyCorrectionLedger()
         self._enemy_fire_power = EnemyFirePowerPredictor()
+        self._energy_drop_config = build_energy_drop_config()
+        self._fire_gate = build_fire_gate()
+        self._radar_config = build_radar_config()
         self._enemy_fire_detector = EnemyFireDetector(
-            ENERGY_DROP_CONFIG,
+            self._energy_drop_config,
             self._enemy_energy_corrections,
             fire_power=self._enemy_fire_power,
         )
@@ -239,7 +148,7 @@ class SweepPressure(Bot):
     def _move(self) -> None:
         if self._wall_risk():
             center_bearing = body_bearing_to(self, self.arena_width / 2, self.arena_height / 2)
-            self.target_speed = WALL_ESCAPE_SPEED
+            self.target_speed = MOVEMENT_POLICY.wall_escape_speed
             self.turn_rate = clamp(center_bearing, -10, 10)
             self._movement_telemetry.sample_wall_avoid(self.x, self.y, center_bearing, self._move_direction)
             return
@@ -250,7 +159,7 @@ class SweepPressure(Bot):
             if focus_target is not None:
                 decision = self._minimum_risk.choose(self, list(self._targets.values()), focus_target)
                 if decision is not None:
-                    turn, speed = self._drive_to_destination(decision.x, decision.y, SWEEP_SPEED)
+                    turn, speed = self._drive_to_destination(decision.x, decision.y, MOVEMENT_POLICY.sweep_speed)
                     command = MovementCommand("minimum_risk", turn, speed)
                     command.apply(self)
                     self._movement_telemetry.sample_minimum_risk(
@@ -261,18 +170,18 @@ class SweepPressure(Bot):
                     )
                     return
 
-        self.target_speed = SWEEP_SPEED * self._move_direction
-        self.turn_rate = -SWEEP_TURN_RATE * self._move_direction if self.turn_number <= self._evade_until_turn else SWEEP_TURN_RATE
+        self.target_speed = MOVEMENT_POLICY.sweep_speed * self._move_direction
+        self.turn_rate = -MOVEMENT_POLICY.sweep_turn_rate * self._move_direction if self.turn_number <= self._evade_until_turn else MOVEMENT_POLICY.sweep_turn_rate
 
     def _wall_risk(self) -> bool:
         heading = math.radians(self.direction)
-        projected_x = self.x + math.cos(heading) * SWEEP_SPEED * self._move_direction * WALL_LOOKAHEAD_TICKS
-        projected_y = self.y + math.sin(heading) * SWEEP_SPEED * self._move_direction * WALL_LOOKAHEAD_TICKS
+        projected_x = self.x + math.cos(heading) * MOVEMENT_POLICY.sweep_speed * self._move_direction * MOVEMENT_POLICY.wall_lookahead_ticks
+        projected_y = self.y + math.sin(heading) * MOVEMENT_POLICY.sweep_speed * self._move_direction * MOVEMENT_POLICY.wall_lookahead_ticks
         return (
-            projected_x < WALL_MARGIN
-            or projected_x > self.arena_width - WALL_MARGIN
-            or projected_y < WALL_MARGIN
-            or projected_y > self.arena_height - WALL_MARGIN
+            projected_x < MOVEMENT_POLICY.wall_margin
+            or projected_x > self.arena_width - MOVEMENT_POLICY.wall_margin
+            or projected_y < MOVEMENT_POLICY.wall_margin
+            or projected_y > self.arena_height - MOVEMENT_POLICY.wall_margin
         )
 
     def on_scanned_bot(self, event: ScannedBotEvent) -> None:
@@ -358,7 +267,7 @@ class SweepPressure(Bot):
         target = self._select_target()
         if target is None:
             self.gun_turn_rate = 0
-            self.radar_turn_rate = RADAR_SEARCH_RATE
+            self.radar_turn_rate = RADAR_POLICY.search_rate
             self._targeting_telemetry.sample_search(known_targets=0)
             return
 
@@ -374,7 +283,7 @@ class SweepPressure(Bot):
             distance,
             firepower,
             self._target_motion(target),
-            FIELD_MARGIN,
+            MOVEMENT_POLICY.field_margin,
             disabled_modes=frozenset() if use_segmented_gun_stats else frozenset({"traditional_gf"}),
             allow_segmented_stats=use_segmented_gun_stats,
         )
@@ -386,8 +295,8 @@ class SweepPressure(Bot):
             self,
             self._targets.values(),
             target,
-            FIRE_MEMORY_TURNS,
-            RADAR_CONFIG,
+            FIRE_POLICY.memory_turns,
+            self._radar_config,
         )
         age = self.turn_number - target.seen_turn
 
@@ -437,9 +346,9 @@ class SweepPressure(Bot):
         flattening = self._movement.choose_direction(
             self,
             body_bearing,
-            FLATTENER_STRAFE_OFFSET,
-            SWEEP_SPEED,
-            FIELD_MARGIN,
+            MOVEMENT_POLICY.flattener_strafe_offset,
+            MOVEMENT_POLICY.sweep_speed,
+            MOVEMENT_POLICY.field_margin,
             target.bot_id,
             distance,
             self._move_direction,
@@ -454,7 +363,7 @@ class SweepPressure(Bot):
         self._movement_telemetry.record_flattening(target.bot_id, flattening, distance)
 
     def _firepower_for(self, distance: float) -> float:
-        if self.energy <= LOW_ENERGY_HOLD:
+        if self.energy <= FIRE_POLICY.low_energy_hold:
             return 0.8 if distance < 220 else 0.6
         if distance < 180:
             return 2.0
@@ -463,14 +372,14 @@ class SweepPressure(Bot):
         return 0.8
 
     def _can_fire(self, age: int, distance: float, gun_bearing: float, firepower: float) -> tuple[bool, str]:
-        decision = FIRE_GATE.decide(age, distance, gun_bearing, firepower, self.energy)
+        decision = self._fire_gate.decide(age, distance, gun_bearing, firepower, self.energy)
         return decision.can_fire, decision.reason
 
     def _forget_stale_targets(self) -> None:
         stale_ids = [
             bot_id
             for bot_id, target in self._targets.items()
-            if self.turn_number - target.seen_turn > TARGET_MEMORY_TURNS
+            if self.turn_number - target.seen_turn > TARGET_POLICY.memory_turns
         ]
         for bot_id in stale_ids:
             self._log("target.stale", bot_id=bot_id)
@@ -520,10 +429,10 @@ class SweepPressure(Bot):
         target = candidate
         current = self._targets.get(previous_id) if previous_id is not None else None
         current_age = self.turn_number - current.seen_turn if current is not None else 999
-        if current is not None and candidate.bot_id != current.bot_id and current_age <= FORCE_SWITCH_TARGET_AGE:
+        if current is not None and candidate.bot_id != current.bot_id and current_age <= TARGET_POLICY.force_switch_target_age:
             candidate_score = self._target_score(candidate)
             current_score = self._target_score(current)
-            if candidate_score + TARGET_SWITCH_MARGIN >= current_score:
+            if candidate_score + TARGET_POLICY.switch_margin >= current_score:
                 target = current
 
         self._target_id = target.bot_id
@@ -550,7 +459,7 @@ class SweepPressure(Bot):
     def _target_score(self, target: TargetSnapshot) -> float:
         distance = distance_to(self, target.x, target.y)
         age = self.turn_number - target.seen_turn
-        current_bonus = CURRENT_TARGET_BONUS if target.bot_id == self._target_id else 0
+        current_bonus = TARGET_POLICY.current_target_bonus if target.bot_id == self._target_id else 0
         return distance * 0.45 + target.energy * 2.0 + age * 80 - current_bonus
 
     def _record_enemy_energy_correction(self, target_id: int, correction: float, reason: str) -> None:

@@ -90,11 +90,13 @@ far while energy is low, or gun bearing error is too large.
 
 ## Gun Policy
 
-Circle Strafer uses a defensive `GunPolicy` surface with shared-default switch
-thresholds plus a shorter base visit gate for `dynamic_cluster` warmup. It
-live-selects `linear`, `traditional_gf`, and `dynamic_cluster` in 1v1. Melee
-keeps segmented gun stats and live `traditional_gf` bearings disabled, so
-`traditional_gf` candidates can appear as unavailable in switch diagnostics.
+Circle Strafer keeps bot-specific `GunPolicy`, fire, target, radar, and
+movement surfaces in `circle_config.py`. Its defensive gun policy uses
+shared-default switch thresholds plus a shorter base visit gate for
+`dynamic_cluster` warmup. It live-selects `linear`, `traditional_gf`, and
+`dynamic_cluster` in 1v1. Melee keeps segmented gun stats and live
+`traditional_gf` bearings disabled, so `traditional_gf` candidates can appear
+as unavailable in switch diagnostics.
 The current policy lowers the base visit gate while keeping traditional GF's
 separate conservative override. `displacement` is available only for forced
 experiments:

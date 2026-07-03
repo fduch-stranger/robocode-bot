@@ -25,8 +25,8 @@ decision context so `AimModeSelector` can apply mode policy without importing
 this package.
 
 Global profile aiming is the fallback. Exact segment and coarse segment logic
-belong here, including blend weights, density/peak selection, centering, and
-source diagnostics.
+belong here, including blend weights, density/peak selection, source-specific
+centering, learned source-bias correction, and source diagnostics.
 
 ## Behavior Flow
 
@@ -41,7 +41,7 @@ flowchart TD
     D --> H["select peak or density-supported peak"]
     F --> H
     G --> H
-    H --> I["apply centering and source diagnostics"]
+    H --> I["apply source centering and bias correction"]
     I --> J["convert guess factor to bearing"]
     J --> K["return GunBearing with decision context"]
     L["Production GunVisit"] --> M["record global profile"]

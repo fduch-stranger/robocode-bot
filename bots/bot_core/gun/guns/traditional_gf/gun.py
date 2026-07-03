@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import Callable
 
 from bot_core.geometry.angles import relative_bearing
@@ -12,6 +13,12 @@ from bot_core.gun.models import GunWave
 from bot_core.gun.utils import bin_to_guess_factor
 
 
+@dataclass
+class SourceBiasCorrection:
+    samples: int = 0
+    correction: float = 0.0
+
+
 class TraditionalGfGun:
     mode = "traditional_gf"
 
@@ -20,6 +27,7 @@ class TraditionalGfGun:
         self.profiles: dict[int, GuessFactorProfile] = {}
         self.segment_profiles: dict[tuple[int, tuple[int, ...]], GuessFactorProfile] = {}
         self.coarse_segment_profiles: dict[tuple[int, tuple[int, ...]], GuessFactorProfile] = {}
+        self.source_biases: dict[tuple[int, str], SourceBiasCorrection] = {}
         self.mode_policy = config.mode_policy()
 
     def aim(self, context: AimContext) -> GunBearing | None:
@@ -42,6 +50,7 @@ class TraditionalGfGun:
 
     def observe_visit(self, visit: GunVisit) -> None:
         self.record(visit.wave.target_id, visit.guess_factor, visit.segment_key)
+        self.record_source_bias(visit)
 
     def visit_diagnostics(self, visit: GunVisit) -> dict[str, object]:
         error = self.error(visit.wave, visit.guess_factor)
@@ -49,16 +58,35 @@ class TraditionalGfGun:
             return {}
         aim_guess_factor, signed_error, abs_error = error
         source = None
+        raw_guess_factor = None
+        source_bias_correction = None
+        source_bias_samples = None
         metadata = visit.wave.gun_metadata.get(self.mode)
         metadata_source = getattr(metadata, "source", None)
         if isinstance(metadata_source, str):
             source = metadata_source
-        return {
+        metadata_raw_guess_factor = getattr(metadata, "raw_guess_factor", None)
+        if isinstance(metadata_raw_guess_factor, int | float):
+            raw_guess_factor = float(metadata_raw_guess_factor)
+        metadata_source_bias_correction = getattr(metadata, "source_bias_correction", None)
+        if isinstance(metadata_source_bias_correction, int | float):
+            source_bias_correction = float(metadata_source_bias_correction)
+        metadata_source_bias_samples = getattr(metadata, "source_bias_samples", None)
+        if isinstance(metadata_source_bias_samples, int):
+            source_bias_samples = metadata_source_bias_samples
+        diagnostics: dict[str, object] = {
             "aim_guess_factor": aim_guess_factor,
             "error": signed_error,
             "abs_error": abs_error,
             "source": source,
         }
+        if raw_guess_factor is not None:
+            diagnostics["raw_guess_factor"] = raw_guess_factor
+        if source_bias_correction is not None:
+            diagnostics["source_bias_correction"] = source_bias_correction
+        if source_bias_samples is not None:
+            diagnostics["source_bias_samples"] = source_bias_samples
+        return diagnostics
 
     def metrics(self, target_id: int | None = None) -> dict[str, int | float]:
         return {}
@@ -88,6 +116,25 @@ class TraditionalGfGun:
             )
             self.record_profile(coarse_profile, guess_factor, self.config.smoothing_bins, self.config.decay)
 
+    def record_source_bias(self, visit: GunVisit) -> None:
+        metadata = visit.wave.gun_metadata.get(self.mode)
+        source = getattr(metadata, "source", None)
+        raw_guess_factor = getattr(metadata, "raw_guess_factor", None)
+        if not isinstance(source, str) or not isinstance(raw_guess_factor, int | float):
+            return
+
+        key = (visit.wave.target_id, source)
+        state = self.source_biases.setdefault(key, SourceBiasCorrection())
+        raw_error = clamp(float(visit.guess_factor) - float(raw_guess_factor), -1.0, 1.0)
+        learning_rate = clamp(self.config.source_bias_learning_rate, 0.0, 1.0)
+        max_correction = max(0.0, self.config.source_bias_max_correction)
+        state.samples += 1
+        state.correction = clamp(
+            (1.0 - learning_rate) * state.correction + learning_rate * raw_error,
+            -max_correction,
+            max_correction,
+        )
+
     def record_profile(
         self,
         profile: GuessFactorProfile,
@@ -115,12 +162,20 @@ class TraditionalGfGun:
             return None
         global_guess_factor = self.profile_guess_factor(profile)
         if self.config.segment_min_samples <= 0 or segment_key is None:
-            selected_guess_factor = self.center_guess_factor(global_guess_factor)
+            raw_guess_factor = self.center_guess_factor(global_guess_factor, "global")
+            selected_guess_factor, source_bias_correction, source_bias_samples = self.apply_source_bias(
+                target_id,
+                "global",
+                raw_guess_factor,
+            )
             return TraditionalGfDiagnostics(
                 global_guess_factor=global_guess_factor,
                 global_weight=profile.effective_weight,
+                raw_guess_factor=raw_guess_factor,
                 selected_guess_factor=selected_guess_factor,
                 source="global",
+                source_bias_correction=source_bias_correction,
+                source_bias_samples=source_bias_samples,
             )
 
         segment_profile = self.segment_profiles.get((target_id, segment_key))
@@ -136,13 +191,21 @@ class TraditionalGfGun:
             )
             if coarse_diagnostics is not None:
                 return coarse_diagnostics
-            selected_guess_factor = self.center_guess_factor(global_guess_factor)
+            raw_guess_factor = self.center_guess_factor(global_guess_factor, "global")
+            selected_guess_factor, source_bias_correction, source_bias_samples = self.apply_source_bias(
+                target_id,
+                "global",
+                raw_guess_factor,
+            )
             return TraditionalGfDiagnostics(
                 global_guess_factor=global_guess_factor,
                 global_weight=profile.effective_weight,
                 segment_weight=segment_profile.effective_weight if segment_profile is not None else 0.0,
+                raw_guess_factor=raw_guess_factor,
                 selected_guess_factor=selected_guess_factor,
                 source="global",
+                source_bias_correction=source_bias_correction,
+                source_bias_samples=source_bias_samples,
             )
 
         blend = clamp(
@@ -153,15 +216,24 @@ class TraditionalGfGun:
         )
         segment_guess_factor = self.profile_guess_factor(segment_profile)
         blended_guess_factor = self.blended_profile_guess_factor(profile, segment_profile, blend)
-        selected_guess_factor = self.center_guess_factor(blended_guess_factor)
+        source = "segment" if blend >= 1.0 else "blend"
+        raw_guess_factor = self.center_guess_factor(blended_guess_factor, source)
+        selected_guess_factor, source_bias_correction, source_bias_samples = self.apply_source_bias(
+            target_id,
+            source,
+            raw_guess_factor,
+        )
         return TraditionalGfDiagnostics(
             global_guess_factor=global_guess_factor,
             global_weight=profile.effective_weight,
             segment_guess_factor=segment_guess_factor,
             segment_weight=segment_profile.effective_weight,
             blend=blend,
+            raw_guess_factor=raw_guess_factor,
             selected_guess_factor=selected_guess_factor,
-            source="segment" if blend >= 1.0 else "blend",
+            source=source,
+            source_bias_correction=source_bias_correction,
+            source_bias_samples=source_bias_samples,
         )
 
     def coarse_diagnostics(
@@ -188,15 +260,24 @@ class TraditionalGfGun:
         )
         coarse_guess_factor = self.profile_guess_factor(coarse_profile)
         blended_guess_factor = self.blended_profile_guess_factor(global_profile, coarse_profile, blend)
-        selected_guess_factor = self.center_guess_factor(blended_guess_factor)
+        source = "coarse" if blend >= 1.0 else "coarse_blend"
+        raw_guess_factor = self.center_guess_factor(blended_guess_factor, source)
+        selected_guess_factor, source_bias_correction, source_bias_samples = self.apply_source_bias(
+            target_id,
+            source,
+            raw_guess_factor,
+        )
         return TraditionalGfDiagnostics(
             global_guess_factor=global_guess_factor,
             global_weight=global_profile.effective_weight,
             segment_guess_factor=coarse_guess_factor,
             segment_weight=coarse_profile.effective_weight,
             blend=blend,
+            raw_guess_factor=raw_guess_factor,
             selected_guess_factor=selected_guess_factor,
-            source="coarse" if blend >= 1.0 else "coarse_blend",
+            source=source,
+            source_bias_correction=source_bias_correction,
+            source_bias_samples=source_bias_samples,
         )
 
     @staticmethod
@@ -258,8 +339,35 @@ class TraditionalGfGun:
     def normalized_bin(profile: GuessFactorProfile, index: int) -> float:
         return profile.normalized_bin(index)
 
-    def center_guess_factor(self, guess_factor: float) -> float:
-        return clamp(guess_factor * self.config.centering_factor, -1.0, 1.0)
+    def center_guess_factor(self, guess_factor: float, source: str | None = None) -> float:
+        return clamp(guess_factor * self.source_centering_factor(source), -1.0, 1.0)
+
+    def source_centering_factor(self, source: str | None) -> float:
+        factor = self.config.centering_factor
+        if source == "global":
+            factor *= self.config.global_source_centering_factor
+        elif source == "blend":
+            factor *= self.config.blend_source_centering_factor
+        elif source == "segment":
+            factor *= self.config.segment_source_centering_factor
+        elif source == "coarse":
+            factor *= self.config.coarse_source_centering_factor
+        elif source == "coarse_blend":
+            factor *= self.config.coarse_blend_source_centering_factor
+        return clamp(factor, 0.0, 1.0)
+
+    def apply_source_bias(self, target_id: int, source: str, raw_guess_factor: float) -> tuple[float, float, int]:
+        correction, samples = self.source_bias_correction(target_id, source)
+        return clamp(raw_guess_factor + correction, -1.0, 1.0), correction, samples
+
+    def source_bias_correction(self, target_id: int, source: str) -> tuple[float, int]:
+        state = self.source_biases.get((target_id, source))
+        if state is None:
+            return 0.0, 0
+        if state.samples < self.config.source_bias_min_samples:
+            return 0.0, state.samples
+        max_correction = max(0.0, self.config.source_bias_max_correction)
+        return clamp(state.correction, -max_correction, max_correction), state.samples
 
     @staticmethod
     def error(wave: GunWave, actual_guess_factor: float) -> tuple[float, float, float] | None:

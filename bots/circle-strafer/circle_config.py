@@ -1,0 +1,143 @@
+import os
+from dataclasses import dataclass
+
+from bot_core.energy import EnergyDropConfig, FireGate, FireGateConfig
+from bot_core.gun import LINEAR_VARIANT_MODES
+from bot_core.radar import RadarLockConfig
+
+
+CIRCLE_SELECTABLE_GUN_MODES = frozenset({"linear", "traditional_gf", "dynamic_cluster"})
+CIRCLE_FORCE_GUN_MODES = CIRCLE_SELECTABLE_GUN_MODES | LINEAR_VARIANT_MODES | frozenset({"displacement"})
+
+
+def _forced_gun_mode() -> str | None:
+    mode = os.environ.get("ROBOCODE_CIRCLE_GUN_MODE", "").strip()
+    return mode if mode in CIRCLE_FORCE_GUN_MODES else None
+
+
+def _env_flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return default
+
+
+@dataclass(frozen=True)
+class GunPolicy:
+    selectable_modes: frozenset[str] = CIRCLE_SELECTABLE_GUN_MODES
+    forced_mode: str | None = _forced_gun_mode()
+    eval_waves_enabled: bool = _env_flag("ROBOCODE_CIRCLE_GUN_EVAL")
+    eval_wave_min_interval: int = _env_int("ROBOCODE_CIRCLE_GUN_EVAL_INTERVAL", 8)
+    knn_min_samples: int = 60
+    min_visits: int = 75
+    switch_margin: float = 0.08
+    min_switch_score: float = 0.30
+    traditional_gf_min_switch_visits: int = 260
+    traditional_gf_min_switch_score: float = 0.42
+    switch_diagnostics_interval: int = 36
+
+
+@dataclass(frozen=True)
+class FirePolicy:
+    alignment_degrees: float = 8
+    memory_turns: int = 5
+    enemy_fire_min_drop: float = 0.1
+    enemy_fire_max_drop: float = 3.0
+    enemy_fire_scan_gap_turns: int = 4
+    enemy_fire_close_collision_distance: float = 75
+    enemy_fire_close_collision_max_drop: float = 0.8
+    low_energy_hold: float = 18
+    critical_energy_hold: float = 10
+    energy_margin: float = 6
+    low_energy_max_distance: float = 180
+    far_alignment_distance: float = 420
+    far_alignment_degrees: float = 5
+
+
+@dataclass(frozen=True)
+class TargetPolicy:
+    memory_turns: int = 30
+    current_target_bonus: float = 190
+    switch_margin: float = 110
+    force_switch_target_age: int = 12
+
+
+@dataclass(frozen=True)
+class RadarPolicy:
+    search_rate: float = -16
+    lock_rate: float = 24
+    reacquire_rate: float = 24
+    rescan_interval: int = 36
+    rescan_turns: int = 5
+    reacquire_min_error: float = 8
+    lock_overscan: float = 12
+    reacquire_overscan: float = 22
+
+
+@dataclass(frozen=True)
+class MovementPolicy:
+    field_margin: float = 24
+    wall_margin: float = 110
+    wall_escape_speed: float = 6
+    orbit_speed: float = 8
+    orbit_turn_rate: float = 6
+    flattener_strafe_offset: float = 92
+    separation_distance: float = 170
+    panic_distance: float = 115
+    collision_escape_turns: int = 20
+    wall_escape_turns: int = 18
+    collision_escape_speed: float = 4
+    collision_escape_offset: float = 85
+    collision_escape_turn_limit: float = 20
+
+
+GUN_POLICY = GunPolicy()
+FIRE_POLICY = FirePolicy()
+TARGET_POLICY = TargetPolicy()
+RADAR_POLICY = RadarPolicy()
+MOVEMENT_POLICY = MovementPolicy()
+
+
+def build_radar_config() -> RadarLockConfig:
+    return RadarLockConfig(
+        search_rate=RADAR_POLICY.search_rate,
+        lock_rate=RADAR_POLICY.lock_rate,
+        reacquire_rate=RADAR_POLICY.reacquire_rate,
+        rescan_interval=RADAR_POLICY.rescan_interval,
+        rescan_turns=RADAR_POLICY.rescan_turns,
+        reacquire_min_error=RADAR_POLICY.reacquire_min_error,
+        lock_overscan=RADAR_POLICY.lock_overscan,
+        reacquire_overscan=RADAR_POLICY.reacquire_overscan,
+    )
+
+
+def build_energy_drop_config() -> EnergyDropConfig:
+    return EnergyDropConfig(
+        min_fire_power=FIRE_POLICY.enemy_fire_min_drop,
+        max_fire_power=FIRE_POLICY.enemy_fire_max_drop,
+        max_scan_gap=FIRE_POLICY.enemy_fire_scan_gap_turns,
+        close_collision_distance=FIRE_POLICY.enemy_fire_close_collision_distance,
+        close_collision_max_drop=FIRE_POLICY.enemy_fire_close_collision_max_drop,
+    )
+
+
+def build_fire_gate() -> FireGate:
+    return FireGate(
+        FireGateConfig(
+            fire_memory_turns=FIRE_POLICY.memory_turns,
+            alignment_degrees=FIRE_POLICY.alignment_degrees,
+            energy_margin=FIRE_POLICY.energy_margin,
+            critical_energy_hold=FIRE_POLICY.critical_energy_hold,
+            low_energy_hold=FIRE_POLICY.low_energy_hold,
+            low_energy_max_distance=FIRE_POLICY.low_energy_max_distance,
+            far_alignment_distance=FIRE_POLICY.far_alignment_distance,
+            far_alignment_degrees=FIRE_POLICY.far_alignment_degrees,
+        )
+    )

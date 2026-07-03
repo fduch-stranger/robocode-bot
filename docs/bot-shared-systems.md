@@ -113,6 +113,14 @@ segment can blend fixed distance, lateral speed, and wall-margin context before
 falling back to the global profile. Profile interpretation defaults to the
 strongest histogram bin, but bots can opt into a density-supported peak selector
 for experiments that should prefer broader local mass over isolated spikes.
+Bots can also apply source-specific centering factors to pull selected
+guess-factors toward head-on for lower-trust profile sources without changing
+the underlying histogram samples.
+Traditional GF can additionally learn a bounded per-target, per-source residual
+between the pre-bias selected GF after source centering and the resolved actual
+GF. This source-bias correction is applied after enough visits for that source
+and is reported in telemetry as a separate correction from the raw selected
+profile GF.
 Track telemetry can include
 `traditional_gf_*` fields showing global/segment peaks, profile weights,
 selected GF, blend, and source.
@@ -122,10 +130,11 @@ samples are sparse.
 
 Bots may optionally apply a source-trust penalty to `traditional_gf` selection.
 This lets a bot require more evidence from low-context global profiles while
-trusting exact or coarse segment profiles normally. Shared defaults leave this
-disabled unless a bot config opts in. Selector thresholds and source penalties
-are supplied as per-mode policy data, so the selector does not need concrete gun
-classes or mode-specific threshold branches.
+trusting exact or coarse segment profiles normally. Shared defaults leave source
+centering, source-bias correction, and source penalties neutral unless a bot
+config opts in. Selector thresholds and source penalties are supplied as
+per-mode policy data, so the selector does not need concrete gun classes or
+mode-specific threshold branches.
 `tools/gun_eval_summary.py` groups Traditional GF real hit rate, model
 diagnostics, and GF error by profile source so source-trust changes can be
 validated before changing selector policy.

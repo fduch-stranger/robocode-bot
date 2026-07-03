@@ -128,7 +128,7 @@ learning state. The package docs include behavior diagrams and ownership notes:
 | [`LinearGun`](../bots/bot_core/gun/guns/linear/README.md) | Stateless linear prediction variants using `bot_core.gun.prediction.LinearPrediction` diagnostics. |
 | [`DisplacementGun`](../bots/bot_core/gun/guns/displacement/README.md) | Reads shared `TargetHistoryStore` to average matching historical displacement samples. |
 | [`DynamicClusterGun`](../bots/bot_core/gun/guns/dynamic_cluster/README.md) | Owns `RollingKnnBuffer`, sample sequencing, neighbor selection, decayed weighting, bandwidth scoring, and warmup blending. |
-| [`TraditionalGfGun`](../bots/bot_core/gun/guns/traditional_gf/README.md) | Owns global, exact-segment, and coarse-segment GF profiles, peak selection, centering, and diagnostics. |
+| [`TraditionalGfGun`](../bots/bot_core/gun/guns/traditional_gf/README.md) | Owns global, exact-segment, and coarse-segment GF profiles, peak selection, source centering, source-bias correction, and diagnostics. |
 | [`AntiSurferGun`](../bots/bot_core/gun/guns/anti_surfer/README.md) | Owns anti-surfer profile bins and valley selection. |
 
 Start from the [gun component package overview](../bots/bot_core/gun/guns/README.md)

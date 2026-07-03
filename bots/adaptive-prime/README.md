@@ -133,11 +133,13 @@ less linear-biased than the shared defaults:
 - `traditional_gf` uses exact and coarse segmented guess-factor profile
   blending with global fallback so the actual bearing can track current
   movement context without waiting too long for exact-segment samples. Coarse
-  min/full `8/36` is the shared traditional-GF default; Adaptive keeps env
-  knobs for isolated sweeps.
+  min/full `12/48` delays coarse fallback slightly versus the shared default.
 - `traditional_gf` selection applies source-aware trust penalties: global
   profile shots need a higher adjusted score, blend penalties shrink as segment
   weight grows, and exact/coarse segment sources are trusted normally.
+- `traditional_gf` uses density-supported peak selection and source-specific
+  centering for lower-trust global/coarse sources to reduce sparse-profile
+  over-aiming.
 - Melee keeps segmented gun stats and live `traditional_gf` bearings disabled;
   `traditional_gf` candidates can appear as unavailable in switch diagnostics.
 - Adaptive's normal selectable gun modes are `linear`, `traditional_gf`, and
@@ -166,10 +168,21 @@ For `traditional_gf` modeling experiments, Adaptive also accepts:
 ```sh
 ROBOCODE_ADAPTIVE_TRADITIONAL_GF_SMOOTHING_BINS=1.0 \
 ROBOCODE_ADAPTIVE_TRADITIONAL_GF_DECAY=0.975 \
+ROBOCODE_ADAPTIVE_TRADITIONAL_GF_MIN_SAMPLES=12 \
 ROBOCODE_ADAPTIVE_TRADITIONAL_GF_CENTERING_FACTOR=1.0 \
-ROBOCODE_ADAPTIVE_TRADITIONAL_GF_COARSE_SEGMENT_MIN_SAMPLES=8 \
-ROBOCODE_ADAPTIVE_TRADITIONAL_GF_COARSE_SEGMENT_FULL_WEIGHT_SAMPLES=36 \
-ROBOCODE_ADAPTIVE_TRADITIONAL_GF_PEAK_SELECTION=max \
+ROBOCODE_ADAPTIVE_TRADITIONAL_GF_GLOBAL_SOURCE_CENTERING_FACTOR=0.8 \
+ROBOCODE_ADAPTIVE_TRADITIONAL_GF_BLEND_SOURCE_CENTERING_FACTOR=1.0 \
+ROBOCODE_ADAPTIVE_TRADITIONAL_GF_SEGMENT_SOURCE_CENTERING_FACTOR=1.0 \
+ROBOCODE_ADAPTIVE_TRADITIONAL_GF_COARSE_SOURCE_CENTERING_FACTOR=0.7 \
+ROBOCODE_ADAPTIVE_TRADITIONAL_GF_COARSE_BLEND_SOURCE_CENTERING_FACTOR=0.8 \
+ROBOCODE_ADAPTIVE_TRADITIONAL_GF_SOURCE_BIAS_MIN_SAMPLES=12 \
+ROBOCODE_ADAPTIVE_TRADITIONAL_GF_SOURCE_BIAS_LEARNING_RATE=0.08 \
+ROBOCODE_ADAPTIVE_TRADITIONAL_GF_SOURCE_BIAS_MAX_CORRECTION=0.0 \
+ROBOCODE_ADAPTIVE_TRADITIONAL_GF_SEGMENT_MIN_SAMPLES=12 \
+ROBOCODE_ADAPTIVE_TRADITIONAL_GF_SEGMENT_FULL_WEIGHT_SAMPLES=48 \
+ROBOCODE_ADAPTIVE_TRADITIONAL_GF_COARSE_SEGMENT_MIN_SAMPLES=12 \
+ROBOCODE_ADAPTIVE_TRADITIONAL_GF_COARSE_SEGMENT_FULL_WEIGHT_SAMPLES=48 \
+ROBOCODE_ADAPTIVE_TRADITIONAL_GF_PEAK_SELECTION=density \
 ROBOCODE_ADAPTIVE_TRADITIONAL_GF_PEAK_SUPPORT_RADIUS=1 \
 ROBOCODE_ADAPTIVE_TRADITIONAL_GF_GLOBAL_SOURCE_PENALTY=0.06 \
 ROBOCODE_ADAPTIVE_TRADITIONAL_GF_BLEND_SOURCE_PENALTY=0.035 \
@@ -179,8 +192,14 @@ scripts/run-battle.sh --telemetry --rounds 12 bots/adaptive-prime --legacy basic
 ```
 
 Use these as telemetry sweep knobs before changing committed defaults. The
-coarse key is fixed in code to distance, lateral speed, and wall margin. Peak
-selection is `max` by default; `density` chooses a neighborhood-supported peak using
+coarse key is fixed in code to distance, lateral speed, and wall margin.
+Source centering factors multiply `ROBOCODE_ADAPTIVE_TRADITIONAL_GF_CENTERING_FACTOR`
+for the selected profile source, so they can pull sparse/global profile peaks
+toward head-on without changing trusted segment sources. Source-bias correction
+learns a bounded per-target, per-source residual from resolved GF visits and
+applies it after enough samples. Peak selection uses `density` by default;
+`max` remains available for strongest-bin comparisons. `density` chooses a
+neighborhood-supported peak using
 `ROBOCODE_ADAPTIVE_TRADITIONAL_GF_PEAK_SUPPORT_RADIUS`.
 
 For neutral gun-evaluation telemetry, set:

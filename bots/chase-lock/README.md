@@ -101,7 +101,8 @@ mid/far:
 
 ## Gun Policy
 
-Chase Lock uses a bot-specific `GunPolicy` surface with sticky shared-default
+Chase Lock keeps bot-specific `GunPolicy`, fire, target, radar, and movement
+surfaces in `chase_config.py`. Its gun policy uses sticky shared-default
 thresholds plus a narrower `traditional_gf` activation gate. It live-selects
 `linear`, `traditional_gf`, and `dynamic_cluster` in 1v1. Melee keeps segmented
 gun stats and live `traditional_gf` bearings disabled, so `traditional_gf`

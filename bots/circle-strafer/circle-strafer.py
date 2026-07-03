@@ -1,6 +1,4 @@
 import math
-import os
-from dataclasses import dataclass
 
 from robocode_tank_royale.bot_api import Bot, BotInfo, Color
 from robocode_tank_royale.bot_api.events import (
@@ -13,21 +11,27 @@ from robocode_tank_royale.bot_api.events import (
     ScannedBotEvent,
 )
 
+from circle_config import (
+    FIRE_POLICY,
+    GUN_POLICY,
+    MOVEMENT_POLICY,
+    RADAR_POLICY,
+    TARGET_POLICY,
+    build_energy_drop_config,
+    build_fire_gate,
+    build_radar_config,
+)
 from bot_core.debug import DebugLogger, FiredBulletTracker
 from bot_core.energy import (
     EnemyEnergyCorrectionLedger,
     EnemyFireDetector,
     EnemyFirePowerPredictor,
-    EnergyDropConfig,
-    FireGate,
-    FireGateConfig,
 )
 from bot_core.gun import (
     AimSolution,
     GunScoringConfig,
     GunSelectorConfig,
     GunSystemConfig,
-    LINEAR_VARIANT_MODES,
     TargetMotion,
     VirtualGunSystem,
     should_log_switch_decision,
@@ -37,7 +41,7 @@ from bot_core.gun.guns.dynamic_cluster.config import DynamicClusterGunConfig
 from bot_core.gun.guns.traditional_gf.config import TraditionalGfGunConfig
 from bot_core.movement import MinimumRiskMovement, MovementCommand, MovementFlattener, MovementFlatteningConfig
 from bot_core.motion import OwnMotionTracker
-from bot_core.radar import RadarLockConfig, lock_priority_radar
+from bot_core.radar import lock_priority_radar
 from bot_core.geometry.angles import body_bearing_to
 from bot_core.geometry.numeric import clamp
 from bot_core.geometry.position import distance_to
@@ -50,110 +54,6 @@ from bot_core.telemetry.fire import (
 )
 from bot_core.telemetry.movement import MovementTelemetry
 from bot_core.telemetry.targeting import TargetingTelemetry
-
-
-FIRE_ALIGNMENT_DEGREES = 8
-CIRCLE_SELECTABLE_GUN_MODES = frozenset({"linear", "traditional_gf", "dynamic_cluster"})
-CIRCLE_FORCE_GUN_MODES = CIRCLE_SELECTABLE_GUN_MODES | LINEAR_VARIANT_MODES | frozenset({"displacement"})
-
-
-def _forced_gun_mode() -> str | None:
-    mode = os.environ.get("ROBOCODE_CIRCLE_GUN_MODE", "").strip()
-    return mode if mode in CIRCLE_FORCE_GUN_MODES else None
-
-
-def _env_flag(name: str) -> bool:
-    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _env_int(name: str, default: int) -> int:
-    raw = os.environ.get(name, "").strip()
-    if not raw:
-        return default
-    try:
-        return max(1, int(raw))
-    except ValueError:
-        return default
-
-
-@dataclass(frozen=True)
-class GunPolicy:
-    selectable_modes: frozenset[str] = CIRCLE_SELECTABLE_GUN_MODES
-    forced_mode: str | None = _forced_gun_mode()
-    eval_waves_enabled: bool = _env_flag("ROBOCODE_CIRCLE_GUN_EVAL")
-    eval_wave_min_interval: int = _env_int("ROBOCODE_CIRCLE_GUN_EVAL_INTERVAL", 8)
-    knn_min_samples: int = 60
-    min_visits: int = 75
-    switch_margin: float = 0.08
-    min_switch_score: float = 0.30
-    traditional_gf_min_switch_visits: int = 260
-    traditional_gf_min_switch_score: float = 0.42
-    switch_diagnostics_interval: int = 36
-
-
-GUN_POLICY = GunPolicy()
-TARGET_MEMORY_TURNS = 30
-FIRE_MEMORY_TURNS = 5
-CURRENT_TARGET_BONUS = 190
-TARGET_SWITCH_MARGIN = 110
-FORCE_SWITCH_TARGET_AGE = 12
-ENEMY_FIRE_MIN_DROP = 0.1
-ENEMY_FIRE_MAX_DROP = 3.0
-ENEMY_FIRE_SCAN_GAP_TURNS = 4
-ENEMY_FIRE_CLOSE_COLLISION_DISTANCE = 75
-ENEMY_FIRE_CLOSE_COLLISION_MAX_DROP = 0.8
-LOW_ENERGY_HOLD = 18
-CRITICAL_ENERGY_HOLD = 10
-FIELD_MARGIN = 24
-WALL_MARGIN = 110
-WALL_ESCAPE_SPEED = 6
-ORBIT_SPEED = 8
-ORBIT_TURN_RATE = 6
-FLATTENER_STRAFE_OFFSET = 92
-SEPARATION_DISTANCE = 170
-PANIC_DISTANCE = 115
-COLLISION_ESCAPE_TURNS = 20
-WALL_ESCAPE_TURNS = 18
-COLLISION_ESCAPE_SPEED = 4
-COLLISION_ESCAPE_OFFSET = 85
-COLLISION_ESCAPE_TURN_LIMIT = 20
-RADAR_SEARCH_RATE = -16
-RADAR_LOCK_RATE = 24
-RADAR_REACQUIRE_RATE = 24
-RADAR_RESCAN_INTERVAL = 36
-RADAR_RESCAN_TURNS = 5
-RADAR_REACQUIRE_MIN_ERROR = 8
-RADAR_LOCK_OVERSCAN = 12
-RADAR_REACQUIRE_OVERSCAN = 22
-RADAR_CONFIG = RadarLockConfig(
-    search_rate=RADAR_SEARCH_RATE,
-    lock_rate=RADAR_LOCK_RATE,
-    reacquire_rate=RADAR_REACQUIRE_RATE,
-    rescan_interval=RADAR_RESCAN_INTERVAL,
-    rescan_turns=RADAR_RESCAN_TURNS,
-    reacquire_min_error=RADAR_REACQUIRE_MIN_ERROR,
-    lock_overscan=RADAR_LOCK_OVERSCAN,
-    reacquire_overscan=RADAR_REACQUIRE_OVERSCAN,
-)
-ENERGY_DROP_CONFIG = EnergyDropConfig(
-    min_fire_power=ENEMY_FIRE_MIN_DROP,
-    max_fire_power=ENEMY_FIRE_MAX_DROP,
-    max_scan_gap=ENEMY_FIRE_SCAN_GAP_TURNS,
-    close_collision_distance=ENEMY_FIRE_CLOSE_COLLISION_DISTANCE,
-    close_collision_max_drop=ENEMY_FIRE_CLOSE_COLLISION_MAX_DROP,
-)
-FIRE_GATE = FireGate(
-    FireGateConfig(
-        fire_memory_turns=FIRE_MEMORY_TURNS,
-        alignment_degrees=FIRE_ALIGNMENT_DEGREES,
-        energy_margin=6,
-        critical_energy_hold=CRITICAL_ENERGY_HOLD,
-        low_energy_hold=LOW_ENERGY_HOLD,
-        low_energy_max_distance=180,
-        far_alignment_distance=420,
-        far_alignment_degrees=5,
-    )
-)
 
 
 class CircleStrafer(Bot):
@@ -178,8 +78,11 @@ class CircleStrafer(Bot):
         self._last_turn_number = -1
         self._enemy_energy_corrections = EnemyEnergyCorrectionLedger()
         self._enemy_fire_power = EnemyFirePowerPredictor()
+        self._energy_drop_config = build_energy_drop_config()
+        self._fire_gate = build_fire_gate()
+        self._radar_config = build_radar_config()
         self._enemy_fire_detector = EnemyFireDetector(
-            ENERGY_DROP_CONFIG,
+            self._energy_drop_config,
             self._enemy_energy_corrections,
             fire_power=self._enemy_fire_power,
         )
@@ -249,7 +152,7 @@ class CircleStrafer(Bot):
     def _move(self) -> None:
         if self._near_wall() or self.turn_number <= self._wall_escape_until_turn:
             center_bearing = body_bearing_to(self, self.arena_width / 2, self.arena_height / 2)
-            self.target_speed = WALL_ESCAPE_SPEED
+            self.target_speed = MOVEMENT_POLICY.wall_escape_speed
             self.turn_rate = clamp(center_bearing, -10, 10)
             self._movement_telemetry.sample_wall_avoid(self.x, self.y, center_bearing, self._move_direction)
             return
@@ -258,17 +161,17 @@ class CircleStrafer(Bot):
         if close_target is not None:
             distance = distance_to(self, close_target.x, close_target.y)
             escaping_collision = self.turn_number <= self._collision_escape_until_turn
-            if escaping_collision or distance < SEPARATION_DISTANCE:
+            if escaping_collision or distance < MOVEMENT_POLICY.separation_distance:
                 away_bearing = body_bearing_to(
                     self,
                     self.x - (close_target.x - self.x),
                     self.y - (close_target.y - self.y),
                 )
-                lateral_offset = COLLISION_ESCAPE_OFFSET if escaping_collision else (
-                    25 if distance < PANIC_DISTANCE else 55
+                lateral_offset = MOVEMENT_POLICY.collision_escape_offset if escaping_collision else (
+                    25 if distance < MOVEMENT_POLICY.panic_distance else 55
                 )
-                turn_limit = COLLISION_ESCAPE_TURN_LIMIT if escaping_collision else 10
-                self.target_speed = COLLISION_ESCAPE_SPEED if escaping_collision else ORBIT_SPEED
+                turn_limit = MOVEMENT_POLICY.collision_escape_turn_limit if escaping_collision else 10
+                self.target_speed = MOVEMENT_POLICY.collision_escape_speed if escaping_collision else MOVEMENT_POLICY.orbit_speed
                 self.turn_rate = clamp(
                     away_bearing + lateral_offset * self._move_direction,
                     -turn_limit,
@@ -291,7 +194,7 @@ class CircleStrafer(Bot):
             if focus_target is not None:
                 decision = self._minimum_risk.choose(self, list(self._targets.values()), focus_target)
                 if decision is not None:
-                    turn, speed = self._drive_to_destination(decision.x, decision.y, ORBIT_SPEED)
+                    turn, speed = self._drive_to_destination(decision.x, decision.y, MOVEMENT_POLICY.orbit_speed)
                     command = MovementCommand("minimum_risk", turn, speed)
                     command.apply(self)
                     self._movement_telemetry.sample_minimum_risk(
@@ -302,16 +205,16 @@ class CircleStrafer(Bot):
                     )
                     return
 
-        self.target_speed = ORBIT_SPEED * self._move_direction
+        self.target_speed = MOVEMENT_POLICY.orbit_speed * self._move_direction
         evade_boost = 4 if self.turn_number <= self._evade_until_turn else 0
-        self.turn_rate = (ORBIT_TURN_RATE + evade_boost) * self._move_direction
+        self.turn_rate = (MOVEMENT_POLICY.orbit_turn_rate + evade_boost) * self._move_direction
 
     def _near_wall(self) -> bool:
         return (
-            self.x < WALL_MARGIN
-            or self.x > self.arena_width - WALL_MARGIN
-            or self.y < WALL_MARGIN
-            or self.y > self.arena_height - WALL_MARGIN
+            self.x < MOVEMENT_POLICY.wall_margin
+            or self.x > self.arena_width - MOVEMENT_POLICY.wall_margin
+            or self.y < MOVEMENT_POLICY.wall_margin
+            or self.y > self.arena_height - MOVEMENT_POLICY.wall_margin
         )
 
     def on_scanned_bot(self, event: ScannedBotEvent) -> None:
@@ -397,7 +300,7 @@ class CircleStrafer(Bot):
         target = self._select_target()
         if target is None:
             self.gun_turn_rate = 0
-            self.radar_turn_rate = RADAR_SEARCH_RATE
+            self.radar_turn_rate = RADAR_POLICY.search_rate
             self._targeting_telemetry.sample_search(known_targets=0)
             return
 
@@ -413,7 +316,7 @@ class CircleStrafer(Bot):
             distance,
             firepower,
             self._target_motion(target),
-            FIELD_MARGIN,
+            MOVEMENT_POLICY.field_margin,
             disabled_modes=frozenset() if use_segmented_gun_stats else frozenset({"traditional_gf"}),
             allow_segmented_stats=use_segmented_gun_stats,
         )
@@ -425,8 +328,8 @@ class CircleStrafer(Bot):
             self,
             self._targets.values(),
             target,
-            FIRE_MEMORY_TURNS,
-            RADAR_CONFIG,
+            FIRE_POLICY.memory_turns,
+            self._radar_config,
         )
         age = self.turn_number - target.seen_turn
 
@@ -476,9 +379,9 @@ class CircleStrafer(Bot):
         flattening = self._movement.choose_direction(
             self,
             body_bearing,
-            FLATTENER_STRAFE_OFFSET,
-            ORBIT_SPEED,
-            FIELD_MARGIN,
+            MOVEMENT_POLICY.flattener_strafe_offset,
+            MOVEMENT_POLICY.orbit_speed,
+            MOVEMENT_POLICY.field_margin,
             target.bot_id,
             distance,
             self._move_direction,
@@ -493,7 +396,7 @@ class CircleStrafer(Bot):
         self._movement_telemetry.record_flattening(target.bot_id, flattening, distance)
 
     def _firepower_for(self, distance: float) -> float:
-        if self.energy <= LOW_ENERGY_HOLD:
+        if self.energy <= FIRE_POLICY.low_energy_hold:
             return 0.8 if distance < 180 else 0.6
         if distance < 170:
             return 1.8
@@ -502,14 +405,14 @@ class CircleStrafer(Bot):
         return 0.8
 
     def _can_fire(self, age: int, distance: float, gun_bearing: float, firepower: float) -> tuple[bool, str]:
-        decision = FIRE_GATE.decide(age, distance, gun_bearing, firepower, self.energy)
+        decision = self._fire_gate.decide(age, distance, gun_bearing, firepower, self.energy)
         return decision.can_fire, decision.reason
 
     def _forget_stale_targets(self) -> None:
         stale_ids = [
             bot_id
             for bot_id, target in self._targets.items()
-            if self.turn_number - target.seen_turn > TARGET_MEMORY_TURNS
+            if self.turn_number - target.seen_turn > TARGET_POLICY.memory_turns
         ]
         for bot_id in stale_ids:
             self._log("target.stale", bot_id=bot_id)
@@ -562,10 +465,10 @@ class CircleStrafer(Bot):
         target = candidate
         current = self._targets.get(previous_id) if previous_id is not None else None
         current_age = self.turn_number - current.seen_turn if current is not None else 999
-        if current is not None and candidate.bot_id != current.bot_id and current_age <= FORCE_SWITCH_TARGET_AGE:
+        if current is not None and candidate.bot_id != current.bot_id and current_age <= TARGET_POLICY.force_switch_target_age:
             candidate_score = self._target_score(candidate)
             current_score = self._target_score(current)
-            if candidate_score + TARGET_SWITCH_MARGIN >= current_score:
+            if candidate_score + TARGET_POLICY.switch_margin >= current_score:
                 target = current
 
         self._target_id = target.bot_id
@@ -592,7 +495,7 @@ class CircleStrafer(Bot):
     def _target_score(self, target: TargetSnapshot) -> float:
         distance = distance_to(self, target.x, target.y)
         age = self.turn_number - target.seen_turn
-        current_bonus = CURRENT_TARGET_BONUS if target.bot_id == self._target_id else 0
+        current_bonus = TARGET_POLICY.current_target_bonus if target.bot_id == self._target_id else 0
         return distance * 0.5 + target.energy * 1.7 + age * 85 - current_bonus
 
     def _record_enemy_energy_correction(self, target_id: int, correction: float, reason: str) -> None:
@@ -630,7 +533,7 @@ class CircleStrafer(Bot):
         if self.turn_number - self._last_wall_hit_turn > 8:
             self._move_direction *= -1
         self._last_wall_hit_turn = self.turn_number
-        self._wall_escape_until_turn = self.turn_number + WALL_ESCAPE_TURNS
+        self._wall_escape_until_turn = self.turn_number + MOVEMENT_POLICY.wall_escape_turns
         self.set_turn_left(60)
         self._log(
             "hit.wall",
@@ -644,7 +547,7 @@ class CircleStrafer(Bot):
             self.turn_number,
             self._targets.get(event.victim_id),
         )
-        self._collision_escape_until_turn = self.turn_number + COLLISION_ESCAPE_TURNS
+        self._collision_escape_until_turn = self.turn_number + MOVEMENT_POLICY.collision_escape_turns
         if self.turn_number - self._last_collision_turn > 8:
             self._move_direction *= -1
         self._last_collision_turn = self.turn_number

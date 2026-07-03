@@ -9,6 +9,14 @@ class TraditionalGfGunConfig:
     smoothing_bins: float = 1.25
     decay: float = 0.985
     centering_factor: float = 1.0
+    global_source_centering_factor: float = 1.0
+    blend_source_centering_factor: float = 1.0
+    segment_source_centering_factor: float = 1.0
+    coarse_source_centering_factor: float = 1.0
+    coarse_blend_source_centering_factor: float = 1.0
+    source_bias_min_samples: int = 12
+    source_bias_learning_rate: float = 0.08
+    source_bias_max_correction: float = 0.0
     segment_min_samples: int = 0
     segment_full_weight_samples: int = 80
     coarse_segment_min_samples: int = 8
