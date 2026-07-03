@@ -1,7 +1,7 @@
 import unittest
 
 from bot_core.energy import EnergyDropSignal, EnemyFirePowerPrediction, FireDecision, GunHeatState
-from bot_core.gun import AimSolution, GunSwitchCandidate, WaveVisit
+from bot_core.gun import AimSolution, FireContext, GunSwitchCandidate, WaveVisit
 from bot_core.gun.guns.traditional_gf.diagnostics import TraditionalGfDiagnostics
 from bot_core.movement import FlatteningDecision, GoToSurfDecision, MinimumRiskDecision, MovementCommand, MovementProfileVisit
 from bot_core.radar import RadarCommand
@@ -368,6 +368,100 @@ class TelemetryEmitterTest(unittest.TestCase):
         self.assertTrue(fields["linear_wall_aware_wall_hit"])
         self.assertEqual(12, fields["linear_wall_aware_ticks"])
         self.assertEqual(0.0, fields["linear_wall_aware_final_speed"])
+
+    def test_fire_telemetry_records_shared_fire_context_diagnostics(self) -> None:
+        sink = RecordingSink()
+
+        FireTelemetry(sink).record_wave_visit(
+            WaveVisit(
+                target_id=1,
+                guess_factor=0.25,
+                samples=17,
+                traveled=88.88,
+                distance=199.99,
+                selected_gun="dynamic_cluster",
+                virtual_scores={"dynamic_cluster": 0.5},
+                gun_scores={"dynamic_cluster": "0.50/1"},
+                fire_context=FireContext(
+                    movement_tags=frozenset({"surfer", "nonlinear_mover"}),
+                    bullet_flight_time=14.285,
+                    lateral_direction=-1,
+                    lateral_speed_signed=-4.2,
+                    lateral_direction_confidence=0.525,
+                    wall_margin=0.25,
+                    wall_escape_balance=-0.333,
+                    positive_escape_angle=0.4,
+                    negative_escape_angle=0.8,
+                    distance_bucket=1,
+                    firepower_bucket=2,
+                ),
+                gun_diagnostics={
+                    "dynamic_cluster": {
+                        "neighbor_count": 3,
+                        "avg_neighbor_distance": 0.1234,
+                        "tag_match_ratio": 0.6666,
+                        "avg_flight_time_delta": 0.1111,
+                        "avg_wall_escape_delta": 0.2222,
+                        "avg_lateral_confidence": 0.7777,
+                        "density_score": 4.4444,
+                        "selected_guess_factor": 0.3333,
+                        "effective_bandwidth": 0.2222,
+                        "best_bin_guess_factor": 0.2,
+                        "peak_margin": 1.2345,
+                        "neighbor_agreement": 0.8888,
+                        "aim_confidence": 0.4567,
+                        "best_peak_gf": 0.2,
+                        "best_peak_score": 4.4444,
+                        "second_peak_gf": -0.2,
+                        "second_peak_score": 3.3333,
+                        "peak_separation": 0.4,
+                        "peak_score_ratio": 0.75,
+                        "ambiguous_peak": False,
+                    },
+                    "anti_surfer": {
+                        "context_tags": frozenset({"surfer"}),
+                        "surfer_relevance": 0.6,
+                        "wall_escape_balance": -0.333,
+                    },
+                    "displacement": {
+                        "context_tags": frozenset({"nonlinear_mover"}),
+                        "flight_time": 14.285,
+                        "wall_escape_balance": -0.333,
+                    },
+                    "linear": {
+                        "context_tags": frozenset({"short_flight_time"}),
+                        "short_flight_time": True,
+                        "flight_time": 14.285,
+                        "lateral_confidence": 0.525,
+                    },
+                    "traditional_gf": {
+                        "context_tags": frozenset({"surfer"}),
+                        "context_flight_time": 14.285,
+                        "context_wall_escape_balance": -0.333,
+                        "context_lateral_confidence": 0.525,
+                    },
+                },
+            )
+        )
+
+        fields = sink.only_record()[2]
+        self.assertEqual(["nonlinear_mover", "surfer"], fields["fire_context_tags"])
+        self.assertEqual(14.29, fields["fire_context_flight_time"])
+        self.assertEqual(-1, fields["fire_context_lateral_direction"])
+        self.assertEqual(-4.2, fields["fire_context_lateral_speed_signed"])
+        self.assertEqual(3, fields["dynamic_cluster_neighbor_count"])
+        self.assertEqual(0.667, fields["dynamic_cluster_tag_match_ratio"])
+        self.assertEqual(0.333, fields["dynamic_cluster_selected_guess_factor"])
+        self.assertEqual(0.222, fields["dynamic_cluster_effective_bandwidth"])
+        self.assertEqual(0.2, fields["dynamic_cluster_best_bin_guess_factor"])
+        self.assertEqual(1.234, fields["dynamic_cluster_peak_margin"])
+        self.assertEqual(0.889, fields["dynamic_cluster_neighbor_agreement"])
+        self.assertEqual(0.457, fields["dynamic_cluster_aim_confidence"])
+        self.assertFalse(fields["dynamic_cluster_ambiguous_peak"])
+        self.assertEqual(0.6, fields["anti_surfer_context_relevance"])
+        self.assertEqual(["nonlinear_mover"], fields["displacement_context_tags"])
+        self.assertTrue(fields["linear_context_short_flight_time"])
+        self.assertEqual(["surfer"], fields["traditional_gf_context_tags"])
 
     def test_energy_telemetry_records_drop_fire_and_heat_wave_events(self) -> None:
         sink = RecordingSink()

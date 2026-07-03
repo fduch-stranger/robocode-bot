@@ -2,6 +2,21 @@ from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
+class FireContext:
+    movement_tags: frozenset[str] = frozenset()
+    bullet_flight_time: float = 0.0
+    lateral_direction: int = 1
+    lateral_speed_signed: float = 0.0
+    lateral_direction_confidence: float = 0.0
+    wall_margin: float = 0.0
+    wall_escape_balance: float = 0.0
+    positive_escape_angle: float = 0.0
+    negative_escape_angle: float = 0.0
+    distance_bucket: int = 0
+    firepower_bucket: int = 0
+
+
+@dataclass(frozen=True)
 class TargetMotion:
     acceleration: float = 0.0
     velocity_change_age: int = 0
@@ -13,6 +28,7 @@ class GunSample:
     turn: int
     features: tuple[float, ...]
     guess_factor: float
+    fire_context: FireContext = field(default_factory=FireContext)
 
 
 @dataclass
@@ -32,6 +48,7 @@ class GunWave:
     aim_mode: str
     aim_guess_factor: float | None
     virtual_bearings: dict[str, float]
+    fire_context: FireContext = field(default_factory=FireContext)
     gun_metadata: dict[str, object] = field(default_factory=dict)
 
 
@@ -60,6 +77,7 @@ class AimSolution:
     features: tuple[float, ...]
     segment_key: tuple[int, ...]
     virtual_bearings: dict[str, float]
+    fire_context: FireContext = field(default_factory=FireContext)
     previous_mode: str | None = None
     mode_changed: bool = False
     switch_candidates: tuple["GunSwitchCandidate", ...] = ()
@@ -102,4 +120,5 @@ class WaveVisit:
     selected_gun: str
     virtual_scores: dict[str, float]
     gun_scores: dict[str, str]
+    fire_context: FireContext = field(default_factory=FireContext)
     gun_diagnostics: dict[str, object] = field(default_factory=dict)

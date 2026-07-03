@@ -100,16 +100,17 @@ Location: `bot_core.gun`
 | Structure | Purpose |
 | --- | --- |
 | `GunRuntimeConfig` | Composed runtime wiring used by bots. It contains system, selector, scoring, and component-factory inputs. |
-| `GunSample` | One learned target escape sample for KNN: target id, turn, feature vector, guess factor. |
-| `GunWave` | A simulated bullet wave for a fired shot or optional neutral evaluation opportunity. Used to score virtual guns when it reaches the target. Component metadata is carried generically in `gun_metadata`. |
+| `FireContext` | Shared fire-time tactical context: movement tags, bullet flight time, lateral direction/confidence, wall margin, wall-limited escape shape, and coarse distance/firepower buckets. |
+| `GunSample` | One learned target escape sample for KNN: target id, turn, feature vector, guess factor, and fire context. |
+| `GunWave` | A simulated bullet wave for a fired shot or optional neutral evaluation opportunity. Used to score virtual guns when it reaches the target. Fire context is stored directly, and component metadata is carried generically in `gun_metadata`. |
 | `GunStats` | Per-target/per-mode visits, hits, and rolling score. |
 | `GuessFactorProfile` | Component-local decayed histogram for profile guns. Traditional GF and anti-surfer keep separate profile types under their component packages. |
-| `AimSolution` | Output of aiming: predicted point, bearing error, selected mode, features, mode-change info, and component diagnostics keyed by mode. |
+| `AimSolution` | Output of aiming: predicted point, bearing error, selected mode, features, fire context, mode-change info, and component diagnostics keyed by mode. |
 | `GunModeTraits` | Generic gun labels used by the selector: role, family, phase, and context strengths. |
 | `GunSwitchCandidate` | Per-candidate selector diagnostic with adjusted/raw score, confidence/source penalties, trait/context bonus, visits, thresholds, margin, generic decision source, and rejection/selection reason. |
-| `WaveVisit` | Telemetry/learning result when a gun wave reaches the target, with component diagnostics keyed by mode. |
+| `WaveVisit` | Telemetry/learning result when a gun wave reaches the target, with fire context and component diagnostics keyed by mode. |
 | `RollingKnnBuffer` | Dynamic-cluster component memory for per-target bounded `GunSample` records. |
-| `AimContext` | Shared aiming input passed from the facade to concrete gun components. Includes bot/target state, firepower, normalized features, segment key, field margin, disabled mode set, and movement-history tags. |
+| `AimContext` | Shared aiming input passed from the facade to concrete gun components. Includes bot/target state, firepower, normalized features, fire context, segment key, field margin, disabled mode set, and movement-history tags. |
 | `GunBearing` | Concrete gun output: mode, absolute bearing, optional guess factor, optional decision context, and generic metadata. |
 | `GunVisit` | Resolved production/eval wave data passed to gun components. Production visits update learners; eval visits remain isolated. |
 | `GunRegistry` | Holds concrete gun components and gathers available bearings for the facade. |
@@ -290,7 +291,10 @@ penalties or promoting a coarse-key experiment.
 ### KNN Gun Memory
 
 `DynamicClusterGun` owns `RollingKnnBuffer`, which stores `GunSample` values
-per target.
+per target. Samples include the original normalized feature tuple and the
+fire-time `FireContext`; context-aware weighting can bias neighbor evidence
+toward similar movement tags, bullet flight time, wall-escape balance, and
+lateral-direction confidence without replacing the feature tuple.
 
 Memory limits:
 
@@ -310,7 +314,8 @@ flowchart LR
     B --> C["feature distance"]
     C --> D["nearest neighbors"]
     D --> E["kernel density over GF candidates"]
-    E --> F["best guess factor"]
+    E --> F["best density bin"]
+    F --> G["local peak centroid"]
 ```
 
 Feature distance is weighted normalized Euclidean distance over the feature
@@ -321,12 +326,17 @@ weights = (2.0, 1.2, 1.8, 1.3, 0.8, 0.7, 0.9)
 distance = sqrt(sum(weight_i * (left_i - right_i)^2))
 ```
 
-The selected dynamic-cluster guess factor is the candidate with highest kernel
-density:
+Dynamic-cluster scores density candidates with context- and recency-weighted
+neighbors:
 
 ```text
-score(candidate) = sum(weight * exp(-(candidate - sample_guess_factor)^2))
+score(candidate) = sum(weight * exp(-((candidate - sample_guess_factor) / effective_bandwidth)^2))
 ```
+
+The old best-bin center is retained in diagnostics. The selected guess factor
+is a local weighted centroid of neighbor samples around the best density bin,
+using an effective bandwidth adjusted by target hit width. Diagnostics report
+peak margin, neighbor agreement, confidence, and ambiguous secondary peaks.
 
 Samples can support decay through half-life weighting, but the current
 configuration leaves gun KNN decay disabled by default:

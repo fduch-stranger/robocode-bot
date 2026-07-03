@@ -5,10 +5,10 @@ from robocode_tank_royale.bot_api import Bot
 
 from bot_core.geometry.angles import absolute_bearing_between
 from bot_core.geometry.numeric import clamp
-from bot_core.geometry.waves import escape_angle_for_guess_factor
+from bot_core.geometry.waves import escape_angle_for_guess_factor, wall_limited_escape_angle
 from bot_core.gun.config import GunDecisionContext
-from bot_core.gun.models import GunWave, TargetMotion, TargetPosition
-from bot_core.gun.utils import lateral_direction
+from bot_core.gun.models import FireContext, GunWave, TargetMotion, TargetPosition
+from bot_core.gun.utils import bucket, lateral_direction
 from bot_core.physics import bullet_speed_for_power
 from bot_core.target_snapshot import TargetSnapshot
 
@@ -25,6 +25,7 @@ class AimContext:
     segment_key: tuple[int, ...]
     disabled_modes: frozenset[str] = frozenset()
     movement_tags: frozenset[str] = frozenset()
+    fire_context: FireContext = field(default_factory=FireContext)
 
 
 @dataclass(frozen=True)
@@ -189,11 +190,7 @@ def build_gun_features(
     motion: TargetMotion,
 ) -> tuple[float, ...]:
     absolute_bearing = math.radians(absolute_bearing_between(bot.x, bot.y, target.x, target.y))
-    heading = math.radians(target.direction)
-    velocity_x = math.cos(heading) * target.speed
-    velocity_y = math.sin(heading) * target.speed
-    lateral_velocity = velocity_x * -math.sin(absolute_bearing) + velocity_y * math.cos(absolute_bearing)
-    advancing_velocity = velocity_x * math.cos(absolute_bearing) + velocity_y * math.sin(absolute_bearing)
+    lateral_velocity, advancing_velocity = _target_velocity_components(target, absolute_bearing)
     wall_margin = min(
         target.x,
         bot.arena_width - target.x,
@@ -210,6 +207,47 @@ def build_gun_features(
         min(60, motion.velocity_change_age) / 60.0,
         wall_margin / arena_scale,
     )
+
+
+def build_fire_context(
+    bot: Bot,
+    target: TargetSnapshot,
+    distance: float,
+    firepower: float,
+    features: tuple[float, ...],
+    movement_tags: frozenset[str],
+) -> FireContext:
+    absolute_bearing_degrees = absolute_bearing_between(bot.x, bot.y, target.x, target.y)
+    absolute_bearing = math.radians(absolute_bearing_degrees)
+    lateral_velocity, _ = _target_velocity_components(target, absolute_bearing)
+    bullet_speed = bullet_speed_for_power(firepower)
+    direction = lateral_direction(target, absolute_bearing_degrees)
+    positive_escape_angle = wall_limited_escape_angle(bot, target, bullet_speed, direction)
+    negative_escape_angle = wall_limited_escape_angle(bot, target, bullet_speed, -direction)
+    escape_total = max(positive_escape_angle + negative_escape_angle, 1e-6)
+    _, _, _, _, _, _, wall_margin = features
+    return FireContext(
+        movement_tags=movement_tags,
+        bullet_flight_time=distance / max(bullet_speed, 1e-6),
+        lateral_direction=direction,
+        lateral_speed_signed=lateral_velocity,
+        lateral_direction_confidence=clamp(abs(lateral_velocity) / 8.0, 0.0, 1.0),
+        wall_margin=wall_margin,
+        wall_escape_balance=clamp((positive_escape_angle - negative_escape_angle) / escape_total, -1.0, 1.0),
+        positive_escape_angle=positive_escape_angle,
+        negative_escape_angle=negative_escape_angle,
+        distance_bucket=bucket(features[0], 0.30, 0.55),
+        firepower_bucket=bucket(features[1], 0.42, 0.62),
+    )
+
+
+def _target_velocity_components(target: TargetSnapshot, absolute_bearing: float) -> tuple[float, float]:
+    heading = math.radians(target.direction)
+    velocity_x = math.cos(heading) * target.speed
+    velocity_y = math.sin(heading) * target.speed
+    lateral_velocity = velocity_x * -math.sin(absolute_bearing) + velocity_y * math.cos(absolute_bearing)
+    advancing_velocity = velocity_x * math.cos(absolute_bearing) + velocity_y * math.sin(absolute_bearing)
+    return lateral_velocity, advancing_velocity
 
 
 def guess_factor_aim_bearing(

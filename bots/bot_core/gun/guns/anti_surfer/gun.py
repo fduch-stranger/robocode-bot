@@ -1,3 +1,4 @@
+from bot_core.gun.config import GunDecisionContext
 from bot_core.gun.context import AimContext, GunBearing, GunVisit, guess_factor_aim_bearing
 from bot_core.gun.guns.anti_surfer.config import AntiSurferGunConfig
 from bot_core.gun.guns.anti_surfer.profile import GuessFactorProfile
@@ -20,13 +21,56 @@ class AntiSurferGun:
             self.mode,
             guess_factor_aim_bearing(context.bot, context.target, context.firepower, guess_factor),
             guess_factor=guess_factor,
+            decision_context=GunDecisionContext(
+                self.mode,
+                {
+                    "context_tags": self._context_tags(context),
+                    "surfer_relevance": self._surfer_relevance(context),
+                },
+            ),
+            metadata={
+                self.mode: {
+                    "context_tags": self._context_tags(context),
+                    "surfer_relevance": self._surfer_relevance(context),
+                    "wall_escape_balance": context.fire_context.wall_escape_balance,
+                }
+            },
         )
 
     def observe_visit(self, visit: GunVisit) -> None:
         self.record(visit.wave.target_id, visit.guess_factor)
 
     def visit_diagnostics(self, visit: GunVisit) -> dict[str, object]:
-        return {}
+        context = visit.wave.fire_context
+        return {
+            "context_tags": context.movement_tags,
+            "surfer_relevance": self._surfer_relevance_from_tags(context.movement_tags, context.wall_escape_balance),
+            "wall_escape_balance": context.wall_escape_balance,
+        }
+
+    @staticmethod
+    def _context_tags(context: AimContext) -> frozenset[str]:
+        tags = set(context.movement_tags.intersection({"surfer", "nonlinear_mover", "adaptive_mover"}))
+        if abs(context.fire_context.wall_escape_balance) >= 0.35:
+            tags.add("wall_constrained")
+        return frozenset(tags)
+
+    @staticmethod
+    def _surfer_relevance(context: AimContext) -> float:
+        return AntiSurferGun._surfer_relevance_from_tags(context.movement_tags, context.fire_context.wall_escape_balance)
+
+    @staticmethod
+    def _surfer_relevance_from_tags(tags: frozenset[str], wall_escape_balance: float) -> float:
+        score = 0.0
+        if "surfer" in tags:
+            score += 0.5
+        if "nonlinear_mover" in tags:
+            score += 0.2
+        if "adaptive_mover" in tags:
+            score += 0.2
+        if abs(wall_escape_balance) >= 0.35:
+            score += 0.1
+        return min(1.0, score)
 
     def metrics(self, target_id: int | None = None) -> dict[str, int | float]:
         return {}

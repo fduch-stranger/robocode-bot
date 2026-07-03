@@ -90,6 +90,7 @@ class TraditionalGfGun:
             diagnostics["source_bias_correction"] = source_bias_correction
         if source_bias_samples is not None:
             diagnostics["source_bias_samples"] = source_bias_samples
+        diagnostics.update(self._fire_context_diagnostics(visit))
         return diagnostics
 
     @staticmethod
@@ -101,6 +102,16 @@ class TraditionalGfGun:
         if source in {"blend", "coarse_blend"}:
             tags.add("stable_pattern")
         return frozenset(tags)
+
+    @staticmethod
+    def _fire_context_diagnostics(visit: GunVisit) -> dict[str, object]:
+        context = visit.wave.fire_context
+        return {
+            "context_flight_time": context.bullet_flight_time,
+            "context_wall_escape_balance": context.wall_escape_balance,
+            "context_lateral_confidence": context.lateral_direction_confidence,
+            "context_tags": context.movement_tags,
+        }
 
     def metrics(self, target_id: int | None = None) -> dict[str, int | float]:
         return {}

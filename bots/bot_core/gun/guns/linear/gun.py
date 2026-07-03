@@ -41,6 +41,16 @@ class LinearGun:
 
     def aim(self, context: AimContext) -> GunBearing:
         prediction, metadata = self._predict_position(context)
+        mode_metadata = dict(metadata.get(self.mode, {}))
+        mode_metadata.update(
+            {
+                "context_tags": self._context_tags(context),
+                "short_flight_time": context.fire_context.bullet_flight_time <= 22.0,
+                "flight_time": context.fire_context.bullet_flight_time,
+                "lateral_confidence": context.fire_context.lateral_direction_confidence,
+            }
+        )
+        metadata[self.mode] = mode_metadata
         return GunBearing(
             self.mode,
             absolute_bearing_between(context.bot.x, context.bot.y, prediction.x, prediction.y),
@@ -82,6 +92,8 @@ class LinearGun:
             tags.add("low_lateral")
         if abs(acceleration) <= 0.05 and velocity_change_age >= 0.45:
             tags.add("stable_velocity")
+        if context.fire_context.bullet_flight_time <= 22.0:
+            tags.add("short_flight_time")
         return frozenset(tags)
 
     def observe_visit(self, visit: GunVisit) -> None:

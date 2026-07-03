@@ -10,6 +10,7 @@ from bot_core.gun.context import (
     AimContext,
     GunVisit,
     TargetHistoryStore,
+    build_fire_context,
     build_gun_features,
     movement_context_tags,
 )
@@ -124,6 +125,7 @@ class VirtualGunSystem:
             features=context.features,
             segment_key=context.segment_key,
             virtual_bearings=virtual_bearings,
+            fire_context=context.fire_context,
             previous_mode=previous_mode,
             mode_changed=mode_changed,
             switch_candidates=switch_candidates,
@@ -140,6 +142,18 @@ class VirtualGunSystem:
         bullet_speed = bullet_speed_for_power(firepower)
         fire_bearing = absolute_bearing_between(bot.x, bot.y, target.x, target.y)
         wave_lateral_direction = lateral_direction(target, fire_bearing)
+        positive_escape_angle = aim.fire_context.positive_escape_angle or wall_limited_escape_angle(
+            bot,
+            target,
+            bullet_speed,
+            wave_lateral_direction,
+        )
+        negative_escape_angle = aim.fire_context.negative_escape_angle or wall_limited_escape_angle(
+            bot,
+            target,
+            bullet_speed,
+            -wave_lateral_direction,
+        )
         return GunWave(
             source_x=bot.x,
             source_y=bot.y,
@@ -148,24 +162,15 @@ class VirtualGunSystem:
             target_id=target.bot_id,
             bullet_power=firepower,
             bullet_speed=bullet_speed,
-            max_escape_angle_positive=wall_limited_escape_angle(
-                bot,
-                target,
-                bullet_speed,
-                wave_lateral_direction,
-            ),
-            max_escape_angle_negative=wall_limited_escape_angle(
-                bot,
-                target,
-                bullet_speed,
-                -wave_lateral_direction,
-            ),
+            max_escape_angle_positive=positive_escape_angle,
+            max_escape_angle_negative=negative_escape_angle,
             lateral_direction=wave_lateral_direction,
             features=aim.features,
             segment_key=aim.segment_key,
             aim_mode=aim.mode,
             aim_guess_factor=aim.guess_factor,
             virtual_bearings=aim.virtual_bearings,
+            fire_context=aim.fire_context,
             gun_metadata=aim.gun_diagnostics,
         )
 
@@ -276,6 +281,8 @@ class VirtualGunSystem:
     ) -> AimContext:
         features = build_gun_features(bot, target, distance, firepower, motion)
         history = self._target_history_store.history_for(target.bot_id)
+        movement_tags = movement_context_tags(bot, target, features, history)
+        fire_context = build_fire_context(bot, target, distance, firepower, features, movement_tags)
         return AimContext(
             bot=bot,
             target=target,
@@ -286,7 +293,8 @@ class VirtualGunSystem:
             features=features,
             segment_key=segment_features(features),
             disabled_modes=disabled_modes or frozenset(),
-            movement_tags=movement_context_tags(bot, target, features, history),
+            movement_tags=movement_tags,
+            fire_context=fire_context,
         )
 
     @staticmethod
@@ -366,6 +374,7 @@ class VirtualGunSystem:
             selected_gun=wave.aim_mode,
             virtual_scores=virtual_scores,
             gun_scores=gun_scores,
+            fire_context=wave.fire_context,
             gun_diagnostics=gun_diagnostics,
         )
 

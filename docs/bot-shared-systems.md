@@ -119,7 +119,9 @@ not update production `GunStats` or concrete gun learners.
 
 `VirtualGunSystem` remains the stable facade. Internally, it builds an
 `AimContext`, including shared movement tags derived from recent target path
-curvature and speed stability, asks a `GunRegistry` of concrete gun components
+curvature and speed stability plus a `FireContext` with bullet flight time,
+lateral-direction confidence, wall-limited escape balance, and coarse
+distance/firepower buckets. It asks a `GunRegistry` of concrete gun components
 for available bearings, passes those bearings to `AimModeSelector`, and
 publishes resolved production-wave visits back to the components for learning. Wave storage,
 virtual-gun scoring, and aim-mode switching are isolated in `GunWaveTracker`,
@@ -129,6 +131,15 @@ virtual-gun scoring, and aim-mode switching are isolated in `GunWaveTracker`,
 `dynamic_cluster`, profile-backed `traditional_gf`, and profile-backed
 `anti_surfer`. Each package README documents its behavior flow, owned state,
 selector policy surface, and telemetry notes.
+
+Fire context is shared infrastructure, not a dynamic-cluster-only feature.
+`dynamic_cluster` uses it for neighbor diagnostics and soft weighting,
+`traditional_gf` reports context alongside profile-source diagnostics,
+`anti_surfer` reports surfer-relevance context, `displacement` exposes it as
+the matching-key foundation for replay work, and `linear` contributes
+stable/low-lateral/short-flight context tags to selector diagnostics. Broad
+selector threshold retuning should be tested separately from fire-context
+collection.
 
 Traditional guess-factor aiming always keeps a global profile per target and,
 when a bot provides segmented gun stats, records exact and coarse segment

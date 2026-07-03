@@ -14,8 +14,20 @@ class DynamicClusterGunConfig:
     min_effective_samples: float = 0.0
     guess_factor_bins: int = 31
     bandwidth: float = 0.18
+    bandwidth_min: float = 0.12
+    bandwidth_max: float = 0.30
+    bandwidth_hit_width_scale: float = 1.5
+    centroid_min_weight: float = 1e-6
+    confidence_mature_samples: int = 150
+    confidence_max_neighbor_distance: float = 1.2
+    confidence_peak_margin_reference: float = 3.0
     min_switch_visits: int = 90
     min_switch_score: float = 0.30
+    context_weighting_enabled: bool = True
+    tag_match_bonus: float = 0.12
+    flight_time_mismatch_penalty: float = 0.18
+    wall_escape_mismatch_penalty: float = 0.12
+    lateral_confidence_penalty: float = 0.12
 
     def mode_policy(self) -> GunModePolicy:
         return GunModePolicy(

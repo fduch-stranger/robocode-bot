@@ -6,6 +6,7 @@ from bot_core.gun import (
     AimContext,
     AimSolution,
     AimModeSelector,
+    FireContext,
     GunDecisionContext,
     GunRuntimeConfig,
     GunScoringConfig,
@@ -25,6 +26,7 @@ from bot_core.gun import (
     TargetPosition,
     VirtualGunScorer,
     VirtualGunSystem,
+    build_fire_context,
     movement_context_tags,
     should_log_switch_decision,
 )
@@ -1483,6 +1485,250 @@ class GunStatsTest(unittest.TestCase):
         self.assertIsNone(gun.guess_factor(1, (0.0,) * 7))
         gun.sequence = 3
         self.assertIsNotNone(gun.guess_factor(1, (0.0,) * 7))
+
+    def test_fire_context_records_shared_tactical_features(self) -> None:
+        bot = SimpleNamespace(x=100.0, y=100.0, arena_width=800.0, arena_height=600.0)
+        target = TargetSnapshot(1, 100.0, 300.0, 300.0, 90.0, 8.0, 12)
+        context = build_fire_context(
+            bot,
+            target,
+            distance=250.0,
+            firepower=2.0,
+            features=(0.5, 2.0 / 3.0, 1.0, 0.0, 0.0, 0.8, 0.25),
+            movement_tags=frozenset({"surfer", "nonlinear_mover"}),
+        )
+
+        self.assertEqual(frozenset({"surfer", "nonlinear_mover"}), context.movement_tags)
+        self.assertAlmostEqual(250.0 / 14.0, context.bullet_flight_time)
+        self.assertEqual(1, context.lateral_direction)
+        self.assertGreater(context.lateral_direction_confidence, 0.7)
+        self.assertEqual(1, context.distance_bucket)
+        self.assertEqual(2, context.firepower_bucket)
+        self.assertGreaterEqual(context.wall_escape_balance, -1.0)
+        self.assertLessEqual(context.wall_escape_balance, 1.0)
+
+    def test_dynamic_cluster_context_weighting_prefers_similar_fire_context(self) -> None:
+        current_context = FireContext(
+            movement_tags=frozenset({"surfer"}),
+            bullet_flight_time=20.0,
+            lateral_direction_confidence=1.0,
+        )
+        matching_context = FireContext(
+            movement_tags=frozenset({"surfer"}),
+            bullet_flight_time=20.0,
+            lateral_direction_confidence=1.0,
+        )
+        mismatched_context = FireContext(
+            movement_tags=frozenset(),
+            bullet_flight_time=60.0,
+            lateral_direction_confidence=0.0,
+            wall_escape_balance=1.0,
+        )
+        samples = [
+            GunSample(1, 1, (0.0,) * 7, 0.7, matching_context),
+            GunSample(1, 2, (0.0,) * 7, -0.7, mismatched_context),
+            GunSample(1, 3, (0.0,) * 7, -0.7, mismatched_context),
+        ]
+        weighted = DynamicClusterGun(
+            DynamicClusterGunConfig(
+                min_samples=3,
+                min_effective_samples=0.0,
+                blend_samples=3,
+                neighbors=3,
+                context_weighting_enabled=True,
+                tag_match_bonus=0.5,
+                flight_time_mismatch_penalty=0.8,
+                wall_escape_mismatch_penalty=0.8,
+                lateral_confidence_penalty=0.8,
+            )
+        )
+        unweighted = DynamicClusterGun(
+            DynamicClusterGunConfig(
+                min_samples=3,
+                min_effective_samples=0.0,
+                blend_samples=3,
+                neighbors=3,
+                context_weighting_enabled=False,
+            )
+        )
+
+        weighted_prediction = weighted._prediction_from_samples(1, (0.0,) * 7, samples, current_context, 0.0)
+        unweighted_prediction = unweighted._prediction_from_samples(1, (0.0,) * 7, samples, current_context, 0.0)
+
+        self.assertIsNotNone(weighted_prediction)
+        self.assertIsNotNone(unweighted_prediction)
+        assert weighted_prediction is not None
+        assert unweighted_prediction is not None
+        self.assertGreater(weighted_prediction.guess_factor, unweighted_prediction.guess_factor)
+        self.assertGreater(weighted_prediction.diagnostics["tag_match_ratio"], 0.0)
+
+    def test_dynamic_cluster_centroid_refines_best_bin_guess_factor(self) -> None:
+        samples = [
+            GunSample(1, 1, (0.0,) * 7, 0.24),
+            GunSample(1, 2, (0.0,) * 7, 0.28),
+            GunSample(1, 3, (0.0,) * 7, 0.32),
+        ]
+        gun = DynamicClusterGun(
+            DynamicClusterGunConfig(
+                min_samples=3,
+                min_effective_samples=0.0,
+                blend_samples=3,
+                neighbors=3,
+                guess_factor_bins=11,
+                bandwidth=0.12,
+                context_weighting_enabled=False,
+            )
+        )
+
+        prediction = gun._prediction_from_samples(1, (0.0,) * 7, samples, FireContext(), 0.0)
+
+        self.assertIsNotNone(prediction)
+        assert prediction is not None
+        self.assertAlmostEqual(0.2, prediction.diagnostics["best_bin_guess_factor"])
+        self.assertGreater(prediction.guess_factor, prediction.diagnostics["best_bin_guess_factor"])
+        self.assertLess(prediction.guess_factor, 0.32)
+        self.assertIn("peak_margin", prediction.diagnostics)
+        self.assertIn("neighbor_agreement", prediction.diagnostics)
+        self.assertIn("aim_confidence", prediction.diagnostics)
+
+    def test_dynamic_cluster_effective_bandwidth_uses_radian_hit_width(self) -> None:
+        gun = DynamicClusterGun(DynamicClusterGunConfig())
+        fire_context = FireContext(positive_escape_angle=0.6, negative_escape_angle=0.6)
+
+        close_bandwidth = gun._effective_bandwidth(100.0, fire_context)
+        far_bandwidth = gun._effective_bandwidth(600.0, fire_context)
+
+        self.assertAlmostEqual(gun.config.bandwidth_max, close_bandwidth)
+        self.assertAlmostEqual(gun.config.bandwidth_min, far_bandwidth)
+        self.assertGreater(close_bandwidth, far_bandwidth)
+
+    def test_dynamic_cluster_visit_diagnostics_use_fire_time_metadata(self) -> None:
+        samples = [
+            GunSample(1, 1, (0.0,) * 7, 0.24),
+            GunSample(1, 2, (0.0,) * 7, 0.28),
+            GunSample(1, 3, (0.0,) * 7, 0.32),
+        ]
+        gun = DynamicClusterGun(
+            DynamicClusterGunConfig(
+                min_samples=3,
+                min_effective_samples=0.0,
+                blend_samples=3,
+                neighbors=3,
+                guess_factor_bins=11,
+                context_weighting_enabled=False,
+            )
+        )
+        for sample in samples:
+            gun.memory.add(sample)
+        bot = SimpleNamespace(x=100.0, y=100.0, arena_width=800.0, arena_height=600.0)
+        target = TargetSnapshot(1, 10, 100.0, 300.0, 100.0, 0.0, 0.0)
+        bearing = gun.aim(
+            AimContext(
+                bot=bot,
+                target=target,
+                distance=200.0,
+                firepower=2.0,
+                motion=TargetMotion(),
+                field_margin=18.0,
+                features=(0.0,) * 7,
+                segment_key=(0, 0, 0, 0, 0, 0),
+                fire_context=FireContext(positive_escape_angle=0.6, negative_escape_angle=0.6),
+            )
+        )
+        self.assertIsNotNone(bearing)
+        assert bearing is not None
+        fire_time_guess_factor = bearing.metadata["dynamic_cluster"]["selected_guess_factor"]
+
+        for turn in range(4, 12):
+            gun.memory.add(GunSample(1, turn, (0.0,) * 7, -0.8))
+        wave = make_wave(aim_mode="dynamic_cluster")
+        wave.gun_metadata.update(bearing.metadata)
+        visit = GunVisit(
+            wave=wave,
+            actual_bearing=0.0,
+            target_distance=200.0,
+            guess_factor=-0.8,
+            segment_key=wave.segment_key,
+        )
+
+        diagnostics = gun.visit_diagnostics(visit)
+
+        self.assertEqual(fire_time_guess_factor, diagnostics["selected_guess_factor"])
+
+    def test_dynamic_cluster_visit_diagnostics_fallback_handles_wave_without_metadata(self) -> None:
+        gun = DynamicClusterGun(
+            DynamicClusterGunConfig(
+                min_samples=3,
+                min_effective_samples=0.0,
+                blend_samples=3,
+                neighbors=3,
+                context_weighting_enabled=False,
+            )
+        )
+        for turn, guess_factor in enumerate((0.2, 0.25, 0.3), start=1):
+            gun.memory.add(GunSample(1, turn, (0.0,) * 7, guess_factor))
+        wave = make_wave(aim_mode="dynamic_cluster")
+        visit = GunVisit(
+            wave=wave,
+            actual_bearing=0.0,
+            target_distance=200.0,
+            guess_factor=0.4,
+            segment_key=wave.segment_key,
+        )
+
+        diagnostics = gun.visit_diagnostics(visit)
+
+        self.assertIn("selected_guess_factor", diagnostics)
+        self.assertNotAlmostEqual(0.4, diagnostics["selected_guess_factor"])
+
+    def test_dynamic_cluster_second_peak_ignores_same_peak_adjacent_bins(self) -> None:
+        samples = [
+            GunSample(1, 1, (0.0,) * 7, 0.18),
+            GunSample(1, 2, (0.0,) * 7, 0.22),
+            GunSample(1, 3, (0.0,) * 7, 0.24),
+            GunSample(1, 4, (0.0,) * 7, -0.62),
+            GunSample(1, 5, (0.0,) * 7, -0.58),
+        ]
+        gun = DynamicClusterGun(
+            DynamicClusterGunConfig(
+                min_samples=5,
+                min_effective_samples=0.0,
+                blend_samples=5,
+                neighbors=5,
+                guess_factor_bins=21,
+                bandwidth=0.12,
+                context_weighting_enabled=False,
+            )
+        )
+
+        prediction = gun._prediction_from_samples(1, (0.0,) * 7, samples, FireContext(), 0.0)
+
+        self.assertIsNotNone(prediction)
+        assert prediction is not None
+        self.assertAlmostEqual(0.2, prediction.diagnostics["best_peak_gf"], delta=0.11)
+        self.assertAlmostEqual(-0.6, prediction.diagnostics["second_peak_gf"], delta=0.11)
+        self.assertGreater(prediction.diagnostics["peak_separation"], 0.6)
+
+    def test_dynamic_cluster_aim_confidence_maturity_uses_sample_count_not_neighbor_count(self) -> None:
+        samples = [GunSample(1, turn, (0.0,) * 7, 0.3) for turn in range(1, 21)]
+        gun = DynamicClusterGun(
+            DynamicClusterGunConfig(
+                min_samples=3,
+                min_effective_samples=0.0,
+                blend_samples=3,
+                neighbors=3,
+                guess_factor_bins=21,
+                context_weighting_enabled=False,
+                confidence_mature_samples=10,
+            )
+        )
+        fire_context = FireContext(lateral_direction_confidence=1.0)
+
+        prediction = gun._prediction_from_samples(1, (0.0,) * 7, samples, fire_context, 300.0)
+
+        self.assertIsNotNone(prediction)
+        assert prediction is not None
+        self.assertGreater(prediction.diagnostics["aim_confidence"], 0.5)
 
     def test_movement_context_tags_classify_stable_and_curving_history(self) -> None:
         bot = SimpleNamespace(x=100.0, y=100.0)

@@ -423,6 +423,89 @@ def _wave_visit_fields(visit: WaveVisit) -> dict[str, object]:
         "virtual_scores": visit.virtual_scores,
         "gun_scores": visit.gun_scores,
     }
+    fire_context = visit.fire_context
+    fields.update(
+        {
+            "fire_context_tags": sorted(fire_context.movement_tags),
+            "fire_context_flight_time": round(fire_context.bullet_flight_time, 2),
+            "fire_context_lateral_direction": fire_context.lateral_direction,
+            "fire_context_lateral_speed_signed": round(fire_context.lateral_speed_signed, 3),
+            "fire_context_lateral_confidence": round(fire_context.lateral_direction_confidence, 3),
+            "fire_context_wall_margin": round(fire_context.wall_margin, 3),
+            "fire_context_wall_escape_balance": round(fire_context.wall_escape_balance, 3),
+            "fire_context_positive_escape_angle": round(fire_context.positive_escape_angle, 3),
+            "fire_context_negative_escape_angle": round(fire_context.negative_escape_angle, 3),
+            "fire_context_distance_bucket": fire_context.distance_bucket,
+            "fire_context_firepower_bucket": fire_context.firepower_bucket,
+        }
+    )
+    dynamic_cluster = visit.gun_diagnostics.get("dynamic_cluster", {})
+    dynamic_neighbor_count = _diagnostic_int(dynamic_cluster, "neighbor_count")
+    dynamic_avg_neighbor_distance = _diagnostic_float(dynamic_cluster, "avg_neighbor_distance")
+    dynamic_neighbor_distance_min = _diagnostic_float(dynamic_cluster, "neighbor_distance_min")
+    dynamic_neighbor_distance_max = _diagnostic_float(dynamic_cluster, "neighbor_distance_max")
+    dynamic_tag_match_ratio = _diagnostic_float(dynamic_cluster, "tag_match_ratio")
+    dynamic_avg_flight_time_delta = _diagnostic_float(dynamic_cluster, "avg_flight_time_delta")
+    dynamic_avg_wall_escape_delta = _diagnostic_float(dynamic_cluster, "avg_wall_escape_delta")
+    dynamic_avg_lateral_confidence = _diagnostic_float(dynamic_cluster, "avg_lateral_confidence")
+    dynamic_density_score = _diagnostic_float(dynamic_cluster, "density_score")
+    dynamic_selected_guess_factor = _diagnostic_float(dynamic_cluster, "selected_guess_factor")
+    dynamic_effective_bandwidth = _diagnostic_float(dynamic_cluster, "effective_bandwidth")
+    dynamic_best_bin_guess_factor = _diagnostic_float(dynamic_cluster, "best_bin_guess_factor")
+    dynamic_peak_margin = _diagnostic_float(dynamic_cluster, "peak_margin")
+    dynamic_neighbor_agreement = _diagnostic_float(dynamic_cluster, "neighbor_agreement")
+    dynamic_aim_confidence = _diagnostic_float(dynamic_cluster, "aim_confidence")
+    dynamic_best_peak_gf = _diagnostic_float(dynamic_cluster, "best_peak_gf")
+    dynamic_best_peak_score = _diagnostic_float(dynamic_cluster, "best_peak_score")
+    dynamic_second_peak_gf = _diagnostic_float(dynamic_cluster, "second_peak_gf")
+    dynamic_second_peak_score = _diagnostic_float(dynamic_cluster, "second_peak_score")
+    dynamic_peak_separation = _diagnostic_float(dynamic_cluster, "peak_separation")
+    dynamic_peak_score_ratio = _diagnostic_float(dynamic_cluster, "peak_score_ratio")
+    dynamic_ambiguous_peak = _diagnostic_bool(dynamic_cluster, "ambiguous_peak")
+    if dynamic_neighbor_count is not None:
+        fields["dynamic_cluster_neighbor_count"] = dynamic_neighbor_count
+    if dynamic_avg_neighbor_distance is not None:
+        fields["dynamic_cluster_avg_neighbor_distance"] = round(dynamic_avg_neighbor_distance, 3)
+    if dynamic_neighbor_distance_min is not None:
+        fields["dynamic_cluster_neighbor_distance_min"] = round(dynamic_neighbor_distance_min, 3)
+    if dynamic_neighbor_distance_max is not None:
+        fields["dynamic_cluster_neighbor_distance_max"] = round(dynamic_neighbor_distance_max, 3)
+    if dynamic_tag_match_ratio is not None:
+        fields["dynamic_cluster_tag_match_ratio"] = round(dynamic_tag_match_ratio, 3)
+    if dynamic_avg_flight_time_delta is not None:
+        fields["dynamic_cluster_avg_flight_time_delta"] = round(dynamic_avg_flight_time_delta, 3)
+    if dynamic_avg_wall_escape_delta is not None:
+        fields["dynamic_cluster_avg_wall_escape_delta"] = round(dynamic_avg_wall_escape_delta, 3)
+    if dynamic_avg_lateral_confidence is not None:
+        fields["dynamic_cluster_avg_lateral_confidence"] = round(dynamic_avg_lateral_confidence, 3)
+    if dynamic_density_score is not None:
+        fields["dynamic_cluster_density_score"] = round(dynamic_density_score, 3)
+    if dynamic_selected_guess_factor is not None:
+        fields["dynamic_cluster_selected_guess_factor"] = round(dynamic_selected_guess_factor, 3)
+    if dynamic_effective_bandwidth is not None:
+        fields["dynamic_cluster_effective_bandwidth"] = round(dynamic_effective_bandwidth, 3)
+    if dynamic_best_bin_guess_factor is not None:
+        fields["dynamic_cluster_best_bin_guess_factor"] = round(dynamic_best_bin_guess_factor, 3)
+    if dynamic_peak_margin is not None:
+        fields["dynamic_cluster_peak_margin"] = round(dynamic_peak_margin, 3)
+    if dynamic_neighbor_agreement is not None:
+        fields["dynamic_cluster_neighbor_agreement"] = round(dynamic_neighbor_agreement, 3)
+    if dynamic_aim_confidence is not None:
+        fields["dynamic_cluster_aim_confidence"] = round(dynamic_aim_confidence, 3)
+    if dynamic_best_peak_gf is not None:
+        fields["dynamic_cluster_best_peak_gf"] = round(dynamic_best_peak_gf, 3)
+    if dynamic_best_peak_score is not None:
+        fields["dynamic_cluster_best_peak_score"] = round(dynamic_best_peak_score, 3)
+    if dynamic_second_peak_gf is not None:
+        fields["dynamic_cluster_second_peak_gf"] = round(dynamic_second_peak_gf, 3)
+    if dynamic_second_peak_score is not None:
+        fields["dynamic_cluster_second_peak_score"] = round(dynamic_second_peak_score, 3)
+    if dynamic_peak_separation is not None:
+        fields["dynamic_cluster_peak_separation"] = round(dynamic_peak_separation, 3)
+    if dynamic_peak_score_ratio is not None:
+        fields["dynamic_cluster_peak_score_ratio"] = round(dynamic_peak_score_ratio, 3)
+    if dynamic_ambiguous_peak is not None:
+        fields["dynamic_cluster_ambiguous_peak"] = dynamic_ambiguous_peak
     traditional_gf = visit.gun_diagnostics.get("traditional_gf", {})
     aim_guess_factor = _diagnostic_float(traditional_gf, "aim_guess_factor")
     raw_guess_factor = _diagnostic_float(traditional_gf, "raw_guess_factor")
@@ -445,6 +528,53 @@ def _wave_visit_fields(visit: WaveVisit) -> dict[str, object]:
         fields["traditional_gf_abs_error"] = round(abs_error, 3)
     if source is not None:
         fields["traditional_gf_source"] = source
+    traditional_context_flight_time = _diagnostic_float(traditional_gf, "context_flight_time")
+    traditional_context_wall_escape_balance = _diagnostic_float(traditional_gf, "context_wall_escape_balance")
+    traditional_context_lateral_confidence = _diagnostic_float(traditional_gf, "context_lateral_confidence")
+    traditional_context_tags = _diagnostic_tags(traditional_gf, "context_tags")
+    if traditional_context_flight_time is not None:
+        fields["traditional_gf_context_flight_time"] = round(traditional_context_flight_time, 2)
+    if traditional_context_wall_escape_balance is not None:
+        fields["traditional_gf_context_wall_escape_balance"] = round(traditional_context_wall_escape_balance, 3)
+    if traditional_context_lateral_confidence is not None:
+        fields["traditional_gf_context_lateral_confidence"] = round(traditional_context_lateral_confidence, 3)
+    if traditional_context_tags is not None:
+        fields["traditional_gf_context_tags"] = traditional_context_tags
+    anti_surfer = visit.gun_diagnostics.get("anti_surfer", {})
+    anti_surfer_relevance = _diagnostic_float(anti_surfer, "surfer_relevance")
+    anti_surfer_wall_escape_balance = _diagnostic_float(anti_surfer, "wall_escape_balance")
+    anti_surfer_tags = _diagnostic_tags(anti_surfer, "context_tags")
+    if anti_surfer_relevance is not None:
+        fields["anti_surfer_context_relevance"] = round(anti_surfer_relevance, 3)
+    if anti_surfer_wall_escape_balance is not None:
+        fields["anti_surfer_wall_escape_balance"] = round(anti_surfer_wall_escape_balance, 3)
+    if anti_surfer_tags is not None:
+        fields["anti_surfer_context_tags"] = anti_surfer_tags
+    displacement = visit.gun_diagnostics.get("displacement", {})
+    displacement_flight_time = _diagnostic_float(displacement, "flight_time")
+    displacement_wall_escape_balance = _diagnostic_float(displacement, "wall_escape_balance")
+    displacement_tags = _diagnostic_tags(displacement, "context_tags")
+    if displacement_flight_time is not None:
+        fields["displacement_context_flight_time"] = round(displacement_flight_time, 2)
+    if displacement_wall_escape_balance is not None:
+        fields["displacement_wall_escape_balance"] = round(displacement_wall_escape_balance, 3)
+    if displacement_tags is not None:
+        fields["displacement_context_tags"] = displacement_tags
+    linear = visit.gun_diagnostics.get("linear", {})
+    if not linear:
+        linear = visit.gun_diagnostics.get("linear_wall_aware", {})
+    linear_flight_time = _diagnostic_float(linear, "flight_time")
+    linear_lateral_confidence = _diagnostic_float(linear, "lateral_confidence")
+    linear_short_flight_time = _diagnostic_bool(linear, "short_flight_time")
+    linear_tags = _diagnostic_tags(linear, "context_tags")
+    if linear_flight_time is not None:
+        fields["linear_context_flight_time"] = round(linear_flight_time, 2)
+    if linear_lateral_confidence is not None:
+        fields["linear_context_lateral_confidence"] = round(linear_lateral_confidence, 3)
+    if linear_short_flight_time is not None:
+        fields["linear_context_short_flight_time"] = linear_short_flight_time
+    if linear_tags is not None:
+        fields["linear_context_tags"] = linear_tags
     linear_wall_aware = visit.gun_diagnostics.get("linear_wall_aware", {})
     linear_wall_aware_wall_hit = _diagnostic_bool(linear_wall_aware, "wall_hit")
     linear_wall_aware_ticks = _diagnostic_int(linear_wall_aware, "ticks")
@@ -488,3 +618,12 @@ def _diagnostic_bool(diagnostics: object, key: str) -> bool | None:
         return None
     value = diagnostics.get(key)
     return value if isinstance(value, bool) else None
+
+
+def _diagnostic_tags(diagnostics: object, key: str) -> list[str] | None:
+    if not isinstance(diagnostics, dict):
+        return None
+    value = diagnostics.get(key)
+    if isinstance(value, frozenset | set | list | tuple):
+        return sorted(str(tag) for tag in value)
+    return None

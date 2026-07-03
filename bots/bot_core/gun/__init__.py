@@ -8,7 +8,14 @@ from bot_core.gun.config import (
     GunSelectorConfig,
     GunSystemConfig,
 )
-from bot_core.gun.context import AimContext, GunBearing, GunVisit, TargetHistoryStore, movement_context_tags
+from bot_core.gun.context import (
+    AimContext,
+    GunBearing,
+    GunVisit,
+    TargetHistoryStore,
+    build_fire_context,
+    movement_context_tags,
+)
 from bot_core.gun.diagnostics import should_log_switch_decision
 from bot_core.gun.guns.base import GunComponent
 from bot_core.gun.guns.linear import (
@@ -18,6 +25,7 @@ from bot_core.gun.guns.linear import (
 )
 from bot_core.gun.models import (
     AimSolution,
+    FireContext,
     GunSample,
     GunStats,
     GunSwitchCandidate,
@@ -54,6 +62,7 @@ __all__ = [
     "AimModeSelector",
     "AimSolution",
     "AimContext",
+    "FireContext",
     "GunBearing",
     "GunComponent",
     "GunDecisionContext",
@@ -81,6 +90,7 @@ __all__ = [
     "VirtualGunSystem",
     "WaveVisit",
     "bin_to_guess_factor",
+    "build_fire_context",
     "bucket",
     "bullet_speed_for_power",
     "feature_distance",
