@@ -63,7 +63,7 @@ the specific gun package before changing a component's behavior or telemetry.
   - 1v1 round-robin ranking
   - head-to-head results
   - melee confirmation
-  - legacy boss check
+  - local-only artifacts
 
 - [Plans](plans/README.md)
   - active bot tuning plans

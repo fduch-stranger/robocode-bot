@@ -52,8 +52,8 @@ runs a default battle with every local bot.
 
 ## Tracked Snapshot
 
-`Adaptive Prime` is the tracked local champion candidate. The recorded
-round-robin and boss-bot benchmark summary is in
+`Adaptive Prime` is the tracked 1v1 local champion candidate. The recorded
+local-only championship summary is in
 [Championship Results](docs/championship-results.md).
 
 Quick health checks:

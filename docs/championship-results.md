@@ -1,14 +1,19 @@
 # Championship Results
 
-Date: 2026-07-01
+Date: 2026-07-04
 
-Champion: **Adaptive Prime 1.0**
+1v1 Champion: **Adaptive Prime 1.0**
+
+Melee Champion: **Chase Lock 1.0**
 
 ## Method
 
-The local championship used a 1v1 round-robin between all four local bots.
-Each pair ran 3 battle runs of 24 rounds, for 72 rounds per matchup and 216
-total 1v1 rounds per bot.
+The local championship used only discoverable local bot manifest directories
+under `bots/`. Legacy bots were intentionally excluded.
+
+The 1v1 championship used a round-robin between all four local bots. Each pair
+ran 3 battle runs of 24 rounds, for 72 rounds per matchup and 216 total 1v1
+rounds per bot.
 
 Ranking order uses match wins, then battle-run wins, then total score, first
 places, and bullet damage.
@@ -17,21 +22,21 @@ places, and bullet damage.
 
 | Rank | Bot | Matches | Runs | Score | 1sts | Survival | Bullet Damage |
 | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| 1 | Adaptive Prime | 3-0 | 9-0 | 35461 | 214 | 10700 | 18868 |
-| 2 | Circle Strafer | 2-1 | 6-3 | 23351 | 100 | 5000 | 14836 |
-| 3 | Sweep Pressure | 1-2 | 3-6 | 22362 | 87 | 4350 | 15053 |
-| 4 | Chase Lock | 0-3 | 0-9 | 16878 | 31 | 1550 | 13787 |
+| 1 | Adaptive Prime | 3-0 | 9-0 | 34155 | 210 | 10500 | 18014 |
+| 2 | Sweep Pressure | 2-1 | 6-3 | 28429 | 125 | 6250 | 17921 |
+| 3 | Chase Lock | 1-2 | 2-7 | 20354 | 45 | 2250 | 16227 |
+| 4 | Circle Strafer | 0-3 | 1-8 | 19253 | 52 | 2600 | 14894 |
 
 ## Head-To-Head Results
 
 | Matchup | Winner | Winner Score | Loser Score | Winner 1sts | Loser 1sts |
 | --- | --- | ---: | ---: | ---: | ---: |
-| Adaptive Prime vs Chase Lock | Adaptive Prime | 12600 | 2029 | 72 | 0 |
-| Adaptive Prime vs Circle Strafer | Adaptive Prime | 11529 | 1088 | 72 | 0 |
-| Adaptive Prime vs Sweep Pressure | Adaptive Prime | 11332 | 1571 | 70 | 2 |
-| Chase Lock vs Circle Strafer | Circle Strafer | 12507 | 7427 | 57 | 15 |
-| Chase Lock vs Sweep Pressure | Sweep Pressure | 12412 | 7422 | 56 | 16 |
-| Circle Strafer vs Sweep Pressure | Circle Strafer | 9756 | 8379 | 43 | 29 |
+| Adaptive Prime vs Chase Lock | Adaptive Prime | 12406 | 3193 | 71 | 1 |
+| Adaptive Prime vs Circle Strafer | Adaptive Prime | 11681 | 2577 | 72 | 0 |
+| Adaptive Prime vs Sweep Pressure | Adaptive Prime | 10068 | 3435 | 67 | 5 |
+| Chase Lock vs Circle Strafer | Chase Lock | 10713 | 10452 | 35 | 37 |
+| Chase Lock vs Sweep Pressure | Sweep Pressure | 13165 | 6448 | 63 | 9 |
+| Circle Strafer vs Sweep Pressure | Sweep Pressure | 11829 | 6224 | 57 | 15 |
 
 ## Melee Confirmation
 
@@ -40,42 +45,26 @@ rounds.
 
 | Rank | Bot | Score | Avg Score | 1sts | Avg Rank |
 | ---: | --- | ---: | ---: | ---: | ---: |
-| 1 | Adaptive Prime | 16467 | 5489.0 | 32 | 1.0 |
-| 2 | Circle Strafer | 12402 | 4134.0 | 18 | 2.667 |
-| 3 | Sweep Pressure | 12125 | 4041.667 | 16 | 3.0 |
-| 4 | Chase Lock | 11549 | 3849.667 | 6 | 3.333 |
+| 1 | Chase Lock | 16592 | 5530.667 | 12 | 1.0 |
+| 2 | Sweep Pressure | 14491 | 4830.333 | 29 | 2.667 |
+| 3 | Circle Strafer | 11716 | 3905.333 | 13 | 3.0 |
+| 4 | Adaptive Prime | 11190 | 3730.0 | 18 | 3.333 |
 
-Adaptive Prime ranked first in all 3 melee runs.
-
-## Legacy Boss Checks
-
-Adaptive Prime was checked against configured converted legacy boss bots. Each
-boss check used 24 rounds. These are the recorded boss benchmarks for the
-tooling preset.
-
-| Boss | Adaptive Score | Boss Score | Adaptive 1sts | Boss 1sts | Result |
-| --- | ---: | ---: | ---: | ---: | --- |
-| DrussGT 3.1.12 | 2618 | 917 | 15 | 9 | Adaptive win |
-| Saguaro 1.0 | 1789 | 1072 | 10 | 14 | Adaptive score win, first-place loss |
-| BasicGFSurfer 1.02 | 2360 | 1418 | 16 | 8 | Adaptive win |
-| Diamond 1.8.28 | 2225 | 1689 | 12 | 12 | Adaptive score win |
+Chase Lock ranked first in all 3 melee runs.
 
 ## Artifacts
 
-Generated battle artifacts:
+Generated local-only battle artifacts:
 
-- `battle-results/tournaments/champion-20260701-172750/summary.json`
-- `battle-results/series/local-melee-champion-20260701/summary.json`
-- `battle-results/series/adaptive-vs-drussgt-20260701/summary.json`
-- `battle-results/series/adaptive-vs-saguaro-20260701/summary.json`
-- `battle-results/series/adaptive-vs-basic-gf-surfer-20260701/summary.json`
-- `battle-results/series/adaptive-vs-diamond-20260701/summary.json`
+- `battle-results/tournaments/champion-20260704-154446/summary.json`
+- `battle-results/series/local-melee-champion-20260704-154446/summary.json`
 
 `battle-results/` is ignored by git, so this document is the tracked summary of
 the championship run.
 
 ## Notes
 
-One local tournament run initially failed because the embedded Robocode server
-selected a port that was already in use. The missing run was rerun with retries,
-and the final summary includes completed results for every matchup.
+- Legacy bots did not participate in this championship.
+- Adaptive Prime remains the 1v1 champion, winning every 1v1 battle run.
+- Chase Lock is the current local melee champion, winning every melee battle
+  run.
