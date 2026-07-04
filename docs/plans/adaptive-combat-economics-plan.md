@@ -454,6 +454,95 @@ Success criteria:
 - Later gun/movement experiments reuse this shared regime instead of adding
   gun-local one-off segmentation.
 
+## Implementation Subplan: Gun Evidence Calibration
+
+Guns can and should keep different internal feature models. Dynamic Cluster,
+Traditional GF, Displacement, Linear, and Anti-surfer do not need the same
+training data or the same feature vector. The selector problem is different:
+it must not compare private raw scores as if every gun's confidence means the
+same thing.
+
+The BasicGFSurfer port is a useful warning. Its gun is simple but dense: every
+accepted-shot wave updates one distance/velocity/last-velocity profile. A
+sparse sophisticated gun should not beat a dense simple gun in the selector
+unless its evidence converts into real hits or clearly fits the current regime.
+
+### Evidence Contract
+
+Every selectable gun should expose a common evidence shape beside its private
+diagnostics:
+
+```text
+GunEvidence
+  mode
+  raw_score
+  effective_samples
+  source_quality        # exact / coarse / global / replay / fallback
+  source_penalty
+  regime_fit
+  real_hit_conversion
+  calibrated_hit_probability
+  uncertainty
+```
+
+Definitions:
+
+- `raw_score` is the gun's native virtual score or model score.
+- `effective_samples` is the amount of relevant evidence after source and
+  regime penalties, not just total visits.
+- `source_quality` explains where the estimate came from.
+- `regime_fit` says whether the gun has evidence for this combat regime.
+- `real_hit_conversion` compares virtual confidence to actual bullet hits.
+- `calibrated_hit_probability` is the value allowed into EV calculations.
+- `uncertainty` is high when samples are sparse, source quality is weak, or
+  real conversion is unknown.
+
+Raw virtual score remains diagnostic. Calibrated probability is the decision
+input:
+
+```text
+gun_ev = calibrated_hit_probability * damage_for_current_firepower
+```
+
+### Selector Rules
+
+- Do not let global/coarse/fallback sources look as trustworthy as exact or
+  high-fit replay sources.
+- Do not let sparse complex guns outrank dense simple guns without real
+  conversion or strong regime fit.
+- Do not compare virtual scores from different guns directly after calibration
+  exists.
+- Keep raw score, adjusted score, and calibration fields visible in telemetry.
+- Preserve force-gun testing so selector calibration cannot hide a bad gun.
+
+### Telemetry
+
+Extend `gun.switch_decision`, `gun.wave_visit`, and `gun.eval_wave_visit` with
+calibration fields once the evidence contract exists:
+
+```text
+gun_evidence_raw_score
+gun_evidence_effective_samples
+gun_evidence_source_quality
+gun_evidence_source_penalty
+gun_evidence_regime_fit
+gun_evidence_real_conversion
+gun_evidence_calibrated_hit_probability
+gun_evidence_uncertainty
+```
+
+### Validation
+
+Use forced-gun and normal-selector runs against the Python BasicGFSurfer port:
+
+- forced guns expose comparable evidence fields without changing behavior
+- dense/simple guns are not penalized just because they are simple
+- sparse/weak-source guns do not win selector decisions from optimistic raw
+  virtual score alone
+- calibrated probability tracks real hit conversion better than raw score
+- selector changes are explainable from telemetry before they are allowed to
+  affect sticky gun choice
+
 ## Implementation Subplan: Profile And EV Fire Slice
 
 After wave evidence and regime labels are clean, add a small shared
@@ -967,8 +1056,8 @@ Acceptance:
 The virtual gun selector should eventually rank by expected value, not only hit
 score.
 
-Do not start here. First build profile and firepower evidence. Once those exist,
-add a decision layer:
+Do not start here. First build profile, firepower evidence, and the gun
+evidence calibration contract. Once those exist, add a decision layer:
 
 ```text
 gun_ev = calibrated_hit_probability(mode) * damage_for_current_firepower
@@ -980,13 +1069,18 @@ selection.
 Rules:
 
 - Raw virtual score remains visible.
+- Raw virtual score is diagnostic; calibrated hit probability is the decision
+  input.
 - Adjusted EV score is separate.
+- Every selectable gun reports effective samples, source quality, regime fit,
+  real hit conversion, calibrated hit probability, and uncertainty.
 - Low-power high-hit modes should not automatically dominate.
 - High-power shots require enough confidence.
 
 Acceptance:
 
-- `gun.switch_decision` reports raw score, adjusted score, firepower, and EV.
+- `gun.switch_decision` reports raw score, calibrated hit probability,
+  source quality, uncertainty, adjusted score, firepower, and EV.
 - Selector changes are explainable from telemetry.
 - A forced-gun matrix still runs, so selector changes are not masking bad guns.
 
@@ -1076,9 +1170,12 @@ Judge using:
 7. Shared dynamic firepower floors in the core firepower policy, with bot-local
    personality knobs only for aggression/conservation bias.
 8. Anti-repetition movement mode using that danger table.
-9. Damage-aware virtual gun selector.
-10. Rebuild anti-surfer gun using reachable surf-choice prediction.
-11. Delete or collapse old selector/fire/movement branches that are beaten by the
+9. Gun evidence calibration: raw score, effective samples, source quality,
+   regime fit, real conversion, calibrated probability, and uncertainty.
+10. Damage-aware virtual gun selector using calibrated probability, not private
+   raw scores.
+11. Rebuild anti-surfer gun using reachable surf-choice prediction.
+12. Delete or collapse old selector/fire/movement branches that are beaten by the
    shared replacement and no longer serve force testing or diagnostics.
 
 ## Success Definition
