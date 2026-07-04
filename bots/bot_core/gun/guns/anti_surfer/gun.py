@@ -1,8 +1,8 @@
 from bot_core.gun.config import GunDecisionContext
 from bot_core.gun.context import AimContext, GunBearing, GunVisit, guess_factor_aim_bearing
+from bot_core.gun.guess_factors import bin_to_guess_factor
 from bot_core.gun.guns.anti_surfer.config import AntiSurferGunConfig
 from bot_core.gun.guns.anti_surfer.profile import GuessFactorProfile
-from bot_core.gun.utils import bin_to_guess_factor
 
 
 class AntiSurferGun:

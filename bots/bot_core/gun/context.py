@@ -7,8 +7,9 @@ from bot_core.geometry.angles import absolute_bearing_between
 from bot_core.geometry.numeric import clamp
 from bot_core.geometry.waves import escape_angle_for_guess_factor, wall_limited_escape_angle
 from bot_core.gun.config import GunDecisionContext
+from bot_core.gun.features import GUN_FEATURE_COUNT, bucket
+from bot_core.gun.kinematics import lateral_direction
 from bot_core.gun.models import FireContext, GunWave, TargetMotion, TargetPosition
-from bot_core.gun.utils import GUN_FEATURE_COUNT, bucket, lateral_direction
 from bot_core.physics import bullet_speed_for_power
 from bot_core.target_snapshot import TargetSnapshot
 

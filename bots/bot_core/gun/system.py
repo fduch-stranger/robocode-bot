@@ -24,7 +24,8 @@ from bot_core.gun.models import (
 )
 from bot_core.gun.registry import GunRegistry
 from bot_core.gun.scoring import VirtualGunScorer
-from bot_core.gun.utils import lateral_direction, point_on_bearing, segment_features
+from bot_core.gun.features import segment_features
+from bot_core.gun.kinematics import lateral_direction, point_on_bearing
 from bot_core.gun.waves import GunWaveTracker
 from bot_core.physics import bullet_speed_for_power
 from bot_core.target_snapshot import TargetSnapshot

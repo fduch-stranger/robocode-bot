@@ -1,7 +1,7 @@
 import math
 from dataclasses import dataclass, field
 
-from bot_core.gun.utils import guess_factor_to_bin
+from bot_core.gun.guess_factors import guess_factor_to_bin
 
 
 @dataclass

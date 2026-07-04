@@ -17,12 +17,20 @@ from bot_core.gun.context import (
     movement_context_tags,
 )
 from bot_core.gun.diagnostics import should_log_switch_decision
+from bot_core.gun.features import (
+    bucket,
+    feature_distance,
+    segment_features,
+    signed_bucket,
+)
 from bot_core.gun.guns.base import GunComponent
 from bot_core.gun.guns.linear import (
     LINEAR_MODE,
     LINEAR_VARIANT_MODES,
     LINEAR_WALL_AWARE_MODE,
 )
+from bot_core.gun.guess_factors import bin_to_guess_factor, guess_factor_to_bin
+from bot_core.gun.kinematics import lateral_direction, point_on_bearing
 from bot_core.gun.models import (
     AimSolution,
     FireContext,
@@ -53,16 +61,6 @@ from bot_core.gun.prediction import (
 )
 from bot_core.gun.scoring import VirtualGunScorer
 from bot_core.gun.system import VirtualGunSystem
-from bot_core.gun.utils import (
-    bin_to_guess_factor,
-    bucket,
-    feature_distance,
-    guess_factor_to_bin,
-    lateral_direction,
-    point_on_bearing,
-    segment_features,
-    signed_bucket,
-)
 from bot_core.gun.waves import GunWaveTracker
 from bot_core.physics import bullet_speed_for_power
 

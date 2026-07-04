@@ -49,7 +49,7 @@ from bot_core.gun.guns.dynamic_cluster.memory import RollingKnnBuffer
 from bot_core.gun.guns.traditional_gf.gun import TraditionalGfGun
 from bot_core.gun.guns.traditional_gf.profile import GuessFactorProfile
 from bot_core.gun.guns.traditional_gf.config import TraditionalGfGunConfig
-from bot_core.gun.utils import (
+from bot_core.gun.features import (
     GUN_FEATURE_COUNT,
     GUN_FEATURE_WEIGHTS,
     feature_distance,

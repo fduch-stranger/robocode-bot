@@ -5,11 +5,11 @@ from bot_core.geometry.numeric import clamp
 from bot_core.geometry.waves import guess_factor_from_offset
 from bot_core.gun.config import GunDecisionContext
 from bot_core.gun.context import AimContext, GunBearing, GunVisit, guess_factor_aim_bearing
+from bot_core.gun.guess_factors import bin_to_guess_factor
 from bot_core.gun.guns.traditional_gf.config import TraditionalGfGunConfig
 from bot_core.gun.guns.traditional_gf.diagnostics import TraditionalGfDiagnostics
 from bot_core.gun.guns.traditional_gf.profile import GuessFactorProfile
 from bot_core.gun.models import GunWave
-from bot_core.gun.utils import bin_to_guess_factor
 
 
 class TraditionalGfGun:

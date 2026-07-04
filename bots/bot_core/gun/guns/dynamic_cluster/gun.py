@@ -4,10 +4,10 @@ from dataclasses import dataclass
 from bot_core.geometry.numeric import clamp
 from bot_core.gun.config import GunDecisionContext
 from bot_core.gun.context import AimContext, GunBearing, GunVisit, guess_factor_aim_bearing
+from bot_core.gun.features import feature_distance
 from bot_core.gun.guns.dynamic_cluster.config import DynamicClusterGunConfig
 from bot_core.gun.guns.dynamic_cluster.memory import RollingKnnBuffer
 from bot_core.gun.models import FireContext, GunSample
-from bot_core.gun.utils import feature_distance
 
 
 @dataclass(frozen=True)
