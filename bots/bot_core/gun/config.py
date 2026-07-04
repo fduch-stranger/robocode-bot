@@ -71,7 +71,7 @@ class GunSystemConfig:
 class GunSelectorConfig:
     default_mode: str = "linear"
     forced_mode: str | None = None
-    selectable_modes: frozenset[str] = frozenset({"linear", "traditional_gf", "dynamic_cluster"})
+    selectable_modes: frozenset[str] = frozenset({"linear", "traditional_gf", "dynamic_cluster", "displacement"})
     switch_margin: float = 0.08
     primary_over_fallback_margin: float = 0.0
     situational_over_primary_margin: float = 0.0
@@ -99,7 +99,7 @@ class GunScoringConfig:
     virtual_hit_radius: float = 18
     segment_min_visits: int = 18
     segment_full_weight_visits: int = 80
-    selectable_modes: frozenset[str] = frozenset({"linear", "traditional_gf", "dynamic_cluster"})
+    selectable_modes: frozenset[str] = frozenset({"linear", "traditional_gf", "dynamic_cluster", "displacement"})
 
 
 ComponentFactory = Callable[["TargetHistoryStore"], list["GunComponent"]]

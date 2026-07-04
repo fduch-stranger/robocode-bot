@@ -111,8 +111,8 @@ until the pinned or selectable gun becomes available.
 
 Guns also declare generic `GunModeTraits` so selector heuristics are not tied
 to concrete gun names. Current shared labels treat `dynamic_cluster` as the
-primary KNN-GF learner, `traditional_gf` as a situational profile-GF gun, and
-`linear` as an early/simple-motion fallback. The selector converts those labels
+primary KNN-GF learner, `traditional_gf` and `displacement` as situational
+guns, and `linear` as an early/simple-motion fallback. The selector converts those labels
 plus generic decision context into a `decision_bonus`: KNN gains confidence as
 samples mature and recent target history looks nonlinear/adaptive, linear
 receives help only when current or recent target motion matches low-lateral or
@@ -152,7 +152,7 @@ Fire context is shared infrastructure, not a dynamic-cluster-only feature.
 `dynamic_cluster` uses it for neighbor diagnostics and soft weighting,
 `traditional_gf` reports context alongside profile-source diagnostics,
 `anti_surfer` reports surfer-relevance context, `displacement` exposes replay
-quality and Markov/coarse-regime context for forced-gun analysis, and `linear` contributes
+quality and Markov/coarse-regime context for live and forced-gun analysis, and `linear` contributes
 stable/low-lateral/short-flight context tags to selector diagnostics. Broad
 selector threshold retuning should be tested separately from fire-context
 collection.

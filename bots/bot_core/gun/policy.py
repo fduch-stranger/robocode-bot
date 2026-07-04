@@ -3,13 +3,13 @@ from dataclasses import dataclass, fields
 from typing import cast
 
 from bot_core.gun.config import GunSelectorConfig
+from bot_core.gun.guns.displacement.config import DisplacementGunConfig
 from bot_core.gun.guns.dynamic_cluster.config import DynamicClusterGunConfig
 
 
-DEFAULT_LIVE_GUN_MODES = frozenset({"linear", "traditional_gf", "dynamic_cluster"})
+DEFAULT_LIVE_GUN_MODES = frozenset({"linear", "traditional_gf", "dynamic_cluster", "displacement"})
 STANDARD_FORCE_GUN_MODES = DEFAULT_LIVE_GUN_MODES | frozenset({
     "anti_surfer",
-    "displacement",
     "head_on",
     "linear_wall_aware",
 })
@@ -37,6 +37,9 @@ class SharedGunPolicyDefaults:
     min_switch_score: float = 0.03
     traditional_gf_min_switch_visits: int = 45
     traditional_gf_min_switch_score: float = 0.10
+    displacement_min_switch_visits: int = 60
+    displacement_min_switch_score: float = 0.08
+    displacement_markov_enabled: bool = True
 
 
 SHARED_GUN_POLICY_DEFAULTS = SharedGunPolicyDefaults()
@@ -330,4 +333,25 @@ def dynamic_cluster_config_from_policy(policy: object) -> DynamicClusterGunConfi
         shot_quality_weak_threshold=dynamic.shot_quality_weak_threshold,
         shot_quality_medium_power_scale=dynamic.shot_quality_medium_power_scale,
         shot_quality_low_power_scale=dynamic.shot_quality_low_power_scale,
+    )
+
+
+def displacement_config_from_policy(policy: object) -> DisplacementGunConfig:
+    defaults = SHARED_GUN_POLICY_DEFAULTS
+    return DisplacementGunConfig(
+        min_switch_visits=getattr(
+            policy,
+            "displacement_min_switch_visits",
+            defaults.displacement_min_switch_visits,
+        ),
+        min_switch_score=getattr(
+            policy,
+            "displacement_min_switch_score",
+            defaults.displacement_min_switch_score,
+        ),
+        markov_enabled=getattr(
+            policy,
+            "displacement_markov_enabled",
+            defaults.displacement_markov_enabled,
+        ),
     )

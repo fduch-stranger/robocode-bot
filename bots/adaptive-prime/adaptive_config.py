@@ -129,8 +129,8 @@ class GunPolicy:
     primary_slump_score: float = SHARED_GUN_POLICY_DEFAULTS.primary_slump_score
     primary_slump_situational_margin: float = SHARED_GUN_POLICY_DEFAULTS.primary_slump_situational_margin
     min_switch_score: float = SHARED_GUN_POLICY_DEFAULTS.min_switch_score
-    displacement_min_switch_visits: int = 150
-    displacement_min_switch_score: float = 0.16
+    displacement_min_switch_visits: int = SHARED_GUN_POLICY_DEFAULTS.displacement_min_switch_visits
+    displacement_min_switch_score: float = SHARED_GUN_POLICY_DEFAULTS.displacement_min_switch_score
     displacement_markov_enabled: bool = _env_flag("ROBOCODE_ADAPTIVE_DISPLACEMENT_MARKOV", True)
     traditional_gf: TraditionalGfPolicy = field(default_factory=TraditionalGfPolicy)
     anti_surfer_min_switch_visits: int = 95

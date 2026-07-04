@@ -8,6 +8,7 @@ source "$ROOT_DIR/scripts/lib/bots.sh"
 RUNTIME_PYTHON_BIN="$(robocode_python_bin "$ROOT_DIR")"
 MVN_REPO="$ROOT_DIR/.m2/repository"
 TELEMETRY_SUPPRESSION_FILE="$ROOT_DIR/.telemetry-cli-suppressed"
+LEGACY_JAVA11_BIN="${ROBOCODE_LEGACY_JAVA11_BIN:-/opt/homebrew/opt/openjdk@11/libexec/openjdk.jdk/Contents/Home/bin/java}"
 created_telemetry_suppression=0
 run_id="$(date +%Y%m%d-%H%M%S)"
 run_dir="$ROOT_DIR/battle-results/runs/$run_id"
@@ -63,8 +64,13 @@ prepare_legacy_bot_shim() {
   cat > "$shim_script" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
+legacy_java11_bin="$LEGACY_JAVA11_BIN"
+if [[ -z "\${JAVA_BIN:-}" && -x "\$legacy_java11_bin" ]]; then
+  export JAVA_BIN="\$legacy_java11_bin"
+fi
+java_probe_bin="\${JAVA_BIN:-java}"
 java_tool_options="-Djava.awt.headless=true"
-if /usr/bin/env java --enable-final-field-mutation=ALL-UNNAMED -version >/dev/null 2>&1; then
+if "\$java_probe_bin" --enable-final-field-mutation=ALL-UNNAMED -version >/dev/null 2>&1; then
   java_tool_options="--enable-final-field-mutation=ALL-UNNAMED \$java_tool_options"
 fi
 export JAVA_TOOL_OPTIONS="\$java_tool_options\${JAVA_TOOL_OPTIONS:+ \$JAVA_TOOL_OPTIONS}"

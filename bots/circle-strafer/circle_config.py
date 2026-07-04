@@ -26,8 +26,11 @@ def _forced_gun_mode() -> str | None:
     return gun_mode_from_env("ROBOCODE_CIRCLE", CIRCLE_FORCE_GUN_MODES)
 
 
-def _env_flag(name: str) -> bool:
-    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+def _env_flag(name: str, default: bool = False) -> bool:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    return raw.lower() in {"1", "true", "yes", "on"}
 
 
 def _env_int(name: str, default: int) -> int:
@@ -57,6 +60,9 @@ class GunPolicy:
     min_switch_score: float = SHARED_GUN_POLICY_DEFAULTS.min_switch_score
     traditional_gf_min_switch_visits: int = SHARED_GUN_POLICY_DEFAULTS.traditional_gf_min_switch_visits
     traditional_gf_min_switch_score: float = SHARED_GUN_POLICY_DEFAULTS.traditional_gf_min_switch_score
+    displacement_min_switch_visits: int = SHARED_GUN_POLICY_DEFAULTS.displacement_min_switch_visits
+    displacement_min_switch_score: float = SHARED_GUN_POLICY_DEFAULTS.displacement_min_switch_score
+    displacement_markov_enabled: bool = _env_flag("ROBOCODE_CIRCLE_DISPLACEMENT_MARKOV", True)
     switch_diagnostics_interval: int = 36
     dynamic_cluster: DynamicClusterPolicy = CIRCLE_DYNAMIC_CLUSTER_POLICY
 

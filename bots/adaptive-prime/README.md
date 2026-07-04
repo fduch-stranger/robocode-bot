@@ -156,16 +156,17 @@ surface is grouped under `TraditionalGfPolicy`:
   sparse-profile over-aiming.
 - Melee keeps segmented gun stats and live `traditional_gf` bearings disabled;
   `traditional_gf` candidates can appear as unavailable in switch diagnostics.
-- Adaptive's normal selectable gun modes are `linear`, `traditional_gf`, and
-  `dynamic_cluster`. Every gun wired by the standard runtime can be pinned for
-  isolated experiments, but non-default modes are not part of Adaptive's normal
-  selectable-mode set unless `ROBOCODE_ADAPTIVE_GUN_SET` changes it.
+- Adaptive's normal selectable gun modes are `linear`, `traditional_gf`,
+  `dynamic_cluster`, and `displacement`. Every gun wired by the standard
+  runtime can be pinned for isolated experiments, but non-default modes are not
+  part of Adaptive's normal selectable-mode set unless
+  `ROBOCODE_ADAPTIVE_GUN_SET` changes it.
 - Switching uses a small confidence penalty until a mode has enough virtual
   visits. The shared selector also applies trait-based priors: KNN gets a
   maturity bonus and can match nonlinear/adaptive movement history, linear is
   penalized unless current or recent target motion matches its simple movement
-  strengths, and profile guns can match trusted source contexts plus
-  stable-pattern history.
+  strengths, and situational guns can match trusted source contexts,
+  displacement replay context, or stable-pattern history.
   `gun.switch_decision` reports adjusted `score`, `raw_score`, and
   `decision_bonus` so score-vs-hit calibration can separate weak evidence from
   heuristic preference. When eval waves are enabled, the selector can also use

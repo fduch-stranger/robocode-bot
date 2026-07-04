@@ -35,6 +35,7 @@ from bot_core.gun import (
     GunSystemConfig,
     TargetMotion,
     VirtualGunSystem,
+    displacement_config_from_policy,
     dynamic_cluster_config_from_policy,
     gun_policy_status_fields,
     selector_config_from_policy,
@@ -102,6 +103,7 @@ class SweepPressure(Bot):
                 scoring=GunScoringConfig(selectable_modes=GUN_POLICY.selectable_modes),
                 min_visits=GUN_POLICY.min_visits,
                 min_switch_score=GUN_POLICY.min_switch_score,
+                displacement=displacement_config_from_policy(GUN_POLICY),
                 dynamic_cluster=dynamic_cluster_config_from_policy(GUN_POLICY),
                 traditional_gf=TraditionalGfGunConfig(
                     min_switch_visits=GUN_POLICY.traditional_gf_min_switch_visits,

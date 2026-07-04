@@ -105,14 +105,14 @@ far while energy is low, or gun bearing error is too large.
 Circle Strafer keeps bot-specific `GunPolicy`, fire, target, radar, and
 movement surfaces in `circle_config.py`. Its live gun policy follows the
 shared experimental selector shape: `dynamic_cluster` is the primary learning
-gun, `traditional_gf` is a situational profile gun, and `linear` is an
+gun, `traditional_gf` and `displacement` are situational guns, and `linear` is an
 early/simple movement fallback. It live-selects `linear`, `traditional_gf`,
-and `dynamic_cluster` in 1v1. Melee keeps segmented gun stats and live
+`dynamic_cluster`, and `displacement` in 1v1. Melee keeps segmented gun stats and live
 `traditional_gf` bearings disabled, so `traditional_gf` candidates can appear
 as unavailable in switch diagnostics.
 The current policy uses aligned aggressive KNN and Traditional GF gates with
 the shared trait-based selector priors. Primary KNN can leave fallback linear
-early, situational profile guns need a larger margin over KNN unless KNN is in
+early, situational guns need a larger margin over KNN unless KNN is in
 a low-score slump with trusted source/context evidence, and global-source
 situational trials are not retained. Every gun wired by the standard runtime
 can be pinned for isolated experiments:
@@ -123,6 +123,8 @@ ROBOCODE_CIRCLE_GUN_MODE=anti_surfer scripts/run-battle.sh --rounds 8 bots/circl
 
 Valid pinned values are `head_on`, `linear`, `linear_wall_aware`,
 `displacement`, `traditional_gf`, `dynamic_cluster`, and `anti_surfer`.
+Set `ROBOCODE_CIRCLE_DISPLACEMENT_MARKOV=0` to disable displacement's Markov
+replay weighting for isolated validation.
 
 For neutral gun-evaluation telemetry, set:
 

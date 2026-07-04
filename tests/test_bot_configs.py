@@ -6,13 +6,15 @@ from pathlib import Path
 from types import ModuleType
 from unittest.mock import patch
 
-from bot_core.gun import gun_policy_status_fields, selector_config_from_policy
+from bot_core.gun import displacement_config_from_policy, gun_policy_status_fields, selector_config_from_policy
+from bot_core.gun.guns.displacement.config import DisplacementGunConfig
 from bot_core.gun.guns.dynamic_cluster.config import DynamicClusterGunConfig
 from bot_core.gun.guns.traditional_gf.config import TraditionalGfGunConfig
 
 
 ROOT = Path(__file__).resolve().parents[1]
 BOTS_ROOT = ROOT / "bots"
+DEFAULT_LIVE_MODES = {"linear", "traditional_gf", "dynamic_cluster", "displacement"}
 
 
 def _load_config(path: Path, env: dict[str, str] | None = None) -> ModuleType:
@@ -42,9 +44,10 @@ class BotConfigTest(unittest.TestCase):
         default_config = _load_config(path)
         default_policy = default_config.GunPolicy()
         default_traditional_gf = default_policy.traditional_gf
+        default_displacement_config = DisplacementGunConfig()
         default_gun_config = TraditionalGfGunConfig()
         default_dynamic_config = DynamicClusterGunConfig()
-        self.assertEqual(default_policy.selectable_modes, {"linear", "traditional_gf", "dynamic_cluster"})
+        self.assertEqual(default_policy.selectable_modes, DEFAULT_LIVE_MODES)
         self.assertIsNone(default_policy.forced_mode)
         self.assertIsInstance(default_traditional_gf, default_config.TraditionalGfPolicy)
         self.assertEqual(default_traditional_gf.min_switch_visits, 45)
@@ -64,6 +67,11 @@ class BotConfigTest(unittest.TestCase):
         self.assertEqual(default_policy.primary_slump_score, 0.13)
         self.assertEqual(default_policy.primary_slump_situational_margin, 0.025)
         self.assertEqual(default_policy.primary_confidence_penalty_scale, 0.25)
+        self.assertEqual(default_policy.displacement_min_switch_visits, 60)
+        self.assertEqual(default_policy.displacement_min_switch_score, 0.08)
+        self.assertTrue(default_policy.displacement_markov_enabled)
+        self.assertEqual(default_displacement_config.min_switch_visits, 90)
+        self.assertEqual(default_displacement_config.min_switch_score, 0.30)
         self.assertEqual(default_policy.dynamic_cluster.bandwidth_min, default_dynamic_config.bandwidth_min)
         self.assertEqual(default_policy.dynamic_cluster.bandwidth_max, default_dynamic_config.bandwidth_max)
         self.assertEqual(default_policy.dynamic_cluster.centroid_window_bandwidth_scale, 1.0)
@@ -84,7 +92,7 @@ class BotConfigTest(unittest.TestCase):
         )
         self.assertEqual(default_traditional_gf.peak_selection, default_gun_config.peak_selection)
         self.assertEqual(default_gun_config.segment_min_samples, 12)
-        self.assertEqual(default_gun_config.global_source_penalty, 0.06)
+        self.assertEqual(default_gun_config.global_source_penalty, 0.10)
         self.assertEqual(default_gun_config.smoothing_bins, 1.25)
         self.assertEqual(default_gun_config.decay, 0.985)
 
@@ -116,6 +124,7 @@ class BotConfigTest(unittest.TestCase):
                 "ROBOCODE_ADAPTIVE_DYNAMIC_SHOT_QUALITY_POWER_SCALING": "1",
                 "ROBOCODE_ADAPTIVE_LOW_ENERGY_ENDGAME_FIRE": "1",
                 "ROBOCODE_ADAPTIVE_LOW_ENERGY_ENDGAME_MAX_ENERGY": "6.5",
+                "ROBOCODE_ADAPTIVE_DISPLACEMENT_MARKOV": "0",
             },
         )
         env_policy = env_config.GunPolicy()
@@ -143,6 +152,8 @@ class BotConfigTest(unittest.TestCase):
         self.assertEqual(env_dynamic.shot_quality_good_threshold, 0.6)
         self.assertEqual(env_dynamic.shot_quality_weak_threshold, 0.4)
         self.assertEqual(env_dynamic.shot_quality_low_power_scale, 0.5)
+        self.assertFalse(env_policy.displacement_markov_enabled)
+        self.assertFalse(displacement_config_from_policy(env_policy).markov_enabled)
         self.assertTrue(env_config.FIRE_POLICY.dynamic_shot_quality_power_scaling_enabled)
         self.assertTrue(env_config.FIRE_POLICY.low_energy_endgame_fire_enabled)
         self.assertEqual(env_config.FIRE_POLICY.low_energy_endgame_max_energy, 6.5)
@@ -219,7 +230,7 @@ class BotConfigTest(unittest.TestCase):
         self.assertIsNone(invalid_per_bot_config.GunPolicy().forced_mode)
         self.assertEqual(
             invalid_per_bot_config.GunPolicy().selectable_modes,
-            {"linear", "traditional_gf", "dynamic_cluster"},
+            DEFAULT_LIVE_MODES,
         )
 
         unsupported_global_set_config = _load_config(
@@ -228,7 +239,7 @@ class BotConfigTest(unittest.TestCase):
         )
         self.assertEqual(
             unsupported_global_set_config.GunPolicy().selectable_modes,
-            {"linear", "traditional_gf", "dynamic_cluster"},
+            DEFAULT_LIVE_MODES,
         )
 
         forceable_global_set_config = _load_config(
@@ -287,7 +298,7 @@ class BotConfigTest(unittest.TestCase):
         path = ROOT / "bots" / "chase-lock" / "chase_config.py"
 
         default_config = _load_config(path)
-        self.assertEqual(default_config.GunPolicy().selectable_modes, {"linear", "traditional_gf", "dynamic_cluster"})
+        self.assertEqual(default_config.GunPolicy().selectable_modes, DEFAULT_LIVE_MODES)
         self.assertIsNone(default_config.GunPolicy().forced_mode)
         self.assertFalse(default_config.GunPolicy().eval_waves_enabled)
         self.assertEqual(default_config.GunPolicy().eval_wave_min_interval, 8)
@@ -301,6 +312,11 @@ class BotConfigTest(unittest.TestCase):
         self.assertEqual(default_config.GunPolicy().primary_slump_situational_margin, 0.025)
         self.assertEqual(default_config.GunPolicy().traditional_gf_min_switch_visits, 45)
         self.assertEqual(default_config.GunPolicy().traditional_gf_min_switch_score, 0.10)
+        self.assertEqual(default_config.GunPolicy().displacement_min_switch_visits, 60)
+        self.assertEqual(default_config.GunPolicy().displacement_min_switch_score, 0.08)
+        self.assertTrue(default_config.GunPolicy().displacement_markov_enabled)
+        self.assertEqual(displacement_config_from_policy(default_config.GunPolicy()).min_switch_visits, 60)
+        self.assertEqual(displacement_config_from_policy(default_config.GunPolicy()).min_switch_score, 0.08)
         self.assertEqual(default_config.GunPolicy().dynamic_cluster.ambiguous_peak_centering_factor, 0.8)
         self.assertEqual(default_config.FIRE_POLICY.finish_target_energy, 18)
         self.assertEqual(default_config.TARGET_POLICY.reacquire_turns, 4)
@@ -316,18 +332,21 @@ class BotConfigTest(unittest.TestCase):
                 "ROBOCODE_CHASE_GUN_EVAL": "true",
                 "ROBOCODE_CHASE_GUN_EVAL_INTERVAL": "0",
                 "ROBOCODE_CHASE_DYNAMIC_AMBIGUOUS_PEAK_CENTERING_FACTOR": "0.55",
+                "ROBOCODE_CHASE_DISPLACEMENT_MARKOV": "false",
             },
         )
         self.assertEqual(env_config.GunPolicy().forced_mode, "displacement")
         self.assertTrue(env_config.GunPolicy().eval_waves_enabled)
         self.assertEqual(env_config.GunPolicy().eval_wave_min_interval, 1)
         self.assertEqual(env_config.GunPolicy().dynamic_cluster.ambiguous_peak_centering_factor, 0.55)
+        self.assertFalse(env_config.GunPolicy().displacement_markov_enabled)
+        self.assertFalse(displacement_config_from_policy(env_config.GunPolicy()).markov_enabled)
 
     def test_circle_gun_policy_defaults_and_env(self) -> None:
         path = ROOT / "bots" / "circle-strafer" / "circle_config.py"
 
         default_config = _load_config(path)
-        self.assertEqual(default_config.GunPolicy().selectable_modes, {"linear", "traditional_gf", "dynamic_cluster"})
+        self.assertEqual(default_config.GunPolicy().selectable_modes, DEFAULT_LIVE_MODES)
         self.assertIsNone(default_config.GunPolicy().forced_mode)
         self.assertEqual(default_config.GunPolicy().knn_min_samples, 30)
         self.assertEqual(default_config.GunPolicy().min_visits, 12)
@@ -339,6 +358,10 @@ class BotConfigTest(unittest.TestCase):
         self.assertEqual(default_config.GunPolicy().primary_slump_situational_margin, 0.025)
         self.assertEqual(default_config.GunPolicy().traditional_gf_min_switch_visits, 45)
         self.assertEqual(default_config.GunPolicy().traditional_gf_min_switch_score, 0.10)
+        self.assertEqual(default_config.GunPolicy().displacement_min_switch_visits, 60)
+        self.assertEqual(default_config.GunPolicy().displacement_min_switch_score, 0.08)
+        self.assertTrue(default_config.GunPolicy().displacement_markov_enabled)
+        self.assertTrue(displacement_config_from_policy(default_config.GunPolicy()).markov_enabled)
         self.assertEqual(default_config.GunPolicy().dynamic_cluster.ambiguous_peak_centering_factor, 0.8)
         self.assertEqual(default_config.FIRE_POLICY.low_energy_max_distance, 180)
         self.assertEqual(default_config.TARGET_POLICY.switch_margin, 110)
@@ -373,6 +396,7 @@ class BotConfigTest(unittest.TestCase):
                 "ROBOCODE_CIRCLE_GUN_EVAL_INTERVAL": "bad",
                 "ROBOCODE_CIRCLE_DYNAMIC_BANDWIDTH_MIN": "0.4",
                 "ROBOCODE_CIRCLE_DYNAMIC_BANDWIDTH_MAX": "0.2",
+                "ROBOCODE_CIRCLE_DISPLACEMENT_MARKOV": "0",
             },
         )
         self.assertEqual(env_config.GunPolicy().forced_mode, "anti_surfer")
@@ -380,12 +404,13 @@ class BotConfigTest(unittest.TestCase):
         self.assertEqual(env_config.GunPolicy().eval_wave_min_interval, 8)
         self.assertEqual(env_config.GunPolicy().dynamic_cluster.bandwidth_min, 0.2)
         self.assertEqual(env_config.GunPolicy().dynamic_cluster.bandwidth_max, 0.4)
+        self.assertFalse(env_config.GunPolicy().displacement_markov_enabled)
 
     def test_sweep_gun_policy_defaults_and_env(self) -> None:
         path = ROOT / "bots" / "sweep-pressure" / "sweep_config.py"
 
         default_config = _load_config(path)
-        self.assertEqual(default_config.GunPolicy().selectable_modes, {"linear", "traditional_gf", "dynamic_cluster"})
+        self.assertEqual(default_config.GunPolicy().selectable_modes, DEFAULT_LIVE_MODES)
         self.assertIsNone(default_config.GunPolicy().forced_mode)
         self.assertEqual(default_config.GunPolicy().switch_diagnostics_interval, 24)
         self.assertEqual(default_config.GunPolicy().knn_min_samples, 30)
@@ -398,6 +423,10 @@ class BotConfigTest(unittest.TestCase):
         self.assertEqual(default_config.GunPolicy().primary_slump_situational_margin, 0.025)
         self.assertEqual(default_config.GunPolicy().traditional_gf_min_switch_visits, 45)
         self.assertEqual(default_config.GunPolicy().traditional_gf_min_switch_score, 0.10)
+        self.assertEqual(default_config.GunPolicy().displacement_min_switch_visits, 60)
+        self.assertEqual(default_config.GunPolicy().displacement_min_switch_score, 0.08)
+        self.assertTrue(default_config.GunPolicy().displacement_markov_enabled)
+        self.assertEqual(displacement_config_from_policy(default_config.GunPolicy()).min_switch_score, 0.08)
         self.assertEqual(default_config.GunPolicy().dynamic_cluster.ambiguous_peak_centering_factor, 0.8)
         self.assertEqual(default_config.FIRE_POLICY.low_energy_max_distance, 220)
         self.assertEqual(default_config.TARGET_POLICY.force_switch_target_age, 10)
@@ -424,6 +453,7 @@ class BotConfigTest(unittest.TestCase):
                 "ROBOCODE_SWEEP_GUN_EVAL_INTERVAL": "12",
                 "ROBOCODE_SWEEP_DYNAMIC_CONTEXT_WEIGHT_MIN": "1.4",
                 "ROBOCODE_SWEEP_DYNAMIC_CONTEXT_WEIGHT_MAX": "0.6",
+                "ROBOCODE_SWEEP_DISPLACEMENT_MARKOV": "off",
             },
         )
         self.assertEqual(env_config.GunPolicy().forced_mode, "linear")
@@ -431,6 +461,7 @@ class BotConfigTest(unittest.TestCase):
         self.assertEqual(env_config.GunPolicy().eval_wave_min_interval, 12)
         self.assertEqual(env_config.GunPolicy().dynamic_cluster.context_weight_min, 0.6)
         self.assertEqual(env_config.GunPolicy().dynamic_cluster.context_weight_max, 1.4)
+        self.assertFalse(env_config.GunPolicy().displacement_markov_enabled)
 
 
 if __name__ == "__main__":

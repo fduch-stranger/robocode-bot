@@ -9,6 +9,16 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class LegacyBotAliasTest(unittest.TestCase):
+    def test_legacy_shim_prefers_java11_and_probes_selected_runtime_for_old_api(self) -> None:
+        script = (ROOT / "scripts/run-battle.sh").read_text(encoding="utf-8")
+
+        self.assertIn("LEGACY_JAVA11_BIN", script)
+        self.assertIn("ROBOCODE_LEGACY_JAVA11_BIN", script)
+        self.assertIn('export JAVA_BIN="\\$legacy_java11_bin"', script)
+        self.assertIn('"\\$java_probe_bin" --enable-final-field-mutation=ALL-UNNAMED -version', script)
+        self.assertIn("--enable-final-field-mutation=ALL-UNNAMED", script)
+        self.assertIn("-Djava.awt.headless=true", script)
+
     def test_basic_gf_surfer_alias_prefers_fixed_variant(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)

@@ -63,8 +63,9 @@ Important variables:
   sets.
 
 With no gun overrides enabled, no bot is pinned. Every bot's live selectable
-set defaults to `linear`, `traditional_gf`, and `dynamic_cluster`; every bot can
-still be pinned to any standard wired gun listed above.
+set defaults to `linear`, `traditional_gf`, `dynamic_cluster`, and
+`displacement`; every bot can still be pinned to any standard wired gun listed
+above.
 
 Some guns need target history before they can aim, so a pinned or narrowed set
 can show a short startup fallback in `gun.switch` telemetry before the requested
@@ -614,7 +615,12 @@ scripts/run-battle.sh --legacy all
 Legacy bots are resolved from `ROBOCODE_LEGACY_BOTS_ROOT`, or from the
 repo-local ignored `legacy-bots/` directory when the variable is empty. For
 headless CLI battles, the runner creates a small shim so converted legacy bots
-can run in the headless process environment.
+can run in the headless process environment. The shim prefers the local Java 11
+runtime from `ROBOCODE_LEGACY_JAVA11_BIN` or the Homebrew OpenJDK 11 path when
+available, matching the converted legacy bot setup. When the selected Java
+runtime supports it, the shim adds `--enable-final-field-mutation=ALL-UNNAMED`
+for older Tank Royale API jars that populate final event fields through Gson
+reflection.
 
 The `basic-gf-surfer` alias is the default BasicGFSurfer check and prefers
 `wiki.BasicGFSurferFixed_1.02`, a locally fixed legacy variant with reduced

@@ -27,9 +27,9 @@ class TraditionalGfGunConfig:
     global_source_min_switch_score: float | None = None
     trusted_source_min_switch_visits: int | None = None
     trusted_source_min_switch_score: float | None = None
-    global_source_penalty: float = 0.06
-    blend_source_penalty: float = 0.035
-    coarse_blend_source_penalty: float = 0.02
+    global_source_penalty: float = 0.10
+    blend_source_penalty: float = 0.06
+    coarse_blend_source_penalty: float = 0.04
 
     def decision_score_penalty(self, context: GunDecisionContext | None) -> tuple[float, str | None]:
         if context is None or context.mode != "traditional_gf":

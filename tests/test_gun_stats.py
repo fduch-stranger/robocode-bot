@@ -31,6 +31,7 @@ from bot_core.gun import (
     VirtualGunScorer,
     VirtualGunSystem,
     build_fire_context,
+    displacement_config_from_policy,
     dynamic_cluster_config_from_policy,
     movement_context_tags,
     should_log_switch_decision,
@@ -209,6 +210,25 @@ class GunStatsTest(unittest.TestCase):
         self.assertEqual(0.85, config.ambiguous_peak_score_ratio)
         self.assertEqual(0.8, config.ambiguous_peak_centering_factor)
 
+    def test_displacement_config_from_policy_uses_shared_live_defaults(self) -> None:
+        config = displacement_config_from_policy(SimpleNamespace())
+
+        self.assertEqual(60, config.min_switch_visits)
+        self.assertEqual(0.08, config.min_switch_score)
+        self.assertTrue(config.markov_enabled)
+
+        configured = displacement_config_from_policy(
+            SimpleNamespace(
+                displacement_min_switch_visits=45,
+                displacement_min_switch_score=0.06,
+                displacement_markov_enabled=False,
+            )
+        )
+
+        self.assertEqual(45, configured.min_switch_visits)
+        self.assertEqual(0.06, configured.min_switch_score)
+        self.assertFalse(configured.markov_enabled)
+
     def test_runtime_config_maps_to_runtime_components(self) -> None:
         runtime = runtime_config(
             system=GunSystemConfig(max_waves=7, eval_waves_enabled=True, eval_wave_min_interval=3),
@@ -253,9 +273,9 @@ class GunStatsTest(unittest.TestCase):
         self.assertAlmostEqual(0.8, traditional_gf.global_source_centering_factor)
         self.assertAlmostEqual(0.7, traditional_gf.coarse_source_centering_factor)
         self.assertAlmostEqual(0.8, traditional_gf.coarse_blend_source_centering_factor)
-        self.assertAlmostEqual(0.06, traditional_gf.global_source_penalty)
-        self.assertAlmostEqual(0.035, traditional_gf.blend_source_penalty)
-        self.assertAlmostEqual(0.02, traditional_gf.coarse_blend_source_penalty)
+        self.assertAlmostEqual(0.10, traditional_gf.global_source_penalty)
+        self.assertAlmostEqual(0.06, traditional_gf.blend_source_penalty)
+        self.assertAlmostEqual(0.04, traditional_gf.coarse_blend_source_penalty)
 
     def test_gun_feature_tuple_contract_stays_seven_values(self) -> None:
         bot = fake_bot(x=100.0, y=100.0, arena_width=800.0, arena_height=600.0)

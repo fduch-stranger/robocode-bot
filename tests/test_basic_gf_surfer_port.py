@@ -2,6 +2,7 @@ import importlib.util
 import json
 import math
 import os
+import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -67,6 +68,16 @@ class FakeMoveBot:
         self.commands.append(("back", distance))
 
 
+class FakeRadarBot:
+    def __init__(self) -> None:
+        self.turn_number = 10
+        self._last_scan_turn = -1
+        self.commands = []
+
+    def set_turn_radar_left(self, degrees: float) -> None:
+        self.commands.append(("radar_left", degrees))
+
+
 class FakeGunWaveBot:
     def __init__(self) -> None:
         self.turn_number = 10
@@ -97,6 +108,86 @@ class BasicGFSurferPortTest(unittest.TestCase):
         self.assertEqual("BasicGFSurfer Port", manifest["name"])
         self.assertEqual("basic-gf-surfer-port", manifest["base"])
         self.assertTrue(os.access(BOT_DIR / "basic-gf-surfer-port.sh", os.X_OK))
+
+    def test_direct_gui_style_import_bootstraps_venv_dependency_path(self) -> None:
+        code = f"""
+import importlib.util
+import sys
+module_path = {str(BOT_DIR / "basic-gf-surfer-port.py")!r}
+spec = importlib.util.spec_from_file_location("basic_gf_surfer_direct_bootstrap", module_path)
+module = importlib.util.module_from_spec(spec)
+sys.modules["basic_gf_surfer_direct_bootstrap"] = module
+spec.loader.exec_module(module)
+print(module.BasicGFSurferPort.__name__)
+"""
+        env = os.environ.copy()
+        env.pop("PYTHONPATH", None)
+        env.pop("PYTHONHOME", None)
+
+        result = subprocess.run(
+            [sys.executable, "-S", "-c", code],
+            cwd=ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+
+        self.assertEqual("BasicGFSurferPort", result.stdout.strip())
+        self.assertEqual("", result.stderr)
+        self.assertEqual(0, result.returncode)
+
+    def test_direct_gui_bootstrap_reexecs_old_python_to_venv_python(self) -> None:
+        venv_python = ROOT / ".venv" / "bin" / "python"
+
+        self.assertTrue(
+            port._should_reexec_venv_python(
+                venv_python,
+                executable="/usr/bin/python3",
+                version_info=(3, 9),
+            )
+        )
+        self.assertFalse(
+            port._should_reexec_venv_python(
+                venv_python,
+                executable=str(venv_python),
+                version_info=(3, 9),
+            )
+        )
+        self.assertFalse(
+            port._should_reexec_venv_python(
+                venv_python,
+                executable="/usr/bin/python3",
+                version_info=(3, 13),
+            )
+        )
+
+    def test_maintain_radar_searches_before_first_scan(self) -> None:
+        bot = FakeRadarBot()
+
+        port.BasicGFSurferPort._maintain_radar(bot)
+
+        self.assertEqual("radar_left", bot.commands[0][0])
+        self.assertTrue(math.isinf(bot.commands[0][1]))
+        self.assertGreater(bot.commands[0][1], 0.0)
+
+    def test_maintain_radar_does_not_overwrite_recent_scan_lock(self) -> None:
+        bot = FakeRadarBot()
+        bot._last_scan_turn = bot.turn_number
+
+        port.BasicGFSurferPort._maintain_radar(bot)
+
+        self.assertEqual([], bot.commands)
+
+    def test_maintain_radar_resumes_search_after_stale_scan(self) -> None:
+        bot = FakeRadarBot()
+        bot._last_scan_turn = bot.turn_number - port.RADAR_LOCK_GRACE_TICKS - 1
+
+        port.BasicGFSurferPort._maintain_radar(bot)
+
+        self.assertEqual("radar_left", bot.commands[0][0])
+        self.assertTrue(math.isinf(bot.commands[0][1]))
 
     def test_tank_and_legacy_angle_conversions_are_inverse(self) -> None:
         for degrees in (0.0, 45.0, 90.0, 180.0, 270.0, 359.0):
@@ -268,6 +359,7 @@ class BasicGFSurferPortTest(unittest.TestCase):
         ]
         bot._last_turn_number = 42
         bot._last_gun_wave_update_turn = 42
+        bot._last_scan_turn = 42
 
         bot.on_round_ended(object())
 
@@ -275,6 +367,7 @@ class BasicGFSurferPortTest(unittest.TestCase):
         self.assertEqual([], bot._gun_waves)
         self.assertEqual(-1, bot._last_turn_number)
         self.assertEqual(-1, bot._last_gun_wave_update_turn)
+        self.assertEqual(-1, bot._last_scan_turn)
         self.assertEqual(7.0, bot._state.surf_stats[0])
         self.assertEqual(3, bot._state.gun_stats[0][0][0][0])
 
