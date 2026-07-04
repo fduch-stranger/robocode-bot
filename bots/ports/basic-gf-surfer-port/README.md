@@ -1,6 +1,6 @@
 # BasicGFSurfer Port
 
-Python Tank Royale port of the fixed local `BasicGFSurfer` legacy benchmark.
+Python Tank Royale port of the fixed local `BasicGFSurfer` reference opponent.
 
 The bot intentionally keeps the legacy shape instead of using the shared
 virtual-gun and movement stacks:
@@ -12,7 +12,7 @@ virtual-gun and movement stacks:
 - no-wave orbit fallback
 - wall and stationary escape recovery from the fixed legacy variant
 
-Use it as a local, non-legacy surfer benchmark:
+Use it as the primary local, non-legacy surfer benchmark:
 
 ```sh
 scripts/run-battle.sh --rounds 1 bots/adaptive-prime bots/ports/basic-gf-surfer-port
@@ -20,9 +20,10 @@ scripts/run-battle.sh --rounds 24 bots/adaptive-prime bots/ports/basic-gf-surfer
 ```
 
 The legacy Java fixed bot remains available through `--legacy basic-gf-surfer`.
-This Python port is useful for checking whether surfer behavior can be made
-stable without the legacy bridge, but it is not currently strength-equivalent
-to the fixed Java legacy bot.
+For current Adaptive combat-economics and gun-selection work, prefer this port
+over the legacy Java bot. Ported-surfer runs do not need high-accuracy round
+filtering; high Adaptive accuracy against the port is real performance or a
+real exploit of this bot.
 
 The launcher script sets the normal repo/package import path. The bot file also
 has a small direct-GUI-launch bootstrap so Tank Royale GUI runs that start the

@@ -1,11 +1,35 @@
+import json
+import tempfile
 import unittest
 from contextlib import redirect_stdout
 from io import StringIO
+from pathlib import Path
+from unittest.mock import patch
 
-from tools.gun_eval_summary import _print_summary, summarize_events
+from tools.gun_eval_summary import _print_summary, main, summarize_events
 
 
 class GunEvalSummaryTest(unittest.TestCase):
+    def test_cli_writes_json_output(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            telemetry_dir = Path(temp_dir) / "telemetry"
+            telemetry_dir.mkdir()
+            output_path = Path(temp_dir) / "summary.json"
+            (telemetry_dir / "adaptive-prime.jsonl").write_text(
+                json.dumps({"bot": "adaptive-prime", "event": "bullet.fired", "fields": {"aim_mode": "linear"}})
+                + "\n",
+                encoding="utf-8",
+            )
+
+            with patch("sys.argv", ["gun_eval_summary.py", str(telemetry_dir), "--json-output", str(output_path)]):
+                with redirect_stdout(StringIO()):
+                    exit_code = main()
+
+            summary = json.loads(output_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(0, exit_code)
+        self.assertEqual({"linear": 1}, summary["fired"])
+
     def test_summarizes_real_fire_and_eval_wave_scores(self) -> None:
         summary = summarize_events(
             [

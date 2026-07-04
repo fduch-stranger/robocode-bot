@@ -11,6 +11,8 @@ def main() -> int:
     args = _parse_args()
     events = list(_read_events(Path(args.telemetry_dir), args.bot))
     summary = summarize_events(events, post_switch_shots=args.post_switch_shots)
+    if args.json_output:
+        Path(args.json_output).write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     _print_summary(summary)
     return 0
 
@@ -20,6 +22,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("telemetry_dir", help="Directory containing telemetry JSONL files.")
     parser.add_argument("--bot", default="adaptive-prime", help="Bot telemetry name to summarize.")
     parser.add_argument("--post-switch-shots", type=int, default=6, help="Real shots to track after each gun switch.")
+    parser.add_argument("--json-output", help="Write structured summary JSON to this path.")
     return parser.parse_args()
 
 

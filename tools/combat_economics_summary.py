@@ -6,7 +6,7 @@ import json
 import re
 import sys
 from collections import defaultdict
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -48,7 +48,8 @@ class RoundSummary:
     dynamicAvgEffectiveBandwidth: float = 0.0
     dynamicShotQualityVisits: int = 0
     dynamicAvgShotQuality: float = 0.0
-    excludedGlitch: bool = False
+    modes: dict[str, dict[str, float | int]] = field(default_factory=dict)
+    excludedByAccuracy: bool = False
 
 
 @dataclass(frozen=True)
@@ -80,6 +81,7 @@ class AggregateSummary:
     dynamicAvgEffectiveBandwidth: float = 0.0
     dynamicShotQualityVisits: int = 0
     dynamicAvgShotQuality: float = 0.0
+    modes: dict[str, dict[str, float | int]] = field(default_factory=dict)
     excludedRounds: int = 0
     unpairedRounds: int = 0
 
@@ -89,7 +91,7 @@ class RunSummary:
     side: str
     runDir: str
     raw: AggregateSummary
-    filtered: AggregateSummary
+    accuracyFiltered: AggregateSummary | None
     rounds: tuple[RoundSummary, ...]
     warnings: tuple[str, ...] = ()
 
@@ -100,20 +102,20 @@ def main() -> int:
         [Path(path) for path in args.paths],
         bot=args.bot,
         target_name=args.target_name,
-        threshold=args.threshold,
+        accuracy_filter_threshold=args.accuracy_filter_threshold,
     )
     if args.json_output:
         Path(args.json_output).write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     _print_summary(summary)
     warnings = summary["warnings"]
-    if warnings and not args.allow_missing_data:
+    if any(_is_fatal_warning(warning) for warning in warnings) and not args.allow_missing_data:
         return 2
     return 0
 
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Analyze BasicGFSurfer-style runs and exclude likely stuck-surfer high-accuracy rounds.",
+        description="Summarize combat economics from battle runs and optional telemetry.",
     )
     parser.add_argument("paths", nargs="+", help="Run directories or experiment directories containing run directories.")
     parser.add_argument("--bot", default="adaptive-prime", help="Telemetry bot name to analyze.")
@@ -123,10 +125,13 @@ def _parse_args() -> argparse.Namespace:
         help="Runner-log target name. Spaces and underscores are treated equivalently.",
     )
     parser.add_argument(
-        "--threshold",
+        "--accuracy-filter-threshold",
         type=_accuracy_threshold,
-        default=0.30,
-        help="Exclude rounds where bot hit accuracy is greater than this value.",
+        default=None,
+        help=(
+            "Also report summaries that exclude rounds where bot hit accuracy is greater than this value. "
+            "Leave unset for normal port/local-bot analysis."
+        ),
     )
     parser.add_argument("--json-output", help="Write structured summary JSON to this path.")
     parser.add_argument(
@@ -142,31 +147,54 @@ def analyze_experiment(
     *,
     bot: str = "adaptive-prime",
     target_name: str = "Adaptive_Prime",
-    threshold: float = 0.30,
+    accuracy_filter_threshold: float | None = None,
 ) -> dict[str, Any]:
-    if threshold < 0.0 or threshold > 1.0:
+    if accuracy_filter_threshold is not None and (
+        accuracy_filter_threshold < 0.0 or accuracy_filter_threshold > 1.0
+    ):
         raise ValueError("threshold must be between 0.0 and 1.0")
     run_dirs = discover_run_dirs(roots)
-    runs = [analyze_run(run_dir, bot=bot, target_name=target_name, threshold=threshold) for run_dir in run_dirs]
+    runs = [
+        analyze_run(
+            run_dir,
+            bot=bot,
+            target_name=target_name,
+            accuracy_filter_threshold=accuracy_filter_threshold,
+        )
+        for run_dir in run_dirs
+    ]
     sides = sorted({run.side for run in runs})
     raw = {side: _aggregate_runs([run.raw for run in runs if run.side == side]) for side in sides}
-    filtered = {side: _aggregate_runs([run.filtered for run in runs if run.side == side]) for side in sides}
-    paired_filtered = _paired_filtered_summary(runs)
+    accuracy_filtered = (
+        {
+            side: _aggregate_runs(
+                [run.accuracyFiltered for run in runs if run.side == side and run.accuracyFiltered is not None]
+            )
+            for side in sides
+        }
+        if accuracy_filter_threshold is not None
+        else None
+    )
+    paired_filtered = _paired_filtered_summary(runs) if accuracy_filter_threshold is not None else None
     warnings = [f"{run.runDir}: {warning}" for run in runs for warning in run.warnings]
     if not run_dirs:
         warnings.append("no run directories discovered")
-    warnings.extend(paired_filtered.pop("warnings", []))
-    return {
-        "threshold": threshold,
+    if paired_filtered is not None:
+        warnings.extend(paired_filtered.pop("warnings", []))
+    summary = {
+        "accuracyFilterThreshold": accuracy_filter_threshold,
         "bot": bot,
         "targetName": target_name,
         "runCount": len(runs),
         "warnings": warnings,
         "runs": [run_to_dict(run) for run in runs],
         "raw": _with_delta(raw),
-        "filtered": _with_delta(filtered),
-        "pairedFiltered": paired_filtered,
     }
+    if accuracy_filtered is not None:
+        summary["accuracyFiltered"] = _with_delta(accuracy_filtered)
+    if paired_filtered is not None:
+        summary["pairedAccuracyFiltered"] = paired_filtered
+    return summary
 
 
 def discover_run_dirs(roots: list[Path]) -> list[Path]:
@@ -194,21 +222,25 @@ def analyze_run(
     *,
     bot: str = "adaptive-prime",
     target_name: str = "Adaptive_Prime",
-    threshold: float = 0.30,
+    accuracy_filter_threshold: float | None = None,
 ) -> RunSummary:
     scores = _round_scores(run_dir / "runner.log", target_name)
-    accuracy = _round_accuracy(run_dir / "telemetry", bot, threshold)
+    accuracy = _round_accuracy(run_dir / "telemetry", bot, accuracy_filter_threshold)
     round_count = max([*scores.keys(), *accuracy.keys()], default=0)
     rounds = tuple(
-        _round_summary(index, scores.get(index, {}), accuracy.get(index, {}), threshold)
+        _round_summary(index, scores.get(index, {}), accuracy.get(index, {}), accuracy_filter_threshold)
         for index in range(1, round_count + 1)
     )
     warnings = _run_warnings(run_dir, scores, accuracy)
     return RunSummary(
         side=_side_for_run_dir(run_dir),
         runDir=str(run_dir),
-        raw=_aggregate_rounds(rounds, filtered=False),
-        filtered=_aggregate_rounds(rounds, filtered=True),
+        raw=_aggregate_rounds(rounds, use_accuracy_filter=False),
+        accuracyFiltered=(
+            _aggregate_rounds(rounds, use_accuracy_filter=True)
+            if accuracy_filter_threshold is not None
+            else None
+        ),
         rounds=rounds,
         warnings=warnings,
     )
@@ -219,7 +251,7 @@ def run_to_dict(run: RunSummary) -> dict[str, Any]:
         "side": run.side,
         "runDir": run.runDir,
         "raw": asdict(run.raw),
-        "filtered": asdict(run.filtered),
+        "accuracyFiltered": asdict(run.accuracyFiltered) if run.accuracyFiltered is not None else None,
         "rounds": [asdict(round_summary) for round_summary in run.rounds],
         "warnings": list(run.warnings),
     }
@@ -248,7 +280,11 @@ def _round_scores(runner_log: Path, target_name: str) -> dict[int, dict[str, int
     return per_round
 
 
-def _round_accuracy(telemetry_dir: Path, bot: str, threshold: float) -> dict[int, dict[str, int | float | bool]]:
+def _round_accuracy(
+    telemetry_dir: Path,
+    bot: str,
+    accuracy_filter_threshold: float | None,
+) -> dict[int, dict[str, int | float | bool]]:
     events = _read_bot_events(telemetry_dir, bot)
     if not events:
         return {}
@@ -256,7 +292,8 @@ def _round_accuracy(telemetry_dir: Path, bot: str, threshold: float) -> dict[int
     current_round = 1
     previous_turn: int | None = None
     bullet_modes: dict[str, str] = {}
-    pending_hits: dict[str, int] = defaultdict(int)
+    bullet_powers: dict[str, float] = {}
+    pending_hits: dict[str, list[tuple[float, float]]] = defaultdict(list)
     rounds[current_round]
     for event in events:
         name = event.get("event")
@@ -264,6 +301,7 @@ def _round_accuracy(telemetry_dir: Path, bot: str, threshold: float) -> dict[int
             current_round += 1
             previous_turn = None
             bullet_modes.clear()
+            bullet_powers.clear()
             pending_hits.clear()
             rounds[current_round]
             continue
@@ -275,27 +313,42 @@ def _round_accuracy(telemetry_dir: Path, bot: str, threshold: float) -> dict[int
             if previous_turn is not None and turn < previous_turn and not resolves_pending_hit:
                 current_round += 1
                 bullet_modes.clear()
+                bullet_powers.clear()
                 pending_hits.clear()
                 rounds[current_round]
             previous_turn = turn
         mode = str(fields["aim_mode"]) if fields.get("aim_mode") else None
+        power = _float_or_none(fields.get("power"))
         bucket = rounds[current_round]
         if name == "bullet.fired":
             bucket["shots"] = int(bucket["shots"]) + 1
+            pending_for_bullet = pending_hits.pop(bullet_id, []) if bullet_id is not None else []
             if mode is not None and bullet_id is not None:
                 bullet_modes[bullet_id] = mode
+            if power is not None and bullet_id is not None:
+                bullet_powers[bullet_id] = power
+            if mode is not None:
+                _record_mode_shot(bucket, mode, power)
+                for pending_damage, pending_power in pending_for_bullet:
+                    _record_mode_hit(bucket, mode, pending_power or power, pending_damage)
             if mode == "dynamic_cluster":
                 bucket["dynamicShots"] = int(bucket["dynamicShots"]) + 1
-                if bullet_id is not None and pending_hits.get(bullet_id):
-                    bucket["dynamicHits"] = int(bucket["dynamicHits"]) + pending_hits.pop(bullet_id)
+                bucket["dynamicHits"] = int(bucket["dynamicHits"]) + len(pending_for_bullet)
         elif name == "bullet.hit_bot":
             bucket["hits"] = int(bucket["hits"]) + 1
             if mode is None and bullet_id is not None:
                 mode = bullet_modes.get(bullet_id)
+            if power is None and bullet_id is not None:
+                power = bullet_powers.get(bullet_id)
+            damage = _float_or_none(fields.get("damage"))
+            if damage is None:
+                damage = _bullet_damage(power or 0.0)
             if mode == "dynamic_cluster":
                 bucket["dynamicHits"] = int(bucket["dynamicHits"]) + 1
             elif mode is None and bullet_id is not None:
-                pending_hits[bullet_id] += 1
+                pending_hits[bullet_id].append((damage, power or 0.0))
+            if mode is not None:
+                _record_mode_hit(bucket, mode, power, damage)
         elif name == "gun.wave_visit":
             _record_dynamic_wave_visit(bucket, fields)
 
@@ -307,7 +360,10 @@ def _round_accuracy(telemetry_dir: Path, bot: str, threshold: float) -> dict[int
         bucket["accuracy"] = hits / shots if shots else 0.0
         bucket["dynamicAccuracy"] = dynamic_hits / dynamic_shots if dynamic_shots else 0.0
         _finalize_dynamic_wave_diagnostics(bucket)
-        bucket["excludedGlitch"] = float(bucket["accuracy"]) > threshold
+        bucket["modes"] = _finalize_mode_stats(bucket.get("modes", {}))
+        bucket["excludedByAccuracy"] = (
+            accuracy_filter_threshold is not None and float(bucket["accuracy"]) > accuracy_filter_threshold
+        )
     return dict(rounds)
 
 
@@ -331,6 +387,67 @@ def _bullet_id(fields: dict[str, Any]) -> str | None:
     if bullet_id is None:
         return None
     return str(bullet_id)
+
+
+def _record_mode_shot(bucket: dict[str, Any], mode: str, power: float | None) -> None:
+    mode_stats = _mode_bucket(bucket, mode)
+    mode_stats["shots"] = int(mode_stats["shots"]) + 1
+    if power is not None:
+        mode_stats["powerSum"] = float(mode_stats["powerSum"]) + power
+
+
+def _record_mode_hit(bucket: dict[str, Any], mode: str, power: float | None, damage: float) -> None:
+    mode_stats = _mode_bucket(bucket, mode)
+    mode_stats["hits"] = int(mode_stats["hits"]) + 1
+    mode_stats["damage"] = float(mode_stats["damage"]) + damage
+    if power is not None:
+        mode_stats["hitPowerSum"] = float(mode_stats["hitPowerSum"]) + power
+
+
+def _mode_bucket(bucket: dict[str, Any], mode: str) -> dict[str, float | int]:
+    modes = bucket.setdefault("modes", {})
+    assert isinstance(modes, dict)
+    if mode not in modes:
+        modes[mode] = _empty_mode_stats()
+    return modes[mode]
+
+
+def _empty_mode_stats() -> dict[str, float | int]:
+    return {
+        "shots": 0,
+        "hits": 0,
+        "powerSum": 0.0,
+        "hitPowerSum": 0.0,
+        "damage": 0.0,
+    }
+
+
+def _bullet_damage(power: float) -> float:
+    return 4.0 * power + max(2.0 * power - 1.0, 0.0)
+
+
+def _finalize_mode_stats(modes: object) -> dict[str, dict[str, float | int]]:
+    if not isinstance(modes, dict):
+        return {}
+    result: dict[str, dict[str, float | int]] = {}
+    for mode, raw_stats in modes.items():
+        if not isinstance(raw_stats, dict):
+            continue
+        shots = int(raw_stats.get("shots", 0))
+        hits = int(raw_stats.get("hits", 0))
+        damage = float(raw_stats.get("damage", 0.0))
+        power_sum = float(raw_stats.get("powerSum", float(raw_stats.get("avgPower", 0.0)) * shots))
+        hit_power_sum = float(raw_stats.get("hitPowerSum", float(raw_stats.get("avgHitPower", 0.0)) * hits))
+        result[str(mode)] = {
+            "shots": shots,
+            "hits": hits,
+            "hitRate": hits / shots if shots else 0.0,
+            "avgPower": power_sum / shots if shots else 0.0,
+            "avgHitPower": hit_power_sum / hits if hits else 0.0,
+            "damage": damage,
+            "damagePerShot": damage / shots if shots else 0.0,
+        }
+    return result
 
 
 def _record_dynamic_wave_visit(bucket: dict[str, Any], fields: dict[str, Any]) -> None:
@@ -403,7 +520,7 @@ def _round_summary(
     round_number: int,
     score: dict[str, int],
     accuracy: dict[str, int | float | bool],
-    threshold: float,
+    accuracy_filter_threshold: float | None,
 ) -> RoundSummary:
     shots = int(accuracy.get("shots", 0))
     hits = int(accuracy.get("hits", 0))
@@ -445,13 +562,23 @@ def _round_summary(
         dynamicAvgEffectiveBandwidth=float(accuracy.get("dynamicAvgEffectiveBandwidth", 0.0)),
         dynamicShotQualityVisits=dynamic_shot_quality_visits,
         dynamicAvgShotQuality=float(accuracy.get("dynamicAvgShotQuality", 0.0)),
-        excludedGlitch=bool(accuracy.get("excludedGlitch", hit_accuracy > threshold)),
+        modes=_finalize_mode_stats(accuracy.get("modes", {})),
+        excludedByAccuracy=bool(
+            accuracy.get(
+                "excludedByAccuracy",
+                accuracy_filter_threshold is not None and hit_accuracy > accuracy_filter_threshold,
+            )
+        ),
     )
 
 
-def _aggregate_rounds(rounds: tuple[RoundSummary, ...], *, filtered: bool) -> AggregateSummary:
-    selected = [round_summary for round_summary in rounds if not filtered or not round_summary.excludedGlitch]
-    return _aggregate_round_values(selected, runs=1 if rounds else 0, excluded_rounds=_excluded_count(rounds) if filtered else 0)
+def _aggregate_rounds(rounds: tuple[RoundSummary, ...], *, use_accuracy_filter: bool) -> AggregateSummary:
+    selected = [round_summary for round_summary in rounds if not use_accuracy_filter or not round_summary.excludedByAccuracy]
+    return _aggregate_round_values(
+        selected,
+        runs=1 if rounds else 0,
+        excluded_rounds=_excluded_count(rounds) if use_accuracy_filter else 0,
+    )
 
 
 def _aggregate_runs(aggregates: list[AggregateSummary]) -> dict[str, int | float]:
@@ -517,6 +644,7 @@ def _aggregate_runs(aggregates: list[AggregateSummary]) -> dict[str, int | float
         "dynamicAvgShotQuality": _weighted_average(
             [(aggregate.dynamicAvgShotQuality, aggregate.dynamicShotQualityVisits) for aggregate in aggregates]
         ),
+        "modes": _aggregate_mode_stats([aggregate.modes for aggregate in aggregates]),
         "excludedRounds": sum(aggregate.excludedRounds for aggregate in aggregates),
         "unpairedRounds": sum(aggregate.unpairedRounds for aggregate in aggregates),
     }
@@ -582,8 +710,50 @@ def _aggregate_round_values(
         dynamicAvgShotQuality=_weighted_average(
             [(round_summary.dynamicAvgShotQuality, round_summary.dynamicShotQualityVisits) for round_summary in rounds]
         ),
+        modes=_aggregate_mode_stats([round_summary.modes for round_summary in rounds]),
         excludedRounds=excluded_rounds,
     )
+
+
+def _aggregate_mode_stats(
+    mode_summaries: list[dict[str, dict[str, float | int]]],
+) -> dict[str, dict[str, float | int]]:
+    combined: dict[str, dict[str, float]] = {}
+    for modes in mode_summaries:
+        for mode, stats in modes.items():
+            bucket = combined.setdefault(
+                mode,
+                {
+                    "shots": 0.0,
+                    "hits": 0.0,
+                    "powerSum": 0.0,
+                    "hitPowerSum": 0.0,
+                    "damage": 0.0,
+                },
+            )
+            shots = float(stats.get("shots", 0))
+            hits = float(stats.get("hits", 0))
+            bucket["shots"] += shots
+            bucket["hits"] += hits
+            bucket["powerSum"] += float(stats.get("avgPower", 0.0)) * shots
+            bucket["hitPowerSum"] += float(stats.get("avgHitPower", 0.0)) * hits
+            bucket["damage"] += float(stats.get("damage", 0.0))
+
+    result: dict[str, dict[str, float | int]] = {}
+    for mode, stats in sorted(combined.items()):
+        shots = int(stats["shots"])
+        hits = int(stats["hits"])
+        damage = stats["damage"]
+        result[mode] = {
+            "shots": shots,
+            "hits": hits,
+            "hitRate": hits / shots if shots else 0.0,
+            "avgPower": stats["powerSum"] / shots if shots else 0.0,
+            "avgHitPower": stats["hitPowerSum"] / hits if hits else 0.0,
+            "damage": damage,
+            "damagePerShot": damage / shots if shots else 0.0,
+        }
+    return result
 
 
 def _weighted_average(values: list[tuple[float, int]]) -> float:
@@ -704,10 +874,10 @@ def _paired_filtered_summary(runs: list[RunSummary]) -> dict[str, Any]:
     summary["pairs"] = pair_details
     if runs and not pair_details:
         summary.pop("delta", None)
-        warnings.append("no baseline/candidate pairs discovered for pairedFiltered comparison")
+        warnings.append("no baseline/candidate pairs discovered for paired accuracy-filtered comparison")
     elif pair_details and not has_valid_rounds:
         summary.pop("delta", None)
-        warnings.append("no valid pairedFiltered rounds discovered after glitch and round-pair filtering")
+        warnings.append("no valid paired accuracy-filtered rounds discovered after accuracy and round-pair filtering")
     summary["warnings"] = warnings
     return summary
 
@@ -728,8 +898,8 @@ def _paired_valid_rounds(baseline: RunSummary, candidate: RunSummary) -> list[in
     return [
         round_number
         for round_number in sorted(set(baseline_rounds).intersection(candidate_rounds))
-        if not baseline_rounds[round_number].excludedGlitch
-        and not candidate_rounds[round_number].excludedGlitch
+        if not baseline_rounds[round_number].excludedByAccuracy
+        and not candidate_rounds[round_number].excludedByAccuracy
     ]
 
 
@@ -738,7 +908,7 @@ def _rounds_by_number(run: RunSummary) -> dict[int, RoundSummary]:
 
 
 def _excluded_round_numbers(run: RunSummary) -> list[int]:
-    return [round_summary.round for round_summary in run.rounds if round_summary.excludedGlitch]
+    return [round_summary.round for round_summary in run.rounds if round_summary.excludedByAccuracy]
 
 
 def _shared_excluded_round_numbers(left: RunSummary, right: RunSummary) -> list[int]:
@@ -746,7 +916,7 @@ def _shared_excluded_round_numbers(left: RunSummary, right: RunSummary) -> list[
     return [
         round_summary.round
         for round_summary in left.rounds
-        if round_summary.round in right_rounds and round_summary.excludedGlitch
+        if round_summary.round in right_rounds and round_summary.excludedByAccuracy
     ]
 
 
@@ -781,13 +951,20 @@ def _paired_round_comparison(
 
 
 def _print_summary(summary: dict[str, Any]) -> None:
-    print(f"runs: {summary['runCount']} threshold: {summary['threshold']}")
+    threshold = summary.get("accuracyFilterThreshold")
+    threshold_text = "off" if threshold is None else str(threshold)
+    print(f"runs: {summary['runCount']} accuracy_filter_threshold: {threshold_text}")
     for warning in summary["warnings"]:
         print(f"warning: {warning}", file=sys.stderr)
-    for label in ("raw", "filtered", "pairedFiltered"):
+    labels = ["raw"]
+    if "accuracyFiltered" in summary:
+        labels.append("accuracyFiltered")
+    if "pairedAccuracyFiltered" in summary:
+        labels.append("pairedAccuracyFiltered")
+    for label in labels:
         print(label)
         bucket = summary[label]
-        if label == "pairedFiltered":
+        if label == "pairedAccuracyFiltered":
             print(f"  pair_count={bucket.get('pairCount', 0)} available={bucket.get('available', False)}")
         for side in sorted(
             key for key in bucket if key not in {"delta", "pairs", "pairCount", "warnings", "available"}
@@ -819,6 +996,21 @@ def _print_summary(summary: dict[str, Any]) -> None:
                     unpaired=values.get("unpairedRounds", 0),
                 )
             )
+            for mode, mode_values in sorted(values.get("modes", {}).items()):
+                print(
+                    "    {mode}: shots={shots} hits={hits} hit_rate={hit_rate:.3f} "
+                    "avg_power={avg_power:.2f} avg_hit_power={avg_hit_power:.2f} "
+                    "damage={damage:.1f} damage/shot={damage_per_shot:.3f}".format(
+                        mode=mode,
+                        shots=mode_values["shots"],
+                        hits=mode_values["hits"],
+                        hit_rate=mode_values["hitRate"],
+                        avg_power=mode_values["avgPower"],
+                        avg_hit_power=mode_values["avgHitPower"],
+                        damage=mode_values["damage"],
+                        damage_per_shot=mode_values["damagePerShot"],
+                    )
+                )
         if "delta" in bucket:
             delta = bucket["delta"]
             print(
@@ -835,7 +1027,7 @@ def _print_summary(summary: dict[str, Any]) -> None:
                     unpaired=delta.get("unpairedRounds", 0),
                 )
             )
-        if label == "pairedFiltered":
+        if label == "pairedAccuracyFiltered":
             for pair in bucket.get("pairs", []):
                 print(
                     "  pair {key}: valid_rounds={valid} "
@@ -895,11 +1087,11 @@ def _accuracy_bucket() -> dict[str, Any]:
         "dynamicAvgShotQuality": 0.0,
         "accuracy": 0.0,
         "dynamicAccuracy": 0.0,
-        "excludedGlitch": False,
+        "excludedByAccuracy": False,
     }
 
 def _excluded_count(rounds: tuple[RoundSummary, ...]) -> int:
-    return sum(1 for round_summary in rounds if round_summary.excludedGlitch)
+    return sum(1 for round_summary in rounds if round_summary.excludedByAccuracy)
 
 
 def _normalize_name(value: str) -> str:
@@ -948,8 +1140,12 @@ def _run_warnings(
         if rounds_without_shots:
             warnings.append(f"scored rounds without shot telemetry: {_round_range(rounds_without_shots)}")
     if scores and len(scores) < 20:
-        warnings.append(f"short run has {len(scores)} scored rounds; BasicGFSurfer validation expects 20+")
+        warnings.append(f"short run has {len(scores)} scored rounds; combat summaries are more stable with 20+")
     return tuple(warnings)
+
+
+def _is_fatal_warning(warning: str) -> bool:
+    return "short run has " not in warning
 
 
 def _round_range(rounds: set[int]) -> str:

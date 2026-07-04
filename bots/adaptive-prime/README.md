@@ -1,279 +1,147 @@
 # Adaptive Prime
 
-Adaptive Prime is the experimental 1v1 champion candidate. It uses nearly all
-shared systems, but its distinctive behavior is adaptive movement selection:
-go-to surfing first, potential-field routing second, and minimum-risk routing in
-melee.
+Adaptive Prime is the 1v1 champion candidate. It uses the full shared stack:
+virtual guns, enemy-fire detection, go-to surfing, movement learning,
+minimum-risk melee movement, and telemetry.
 
-Shared systems are documented in:
+Shared references:
 
 - [Shared Bot Systems](../../docs/bot-shared-systems.md)
 - [Bot Core Data Structures](../../docs/bot-core-data-structures.md)
+- [Tooling](../../docs/tooling.md)
 
-Adaptive Prime keeps its personality in small module-level policy dataclasses:
-`GunPolicy`, nested `TraditionalGfPolicy`, `FirePolicy`, `TargetPolicy`,
-`RadarPolicy`, `MovementPolicy`, and `DuelMovementPolicy`. These group tuning
-values by responsibility without moving bot-specific thresholds into shared
-`bot_core`.
+Bot-specific tuning lives in policy dataclasses in `adaptive_prime.py`:
+`GunPolicy`, `TraditionalGfPolicy`, `FirePolicy`, `TargetPolicy`,
+`RadarPolicy`, `MovementPolicy`, and `DuelMovementPolicy`.
 
-## What Makes It Different
-
-- 1v1-first movement stack.
-- Uses go-to surfing when a surfable wave is available.
-- Falls back to potential-field destination planning when surfing cannot choose
-  a destination.
-- Uses minimum-risk movement in melee instead of tunneling.
-- Firepower scales more aggressively with learned gun confidence and energy
-  advantage than Chase/Circle/Sweep.
-
-## Turn Flow
+## Behavior
 
 ```mermaid
 flowchart TD
     A["scan or tick"] --> B["select target"]
-    B --> C["update gun and movement wave visits"]
+    B --> C["update gun and movement waves"]
     C --> D["aim with virtual gun system"]
     D --> E["lock or reacquire radar"]
     E --> F{"battle mode"}
-    F -- "1v1" --> G{"surf wave usable?"}
-    G -- "yes" --> H["go-to surf destination"]
-    G -- "no" --> I["potential-field destination"]
-    F -- "melee" --> J["minimum-risk destination"]
-    H --> K["fire if fresh and aligned"]
+    F -- "1v1" --> G{"surfable wave?"}
+    G -- "yes" --> H["go-to surf"]
+    G -- "no" --> I["potential-field route"]
+    F -- "melee" --> J["minimum-risk route"]
+    H --> K["fire gate"]
     I --> K
     J --> K
 ```
 
-## Movement Modes
+Adaptive is different from the other local bots in three places:
 
-```mermaid
-stateDiagram-v2
-    [*] --> Search
-    Search --> Track: "target found"
-    Track --> GoToSurf: "1v1 and wave usable"
-    Track --> PotentialOrbit: "1v1 fallback"
-    Track --> MinimumRisk: "multiple targets"
-    Track --> PanicRetreat: "too close in melee"
-    GoToSurf --> Track
-    PotentialOrbit --> Track
-    MinimumRisk --> Track
-    PanicRetreat --> Track
-```
+- It prefers go-to surfing when an enemy wave is usable.
+- It falls back to potential-field routing in 1v1 instead of simple orbiting.
+- It raises firepower more aggressively when gun confidence and energy position
+  are good.
 
-### Go-To Surf
+## Movement
 
-The bot asks the movement flattener for a destination that minimizes projected
-wave danger, wall risk, range risk, and travel cost. The shared scorer is
-documented in
-[Bot Core Data Structures](../../docs/bot-core-data-structures.md#go-to-surfing).
+1v1 movement priority:
 
-Telemetry event: `movement.goto_surf`.
+1. Use shared go-to surfing when a wave can be scored.
+2. Otherwise compute a potential-field destination from enemy repulsion,
+   orbit tangent, fire-threat repulsion, wall repulsion, and center attraction.
+3. Use distance bands to panic-open, open range, orbit, or reconnect.
 
-### Potential Field
+Melee uses shared minimum-risk movement. In `track` telemetry this appears as
+`movement_mode=melee_minimum_risk`.
 
-When go-to surfing has no destination, Adaptive Prime computes a destination
-from forces:
+Key movement telemetry:
 
-```text
-force = enemy_repulsion
-      + orbit_tangent
-      + fire_threat_repulsion
-      + wall_repulsion
-      + center_attraction
-```
+- `movement.goto_surf`
+- `movement.duel_potential`
+- `movement.minimum_risk`
+- `enemy.fire_detected`
+- `enemy.gun_heat_wave`
 
-Distance bands:
+## Guns
 
-- `< DuelMovementPolicy.critical_distance`: panic-open range.
-- `< DuelMovementPolicy.min_distance`: open range.
-- near `DuelMovementPolicy.preferred_distance`: orbit.
-- `> DuelMovementPolicy.max_distance`: reconnect.
+Normal selectable guns are `linear`, `dynamic_cluster`, `traditional_gf`, and
+`displacement`.
 
-Telemetry event: `movement.duel_potential`.
+Selector roles:
 
-### Melee Minimum Risk
+| Gun | Role |
+| --- | --- |
+| `dynamic_cluster` | Primary learning gun. |
+| `displacement` | Situational history-replay gun. |
+| `traditional_gf` | Situational profile gun with source-aware gates. |
+| `linear` | Early/simple-motion fallback. |
 
-When multiple targets are alive, Adaptive Prime uses shared minimum-risk
-movement. This is intentionally less aggressive than Chase because survival and
-crossfire avoidance matter more in melee.
+Adaptive keeps bot-specific selector gates around the shared selector:
 
-Telemetry event: `movement.minimum_risk`. In `track` events this branch appears
-as movement mode `melee_minimum_risk`.
+- KNN can warm up earlier than in shared defaults.
+- Trusted Traditional GF exact/coarse sources can challenge early.
+- Global or weak blended Traditional GF sources are penalized more heavily.
+- Situational guns need context/source evidence or a KNN slump to displace KNN.
+- Eval waves can add capped selector-only evidence without training production
+  learners.
 
-## Firepower Policy
-
-Adaptive Prime is the most willing bot to increase power when confidence is
-good.
-
-```text
-low own energy:
-  p = 0.8 close, else 0.6
-finisher:
-  p = clamp(target_energy / 3.5 + 0.2, 0.6, 2.2)
-distance < 160:
-  p = 2.2 if own energy > 36 else 1.6
-distance < 280:
-  p = 1.8
-distance < 420:
-  p = 1.6 with confidence/energy lead, else 1.3
-distance < 620:
-  p = 1.3 with strong confidence/energy lead, else 1.0
-far:
-  p = 0.8
-```
-
-The normal fire gate still requires enough remaining energy after the selected
-power. Adaptive scales down `dynamic_cluster` shots when KNN diagnostics report
-weak shot quality, and it can allow a narrow low-energy endgame shot after an
-`energy_margin` hold when range, alignment, target energy, and KNN quality all
-pass explicit gates. Both behaviors remain env-controllable for A/B isolation.
-
-## Gun Policy
-
-Adaptive Prime uses a bot-specific `GunPolicy` to make virtual-gun switching
-less linear-biased than the shared defaults. Traditional GF's larger tuning
-surface is grouped under `TraditionalGfPolicy`:
-
-- `dynamic_cluster` can warm up earlier through lower KNN sample, score, and
-  switch visit thresholds and is labeled as the primary learning gun.
-- `traditional_gf` is treated as a situational profile gun. Its trusted
-  exact/coarse sources can challenge KNN early, while weak global sources stay
-  more conservative.
-- If primary KNN is in a low-score slump after enough visits, trusted
-  Traditional GF sources get a smaller challenge margin. If a Traditional GF
-  trial degrades to global-only source, the selector lowers its retention
-  advantage while still requiring replacement guns to pass their normal gates.
-- `traditional_gf` uses exact and coarse segmented guess-factor profile
-  blending with global fallback from the shared gun defaults, so the actual
-  bearing can track current movement context without waiting too long for
-  exact-segment samples.
-- `traditional_gf` uses source-aware selector gates and trust penalties:
-  global profile shots need more visits and a higher adjusted score, blended
-  sources interpolate toward trusted gates as segment weight grows, and
-  exact/coarse segment sources can switch earliest.
-- `traditional_gf` uses the shared density-supported peak selection and
-  source-specific centering for lower-trust global/coarse sources to reduce
-  sparse-profile over-aiming.
-- Melee keeps segmented gun stats and live `traditional_gf` bearings disabled;
-  `traditional_gf` candidates can appear as unavailable in switch diagnostics.
-- Adaptive's normal selectable gun modes are `linear`, `traditional_gf`,
-  `dynamic_cluster`, and `displacement`. Every gun wired by the standard
-  runtime can be pinned for isolated experiments, but non-default modes are not
-  part of Adaptive's normal selectable-mode set unless
-  `ROBOCODE_ADAPTIVE_GUN_SET` changes it.
-- Switching uses a small confidence penalty until a mode has enough virtual
-  visits. The shared selector also applies trait-based priors: KNN gets a
-  maturity bonus and can match nonlinear/adaptive movement history, linear is
-  penalized unless current or recent target motion matches its simple movement
-  strengths, and situational guns can match trusted source contexts,
-  displacement replay context, or stable-pattern history.
-  `gun.switch_decision` reports adjusted `score`, `raw_score`, and
-  `decision_bonus` so score-vs-hit calibration can separate weak evidence from
-  heuristic preference. When eval waves are enabled, the selector can also use
-  capped `eval_score_bonus` and partial `effective_visits` credit without
-  feeding eval visits into the production learners.
-
-For isolated gun testing, set:
-
-```sh
-ROBOCODE_ADAPTIVE_GUN_MODE=traditional_gf scripts/run-battle.sh --rounds 8 bots/adaptive-prime bots/chase-lock
-```
-
-Valid pinned values are `head_on`, `linear`, `linear_wall_aware`,
-`displacement`, `traditional_gf`, `dynamic_cluster`, and `anti_surfer`. A
-forced gun is used only on ticks where that gun has enough data to produce an
-aim bearing; otherwise the selector falls back to an available mode.
-
-For displacement density-only validation, Adaptive also accepts the following
-override. The `basic-gf-surfer` alias prefers the fixed local BasicGFSurfer
-variant when configured:
+For isolated gun testing:
 
 ```sh
 ROBOCODE_ADAPTIVE_GUN_MODE=displacement \
-ROBOCODE_ADAPTIVE_DISPLACEMENT_MARKOV=0 \
-scripts/run-battle.sh --telemetry --rounds 24 bots/adaptive-prime --legacy basic-gf-surfer
+scripts/run-battle.sh --telemetry --rounds 24 \
+  bots/adaptive-prime bots/ports/basic-gf-surfer-port
 ```
 
-For `traditional_gf` modeling experiments, Adaptive also accepts:
+Useful experiment knobs:
 
 ```sh
-ROBOCODE_ADAPTIVE_TRADITIONAL_GF_MIN_SAMPLES=12 \
-ROBOCODE_ADAPTIVE_TRADITIONAL_GF_GLOBAL_SOURCE_CENTERING_FACTOR=0.8 \
-ROBOCODE_ADAPTIVE_TRADITIONAL_GF_COARSE_SOURCE_CENTERING_FACTOR=0.7 \
-ROBOCODE_ADAPTIVE_TRADITIONAL_GF_COARSE_BLEND_SOURCE_CENTERING_FACTOR=0.8 \
-ROBOCODE_ADAPTIVE_TRADITIONAL_GF_COARSE_SEGMENT_MIN_SAMPLES=12 \
-ROBOCODE_ADAPTIVE_TRADITIONAL_GF_COARSE_SEGMENT_FULL_WEIGHT_SAMPLES=48 \
-ROBOCODE_ADAPTIVE_TRADITIONAL_GF_PEAK_SELECTION=density \
-ROBOCODE_ADAPTIVE_GUN_MODE=traditional_gf \
-scripts/run-battle.sh --telemetry --rounds 12 bots/adaptive-prime --legacy basic-gf-surfer
+ROBOCODE_ADAPTIVE_GUN_SET=linear,dynamic_cluster,traditional_gf,displacement
+ROBOCODE_ADAPTIVE_DISPLACEMENT_MARKOV=0
+ROBOCODE_ADAPTIVE_GUN_EVAL=1
+ROBOCODE_ADAPTIVE_GUN_EVAL_INTERVAL=1
 ```
 
-Use these as telemetry sweep knobs before changing committed defaults. Core
-Traditional GF values such as smoothing, decay, exact segment thresholds,
-source penalties, and peak support radius come from the shared
-`TraditionalGfGunConfig`; Adaptive only overrides its selector gates and the
-experiment knobs listed above. The coarse key is fixed in code to distance,
-lateral speed, and wall margin. Source centering factors pull sparse/global
-profile peaks toward head-on without changing trusted segment sources. Peak
-selection uses `density` by default; `max` remains available for strongest-bin
-comparisons.
+Valid pinned guns are `head_on`, `linear`, `linear_wall_aware`,
+`displacement`, `traditional_gf`, `dynamic_cluster`, and `anti_surfer`.
 
-For neutral gun-evaluation telemetry, set:
+## Firepower
+
+Adaptive is willing to spend power when close, ahead, or confident:
+
+```text
+low energy: 0.6-0.8
+finisher: target_energy / 3.5 + 0.2, clamped
+close: 1.6-2.2
+mid: 1.3-1.8 depending on confidence and energy lead
+far: 0.8-1.0
+```
+
+The shared fire gate still requires fresh target data, alignment, valid
+firepower, and enough energy after the shot. Adaptive can also allow a narrow
+low-energy endgame shot after an `energy_margin` hold when range, alignment,
+target energy, and KNN quality all pass explicit gates.
+
+## Analysis
+
+Primary telemetry:
+
+- `track`: target, radar, aim, movement, fire hold, and selected gun context.
+- `gun.switch_decision`: selector candidates, scores, visits, thresholds,
+  bonuses, penalties, and rejection reasons.
+- `gun.wave_visit`: production virtual-gun scoring.
+- `gun.eval_wave_visit`: optional neutral eval-wave scoring.
+- `gun.traditional_gf_profile`: Traditional GF source/profile diagnostics.
+- `gun.low_energy_endgame`: low-energy override decisions.
+
+Preferred surfer check:
 
 ```sh
-ROBOCODE_ADAPTIVE_GUN_EVAL=1 scripts/run-battle.sh --telemetry --rounds 24 bots/adaptive-prime --legacy basic-gf-surfer
+scripts/run-battle.sh --telemetry --rounds 24 \
+  bots/adaptive-prime bots/ports/basic-gf-surfer-port
+
+tools/telemetry_audit.py battle-results/runs/<run>/telemetry \
+  --require-bot adaptive-prime
+tools/combat_economics_summary.py battle-results/runs/<run>
+tools/gun_eval_summary.py battle-results/runs/<run>/telemetry \
+  --bot adaptive-prime --post-switch-shots 6
 ```
 
-This emits `gun.eval_wave_visit` at fresh, gun-ready opportunities. Eval-wave
-stats are separate from production `gun.wave_visit` stats and concrete gun
-learners. They can provide selector-only decision evidence after enough eval
-visits. Use `ROBOCODE_ADAPTIVE_GUN_EVAL_INTERVAL=1` for denser analysis when
-telemetry volume is acceptable.
-
-Use `tools/gun_eval_summary.py <telemetry-dir> --bot adaptive-prime
---post-switch-shots 6` to compare switch-time score/visits, production
-wave averages, eval-wave averages, GF error, real post-switch hit rate, and
-Traditional GF real hit rate by profile source. The summary also reports
-Traditional GF profile-weight diagnostics and GF error grouped by profile
-source, so coarse-key experiments can separate high virtual score from real
-source conversion. Its calibration table reports adjusted score, raw score,
-confidence/source penalties, selected-source counts, and score-vs-hit gaps.
-Treat `eval_hit_gap` as diagnostic evidence only; eval waves are not direct
-proof that a mode should switch live.
-
-For gun modeling and selector calibration follow-up, check the research notes
-in [docs/plans](../../docs/plans/README.md), especially the
-confidence-calibrated selector plan, before changing committed selector,
-shot-quality, or Traditional GF defaults.
-
-## Key Telemetry
-
-- `movement.goto_surf`: selected destination and danger breakdown.
-- `movement.duel_potential`: force vector, mode, destination, and evasion flag.
-- `movement.minimum_risk`: melee destination and risk. In `track` events this
-  branch appears as movement mode `melee_minimum_risk`.
-- `enemy.gun_heat_wave`: expected enemy fire wave.
-- `enemy.fire_detected`: confirmed enemy energy-drop fire.
-- `gun.switch_decision`: sampled selector diagnostics, including candidate
-  scores, visits, thresholds, margin, and rejection reason.
-- `gun.low_energy_endgame`: accepted/rejected low-energy endgame override
-  decisions, including stage, reason, energy, target energy, distance, proposed
-  firepower, aim mode, alignment, and KNN shot quality.
-- `gun.traditional_gf_profile`: sampled global/segment traditional-GF profile
-  diagnostics emitted periodically, including during forced-gun tests.
-- `track`: selected target, aim mode, movement mode, radar mode, and fire hold
-  state. When `traditional_gf` is available, includes `traditional_gf_*`
-  fields for global/segment GF peaks, blend, selected GF, and source.
-
-Use [Tooling: Telemetry Viewer](../../docs/tooling.md#telemetry-viewer) for
-launch, reset, audit, and stop commands.
-
-## Tuning Checklist
-
-- Standing still at close range: inspect `movement.goto_surf`,
-  `movement.duel_potential`, `target_speed`.
-- Weak damage: inspect `gun_confidence`, `gun_confidence_visits`, distance, own
-  energy.
-- Bad melee target tunneling: inspect `target.select`, `known_targets`,
-  `movement.minimum_risk`.
-- Late dodge: compare `enemy.gun_heat_wave` with `enemy.fire_detected`.
+Use [Tooling](../../docs/tooling.md) for the full experiment workflow.

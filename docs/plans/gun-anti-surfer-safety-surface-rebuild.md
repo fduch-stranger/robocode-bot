@@ -354,9 +354,9 @@ Then run forced anti-surfer battles:
 ```sh
 ROBOCODE_ADAPTIVE_GUN_MODE=anti_surfer \
   scripts/run-battle.sh --telemetry --rounds 24 \
-  bots/adaptive-prime --legacy basic-gf-surfer
+  bots/adaptive-prime bots/ports/basic-gf-surfer-port
 
-tools/surfer_glitch_analysis.py <run-dir>
+tools/combat_economics_summary.py <run-dir>
 tools/gun_eval_summary.py <run-dir>/telemetry --bot adaptive-prime
 tools/telemetry_audit.py <run-dir>/telemetry --require-bot adaptive-prime
 ```

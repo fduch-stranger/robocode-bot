@@ -1,7 +1,7 @@
 # BasicGFSurfer Python Parity Plan
 
 This plan covers making `bots/ports/basic-gf-surfer-port` behave closer to the
-fixed Java `BasicGFSurfer` legacy benchmark while still remaining a native
+fixed Java `BasicGFSurfer` reference opponent while still remaining a native
 Python Tank Royale bot.
 
 ## Problem
@@ -73,7 +73,10 @@ Implemented:
   guess-factor sign, matching the fixed Java bot's shared direction state.
 - Gun waves remain manually advanced; later inspection showed the Python API
   does expose custom events, so a closer `GFTWave` condition port is still open
-  Phase 4 work.
+  Phase 4 work. The remaining mismatch is more specific than timing alone:
+  Java tracks a `GFTWave` after `setFire(...)` when energy is sufficient, while
+  the Python port currently tracks a wave only when native `set_fire(...)`
+  returns accepted, which can reduce gun-learning samples under gun heat.
 - Explicit round-started and round-ended handlers reset per-round state while
   preserving battle-persistent surf and gun stats.
 
@@ -96,14 +99,14 @@ Interpretation:
 - The radar-command fix removed a native-port radar conflict where search spin
   could overwrite scan-lock commands. The latest 24-round direct match is the
   first run showing rough direct parity with the fixed Java bot.
-- Short samples are still noisy; treat the Python port as a useful local
-  opponent, but do not replace the fixed Java reference until the promotion gate
-  passes.
-- Remaining parity work is focused on custom-event gun-wave timing, longer
-  validation, and any GUI-observed stuck or round-reset behavior that repeats
-  after the radar fix.
-- The `24 x 3` promotion gate below is still required before treating the port
-  as strength-equivalent tooling.
+- Short samples are still noisy; use the Python port as the normal local surfer
+  opponent for Adaptive tuning, and keep the fixed Java bot as a parity
+  reference only.
+- Remaining parity work is focused on custom-event gun-wave timing and fire-gate
+  semantics, longer validation, and any GUI-observed stuck or round-reset
+  behavior that repeats after the radar fix.
+- The `24 x 3` parity gate below is still useful before claiming the port is
+  strength-equivalent to the fixed Java reference.
 
 ## Phase 1: Pin The Reference
 
@@ -117,8 +120,8 @@ Tasks:
   - generated `Wrapper.java`
   - `RobotMethodReplacer.transformRobotClass(...)`
   - `BotPeer` event mapping
-- Keep the existing Java fixed bot alias, `--legacy basic-gf-surfer`, as the
-  external reference opponent.
+- Keep the existing Java fixed bot alias, `--legacy basic-gf-surfer`, as a
+  reference opponent for port parity checks only.
 - Add a short note to the port README that parity work should compare against
   the fixed Java source, not against Robowiki source alone.
 
@@ -158,8 +161,8 @@ Tasks:
 Exit criteria:
 
 - Unit tests prove `_set_back_as_front` emits distance-style movement.
-- A short battle against `--legacy basic-gf-surfer` shows the Python bot still
-  boots and avoids obvious wall-stall regressions.
+- A short parity battle against `--legacy basic-gf-surfer` shows the Python bot
+  still boots and avoids obvious wall-stall regressions.
 
 ## Phase 3: Rejoin Legacy Direction State
 
@@ -196,23 +199,37 @@ The Java fixed bot adds a `GFTWave` custom event after `setFire(...)` and lets
 the event queue call `GFTWave.test()`. The Python port updates gun waves from
 the main `run()` loop.
 
-This can create one-turn timing drift and different learning order.
+This can create one-turn timing drift and different learning order. A later
+source/API audit found a second mismatch: the Java source calls `setFire(...)`
+and then adds `GFTWave` when `getEnergy() >= BULLET_POWER`, whereas the native
+Python port only adds a `GunWave` when `set_fire(BULLET_POWER)` returns `True`.
+Because native `set_fire()` rejects shots while gun heat is positive, the
+Python port likely records fewer gun-learning waves than the Java bridge path.
 
 Tasks:
 
 - Check whether native Python `Condition`/custom events can reasonably model
   `GFTWave.test()`.
 - If yes, move gun-wave advancement into a custom condition-style callback.
+- Align wave tracking gate with the Java source:
+  - call/stage fire intent in the same order as Java,
+  - track a gun wave when energy is sufficient, matching the Java
+    `getEnergy() >= BULLET_POWER` gate,
+  - separately document or test any native API rejection caused by gun heat.
 - If no, keep manual wave updates but align ordering to Java:
   - scan handler creates wave
   - fire is attempted
-  - wave is tracked only when the shot is valid
+  - wave tracking uses the Java energy gate unless validation proves native
+    fire-accepted gating gives closer bridge behavior
   - wave advancement happens once per tick before the next scan-dependent aim
 - Add tests for the order around `set_fire`, wave creation, and wave arrival.
 
 Exit criteria:
 
-- No wave is added when firing is rejected.
+- No wave is added when energy is insufficient; native gun-heat rejection is
+  handled according to the chosen Java-parity gate.
+- Wave tracking gate intentionally matches the Java fixed source, or battle
+  evidence documents why native fire-accepted gating is closer to the bridge.
 - Wave distance advances once per turn, not once per event burst.
 - Short direct Java-vs-Python match shows no collapse in bullet damage.
 

@@ -1,166 +1,111 @@
 # Chase Lock
 
-Chase Lock is the pressure bot. It tries to keep radar and gun locked on one
-priority target while moving enough to avoid becoming stationary. It shares the
-common virtual gun, wave, enemy-fire, and telemetry systems, but its local logic
-is intentionally simpler and more chase-oriented than Adaptive Prime.
+Chase Lock is the pressure bot. It keeps radar and gun focus on one priority
+target while moving enough to avoid becoming stationary.
 
-Shared systems are documented in:
+Shared references:
 
 - [Shared Bot Systems](../../docs/bot-shared-systems.md)
 - [Bot Core Data Structures](../../docs/bot-core-data-structures.md)
+- [Tooling](../../docs/tooling.md)
 
-## What Makes It Different
+Bot-specific policy lives in `chase_config.py`.
 
-- Strong current-target preference.
-- Direct range-band movement instead of potential-field routing.
-- Uses flattener direction changes, but not go-to surfing as the primary route.
-- In melee, falls back to minimum-risk movement to reduce target tunneling.
-- Firepower is more conservative than Adaptive Prime.
-
-## Turn Flow
+## Behavior
 
 ```mermaid
 flowchart TD
     A["scan or tick"] --> B["drop stale targets"]
     B --> C["select priority target"]
     C --> D["aim with virtual gun system"]
-    D --> E["lock priority radar"]
+    D --> E["lock radar"]
     E --> F{"multiple targets?"}
-    F -- "yes" --> G["minimum-risk movement"]
+    F -- "yes" --> G["minimum-risk route"]
     F -- "no" --> H["range-band chase/orbit"]
-    G --> I["fire if fresh and aligned"]
+    G --> I["fire gate"]
     H --> I
 ```
 
-## Movement State
+What makes Chase different:
 
-```mermaid
-stateDiagram-v2
-    [*] --> Search
-    Search --> Lock: "target found"
-    Lock --> Reacquire: "target stale"
-    Reacquire --> Lock: "scan fresh"
-    Lock --> PanicRetreat: "too close"
-    Lock --> ChaseBand: "1v1 pressure"
-    Lock --> MinimumRisk: "melee"
-    ChaseBand --> EvadeOrbit: "enemy fire window"
-    EvadeOrbit --> ChaseBand: "window expires"
-    PanicRetreat --> Lock
-    MinimumRisk --> Lock
-```
+- Strong current-target preference.
+- Direct range-band chase/orbit movement.
+- Flattener direction changes, but no primary go-to surfing route.
+- Minimum-risk movement in melee.
+- More conservative firepower than Adaptive Prime.
 
-## Target Scoring
+## Target And Movement Policy
 
-Lower score wins:
+Lower target score wins:
 
 ```text
 score = distance * 0.45 + target_energy * 2.0 + age * 80 - bonuses
 ```
 
-Bonuses favor the current target and recent fire threat. This makes Chase Lock
-feel persistent, but stale targets are still dropped or reacquired.
+Bonuses favor the current target and recent fire threats.
 
-## Movement Bands
+Movement bands:
 
 ```text
 target weak and not too close -> finish_close
-distance < CLOSE_RESET_DISTANCE -> reset_range
-distance < PREFERRED_MIN_DISTANCE -> open_range
-distance > PREFERRED_MAX_DISTANCE -> approach_orbit
+distance < close reset -> reset_range
+distance < preferred min -> open_range
+distance > preferred max -> approach_orbit
 enemy fire active -> evade_orbit
 otherwise -> mid_orbit
 ```
 
-Movement command:
+Melee uses shared minimum-risk movement.
 
-```text
-turn = body_bearing_to_target + strafe_offset * evade_direction
-target_speed = mode_speed
-```
+## Guns And Firepower
 
-The shared flattener may flip `evade_direction` when current lateral movement
-has become too dangerous.
+Normal selectable guns are `linear`, `dynamic_cluster`, `traditional_gf`, and
+`displacement`. KNN is primary; Traditional GF and displacement are situational;
+linear is the early/simple-motion fallback.
 
-## Firepower Policy
-
-```text
-low own energy:
-  p = 0.8 close, else 0.6
-finisher:
-  p = clamp(target_energy / 3.5 + 0.2, 0.6, 2.2)
-distance < 160:
-  p = 2.2 if own energy > 36 else 1.6
-distance < 280:
-  p = 1.8 only with enough visits/confidence
-distance < 420:
-  p = 1.6 only with stronger visits/confidence
-mid/far:
-  p = 1.1 or 0.8
-```
-
-## Gun Policy
-
-Chase Lock keeps bot-specific `GunPolicy`, fire, target, radar, and movement
-surfaces in `chase_config.py`. Its live gun policy follows the shared
-experimental selector shape: `dynamic_cluster` is the primary learning gun,
-`traditional_gf` and `displacement` are situational guns, and `linear` is an
-early/simple movement fallback. It live-selects `linear`, `traditional_gf`,
-`dynamic_cluster`, and `displacement` in 1v1. Melee keeps segmented gun stats and live
-`traditional_gf` bearings disabled, so `traditional_gf` candidates can appear
-as unavailable in switch diagnostics.
-Every gun wired by the standard runtime can be pinned for isolated experiments:
+For isolated gun testing:
 
 ```sh
-ROBOCODE_CHASE_GUN_MODE=anti_surfer scripts/run-battle.sh --rounds 8 bots/chase-lock bots/sweep-pressure
+ROBOCODE_CHASE_GUN_MODE=displacement \
+scripts/run-battle.sh --rounds 8 bots/chase-lock bots/sweep-pressure
 ```
 
-Valid pinned values are `head_on`, `linear`, `linear_wall_aware`,
-`displacement`, `traditional_gf`, `dynamic_cluster`, and `anti_surfer`.
-Set `ROBOCODE_CHASE_DISPLACEMENT_MARKOV=0` to disable displacement's Markov
-replay weighting for isolated validation.
-
-The retained policy uses aligned aggressive KNN and Traditional GF gates with
-the shared trait-based selector priors. Primary KNN can leave fallback linear
-early, situational guns need a larger margin over KNN unless KNN is in a
-low-score slump with trusted source/context evidence, and global-source
-situational trials are not retained. `gun.switch_decision` reports raw score,
-adjusted score, penalties, and `decision_bonus` for calibration.
-
-For neutral gun-evaluation telemetry, set:
+Useful knobs:
 
 ```sh
-ROBOCODE_CHASE_GUN_EVAL=1 scripts/run-battle.sh --telemetry --rounds 12 bots/chase-lock bots/circle-strafer
+ROBOCODE_CHASE_GUN_SET=linear,dynamic_cluster,traditional_gf,displacement
+ROBOCODE_CHASE_DISPLACEMENT_MARKOV=0
+ROBOCODE_CHASE_GUN_EVAL=1
+ROBOCODE_CHASE_GUN_EVAL_INTERVAL=1
 ```
 
-Use `ROBOCODE_CHASE_GUN_EVAL_INTERVAL=1` only for denser diagnostic runs where
-extra telemetry volume is acceptable.
+Firepower is close-range pressure with confidence gates in the mid bands:
 
-## Key Telemetry
+```text
+low energy: 0.6-0.8
+finisher: target_energy / 3.5 + 0.2, clamped
+close: 1.6-2.2
+mid: 1.1-1.8 depending on confidence/visits
+far: 0.8
+```
 
-- `target.select`: target switching evidence.
-- `scan.reacquired`: stale cached target refreshed by a new scan.
-- `target.drop_lost`: cached target aged out before reacquisition.
-- `movement.flatten`: learned lateral direction flips.
-- `movement.minimum_risk`: melee fallback destination. In `track` events this
-  branch appears as movement mode `melee_minimum_risk`.
-- `gun.switch_decision`: sampled virtual-gun candidate scores and rejection
-  reasons.
-- `gun.eval_wave_visit`: optional neutral gun-evaluation result when
-  `ROBOCODE_CHASE_GUN_EVAL=1`.
-- `track`: current target, aim mode, movement mode, radar mode, fire hold
-  reason.
+## Analysis
 
-Use [Tooling: Telemetry Viewer](../../docs/tooling.md#telemetry-viewer) for
-launch, reset, audit, and stop commands.
+Key telemetry:
 
-## Tuning Checklist
+- `target.select`
+- `scan.reacquired`
+- `target.drop_lost`
+- `movement.flatten`
+- `movement.minimum_risk`
+- `gun.switch_decision`
+- `gun.eval_wave_visit`
+- `track`
 
-- Stuck on old target position: inspect `scan.reacquired`,
-  `target.drop_lost`, `radar_mode`.
-- Too easy to hit while chasing: inspect `enemy.fire_detected`,
-  `movement.flatten`, `movement_mode`.
-- Weak compared with others: inspect range-band modes and firepower confidence
-  gates.
-- Bad melee behavior: inspect `movement.minimum_risk` frequency and target
-  switches.
+Useful checks:
+
+```sh
+scripts/run-battle.sh --telemetry --rounds 12 bots/chase-lock bots/circle-strafer
+tools/telemetry_audit.py battle-results/runs/<run>/telemetry --require-bot chase-lock
+tools/gun_eval_summary.py battle-results/runs/<run>/telemetry --bot chase-lock
+```

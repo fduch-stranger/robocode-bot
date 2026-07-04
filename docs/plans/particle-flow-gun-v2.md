@@ -662,7 +662,8 @@ no battle timeout or measurable control-loop instability
 
 ## Validation
 
-Use both local and legacy/surfer checks.
+Use local and ported-opponent checks. Converted legacy bots are reference-only
+unless the task is explicitly about legacy parity.
 
 Minimum checks:
 
@@ -676,16 +677,16 @@ unit tests:
 
 telemetry battle:
   eval-only Adaptive vs local bot
-  eval-only Adaptive vs BasicGFSurfer if configured
+  eval-only Adaptive vs Python BasicGFSurfer port
   telemetry audit
 
 forced battle:
   Adaptive forced particle_flow vs local bot
-  Adaptive forced particle_flow vs BasicGFSurfer if configured
+  Adaptive forced particle_flow vs Python BasicGFSurfer port
 
 A/B:
   dynamic_cluster baseline vs particle_flow candidate
-  cleaned BasicGFSurfer analysis when surfer glitches are possible
+  raw combat-economics summary against Python BasicGFSurfer port
 ```
 
 Promotion should require evidence against more than one opponent type. A gun

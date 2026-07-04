@@ -909,7 +909,7 @@ state visit distribution not too sparse
 reward attribution explained by event snapshots
 multi-round state persistence verified
 A/B smoke against repo bots not clearly worse
-targeted legacy/surfer runs show a plausible advantage or diagnostic value
+targeted ported-surfer runs show a plausible advantage or diagnostic value
 ```
 
 For movement control, prefer survival and score stability over flashy one-run

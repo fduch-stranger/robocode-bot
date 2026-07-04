@@ -1,9 +1,47 @@
+import json
+import tempfile
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
+from pathlib import Path
+from unittest.mock import patch
 
-from tools.telemetry_audit import _audit
+from tools.telemetry_audit import _audit, main
 
 
 class TelemetryAuditTest(unittest.TestCase):
+    def test_cli_writes_json_output(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            telemetry_dir = Path(temp_dir) / "telemetry"
+            telemetry_dir.mkdir()
+            output_path = Path(temp_dir) / "audit.json"
+            (telemetry_dir / "adaptive-prime.jsonl").write_text(
+                json.dumps({"bot": "adaptive-prime", "event": "custom.event", "fields": {}}) + "\n",
+                encoding="utf-8",
+            )
+
+            with patch(
+                "sys.argv",
+                [
+                    "telemetry_audit.py",
+                    str(telemetry_dir),
+                    "--require-bot",
+                    "adaptive-prime",
+                    "--json-output",
+                    str(output_path),
+                ],
+            ):
+                with redirect_stdout(StringIO()):
+                    exit_code = main()
+
+            summary = json.loads(output_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(0, exit_code)
+        self.assertEqual(1, summary["events"])
+        self.assertEqual({"adaptive-prime": 1}, summary["bots"])
+        self.assertEqual({"custom.event": 1}, summary["eventCounts"])
+        self.assertEqual([], summary["issues"])
+
     def test_reports_missing_required_fields_from_schema(self) -> None:
         issues = _audit(
             [

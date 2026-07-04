@@ -17,7 +17,10 @@ def main() -> int:
     telemetry_dir = Path(args.telemetry_dir)
     events = list(_read_events(telemetry_dir))
     issues = _audit(events, args.require_bots)
-    _print_summary(events, issues)
+    summary = _summary(events, issues)
+    if args.json_output:
+        Path(args.json_output).write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    _print_summary(summary)
     return 1 if issues else 0
 
 
@@ -31,6 +34,7 @@ def _parse_args() -> argparse.Namespace:
         dest="require_bots",
         help="Bot name that must have at least one telemetry event. Can be repeated.",
     )
+    parser.add_argument("--json-output", help="Write structured audit JSON to this path.")
     return parser.parse_args()
 
 
@@ -137,17 +141,27 @@ def _flush_unattributed_hits(issues: list[str], bot: str, pending_hits: dict[str
             issues.append(f"{location} {bot} bullet.hit_bot cannot be attributed to a gun mode")
 
 
-def _print_summary(events: list[dict[str, Any]], issues: list[str]) -> None:
+def _summary(events: list[dict[str, Any]], issues: list[str]) -> dict[str, object]:
     by_bot = Counter(str(event.get("bot") or "?") for event in events)
     by_event = Counter(str(event.get("event") or "?") for event in events)
-    print(f"events: {len(events)}")
-    for bot, count in sorted(by_bot.items()):
+    return {
+        "events": len(events),
+        "bots": dict(sorted(by_bot.items())),
+        "eventCounts": dict(sorted(by_event.items())),
+        "issues": issues,
+    }
+
+
+def _print_summary(summary: dict[str, object]) -> None:
+    print(f"events: {summary['events']}")
+    for bot, count in summary["bots"].items():  # type: ignore[union-attr]
         print(f"bot {bot}: {count}")
-    for event, count in sorted(by_event.items()):
+    for event, count in summary["eventCounts"].items():  # type: ignore[union-attr]
         print(f"event {event}: {count}")
+    issues = summary["issues"]
     if issues:
         print("issues:")
-        for issue in issues:
+        for issue in issues:  # type: ignore[union-attr]
             print(f"- {issue}")
     else:
         print("issues: none")

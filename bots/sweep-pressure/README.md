@@ -1,33 +1,24 @@
 # Sweep Pressure
 
 Sweep Pressure is the direct pressure bot. It keeps moving with a sweeping turn
-pattern, avoids projected wall collisions, and applies steady fire. Compared
-with Circle Strafer, it is less collision-focused and more willing to pressure
-range.
+pattern, avoids projected wall collisions, and applies steady fire.
 
-Shared systems are documented in:
+Shared references:
 
 - [Shared Bot Systems](../../docs/bot-shared-systems.md)
 - [Bot Core Data Structures](../../docs/bot-core-data-structures.md)
+- [Tooling](../../docs/tooling.md)
 
-## What Makes It Different
+Bot-specific policy lives in `sweep_config.py`.
 
-- Sweep movement is the default.
-- Wall risk combines actual near-wall position with projected heading, speed,
-  and lookahead ticks, then holds briefly until the path is clearly safe.
-- 1v1 flattener flips sweep direction when learned danger says to, with surf
-  danger included in the direction choice.
-- Melee uses minimum-risk destinations instead of plain sweeping.
-- Close-range firepower is slightly more aggressive than Circle.
-
-## Turn Flow
+## Behavior
 
 ```mermaid
 flowchart TD
     A["run loop"] --> B{"projected wall risk?"}
     B -- "yes" --> C["turn toward center"]
     B -- "no" --> D{"multiple targets?"}
-    D -- "yes" --> E["minimum-risk movement"]
+    D -- "yes" --> E["minimum-risk route"]
     D -- "no" --> F["sweep movement"]
     C --> G["select target"]
     E --> G
@@ -36,22 +27,24 @@ flowchart TD
     H --> I["aim, radar, fire gate"]
 ```
 
-## Movement State
+What makes Sweep different:
 
-```mermaid
-stateDiagram-v2
-    [*] --> Sweep
-    Sweep --> WallAvoid: "projected wall risk"
-    WallAvoid --> Sweep: "safe"
-    Sweep --> MinimumRisk: "multiple targets"
-    MinimumRisk --> Sweep
-    Sweep --> FlattenedSweep: "direction flip"
-    FlattenedSweep --> Sweep
+- Sweep movement is the default.
+- Wall risk uses current and projected position.
+- Enemy-fire feints use a short counter-sweep instead of a permanent direction
+  flip.
+- 1v1 learning can flip sweep direction.
+- Melee uses minimum-risk movement instead of plain sweeping.
+
+## Target And Movement Policy
+
+Lower target score wins:
+
+```text
+score = distance * 0.45 + target_energy * 2.0 + target_age * 80 - current_target_bonus
 ```
 
-## Sweep Movement
-
-Base command:
+Base sweep:
 
 ```text
 target_speed = SWEEP_SPEED * move_direction
@@ -64,106 +57,58 @@ During an evasion window:
 turn_rate = -SWEEP_TURN_RATE * move_direction
 ```
 
-Enemy-fire feints use that counter-sweep shape for a short window without
-permanently flipping `move_direction`. Feints are disabled near walls, in melee,
-and while on cooldown.
+Wall projection checks the future point from current heading, speed,
+`move_direction`, and lookahead ticks. Wall escape stays active until both
+current and projected positions clear the margin.
 
-Wall projection:
+## Guns And Firepower
 
-```text
-projected_x = x + cos(direction) * SWEEP_SPEED * move_direction * WALL_LOOKAHEAD_TICKS
-projected_y = y + sin(direction) * SWEEP_SPEED * move_direction * WALL_LOOKAHEAD_TICKS
-```
+Normal selectable guns are `linear`, `dynamic_cluster`, `traditional_gf`, and
+`displacement`. KNN is primary; Traditional GF and displacement are situational;
+linear is the early/simple-motion fallback.
 
-If the bot is inside `WALL_MARGIN` or the projected point violates
-`WALL_MARGIN`, the bot turns toward the arena center. It keeps that escape
-active until both the current position and projected path clear
-`WALL_CLEAR_MARGIN`, which avoids rapid wall-enter/wall-exit flicker. Repeated
-wall hits also use a short direction-flip cooldown so one bad edge contact does
-not immediately become several alternating reversals.
-
-## Target Scoring
-
-Lower score wins:
-
-```text
-score = distance * 0.45 + target_energy * 2.0 + target_age * 80 - current_target_bonus
-```
-
-## Firepower Policy
-
-```text
-own energy <= LOW_ENERGY_HOLD:
-  p = 0.8 if distance < 220 else 0.6
-distance < 180:
-  p = 2.0
-distance < 360:
-  p = 1.2
-otherwise:
-  p = 0.8
-```
-
-Sweep holds fire when the target is stale, energy is critical, low energy meets
-long range, gun bearing error is too high, or energy margin is too small.
-
-## Gun Policy
-
-Sweep Pressure keeps bot-specific `GunPolicy`, fire, target, radar, and
-movement surfaces in `sweep_config.py`. Its live gun policy follows the shared
-experimental selector shape: `dynamic_cluster` is the primary learning gun,
-`traditional_gf` and `displacement` are situational guns, and `linear` is an early/simple
-movement fallback. It live-selects `linear`, `traditional_gf`, `dynamic_cluster`,
-and `displacement` in 1v1. Melee keeps segmented gun stats and live
-`traditional_gf` bearings disabled, so `traditional_gf` candidates can appear
-as unavailable in switch diagnostics. The current policy uses aligned
-aggressive KNN and Traditional GF gates with the shared trait-based selector
-priors. Primary KNN can leave fallback linear early, situational guns
-need a larger margin over KNN unless KNN is in a low-score slump with trusted
-source/context evidence, and global-source situational trials are not retained.
-Every gun wired by the standard runtime can be pinned for isolated experiments:
+For isolated gun testing:
 
 ```sh
-ROBOCODE_SWEEP_GUN_MODE=anti_surfer scripts/run-battle.sh --rounds 8 bots/sweep-pressure bots/circle-strafer
+ROBOCODE_SWEEP_GUN_MODE=displacement \
+scripts/run-battle.sh --rounds 8 bots/sweep-pressure bots/circle-strafer
 ```
 
-Valid pinned values are `head_on`, `linear`, `linear_wall_aware`,
-`displacement`, `traditional_gf`, `dynamic_cluster`, and `anti_surfer`.
-Set `ROBOCODE_SWEEP_DISPLACEMENT_MARKOV=0` to disable displacement's Markov
-replay weighting for isolated validation.
-
-For neutral gun-evaluation telemetry, set:
+Useful knobs:
 
 ```sh
-ROBOCODE_SWEEP_GUN_EVAL=1 scripts/run-battle.sh --telemetry --rounds 12 bots/sweep-pressure bots/circle-strafer
+ROBOCODE_SWEEP_GUN_SET=linear,dynamic_cluster,traditional_gf,displacement
+ROBOCODE_SWEEP_DISPLACEMENT_MARKOV=0
+ROBOCODE_SWEEP_GUN_EVAL=1
+ROBOCODE_SWEEP_GUN_EVAL_INTERVAL=1
 ```
 
-Use `ROBOCODE_SWEEP_GUN_EVAL_INTERVAL=1` only for denser diagnostic runs where
-extra telemetry volume is acceptable.
+Firepower is slightly more aggressive than Circle at close range:
 
-## Key Telemetry
+```text
+low energy: 0.6-0.8
+close: 2.0
+mid: 1.2
+far: 0.8
+```
 
-- `wall.avoid`: projected wall risk response.
-- `movement.feint`: enemy-fire timed counter-sweep.
-- `movement.minimum_risk`: melee destination.
-- `movement.flatten`: sweep direction change.
-- `track`: target, radar, aim mode, fire hold reason.
-- `gun.switch`: selected virtual gun mode changes.
-- `gun.switch_decision`: sampled virtual-gun candidate scores and rejection
-  reasons.
-- `gun.eval_wave_visit`: optional neutral gun-evaluation result when
-  `ROBOCODE_SWEEP_GUN_EVAL=1`.
+## Analysis
 
-Use [Tooling: Telemetry Viewer](../../docs/tooling.md#telemetry-viewer) for
-launch, reset, audit, and stop commands.
+Key telemetry:
 
-## Tuning Checklist
+- `wall.avoid`
+- `movement.feint`
+- `movement.minimum_risk`
+- `movement.flatten`
+- `gun.switch`
+- `gun.switch_decision`
+- `gun.eval_wave_visit`
+- `track`
 
-- Wall hits or wall twitching: inspect `wall.avoid`, `WALL_MARGIN`,
-  `WALL_CLEAR_MARGIN`, `WALL_LOOKAHEAD_TICKS`, `WALL_ESCAPE_TURNS`, and
-  `WALL_HIT_FLIP_COOLDOWN`.
-- Predictable sweep or excess direction flips: inspect `movement.flatten`,
-  `move_direction`, `FLATTENER_SWITCH_MARGIN`, and
-  `FLATTENER_SWITCH_COOLDOWN`.
-- Bad melee survival: inspect `movement.minimum_risk`.
-- Wasted energy: inspect `firepower`, `hold_reason`, and hit rate by
-  `aim_mode`.
+Useful checks:
+
+```sh
+scripts/run-battle.sh --telemetry --rounds 12 bots/sweep-pressure bots/circle-strafer
+tools/telemetry_audit.py battle-results/runs/<run>/telemetry --require-bot sweep-pressure
+tools/gun_eval_summary.py battle-results/runs/<run>/telemetry --bot sweep-pressure
+```

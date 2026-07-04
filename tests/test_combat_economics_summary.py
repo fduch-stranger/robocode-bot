@@ -2,11 +2,37 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
-from tools.surfer_glitch_analysis import analyze_experiment, analyze_run, discover_run_dirs
+from tools.combat_economics_summary import analyze_experiment, analyze_run, discover_run_dirs, main
 
 
-class SurferGlitchAnalysisTest(unittest.TestCase):
+class CombatEconomicsSummaryTest(unittest.TestCase):
+    def test_default_summary_does_not_filter_high_accuracy_rounds(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir) / "baseline" / "run-01"
+            _write_run(
+                run_dir,
+                [
+                    {"round": 1, "score": 100, "survival": 50, "bulletDamage": 40, "ramDamage": 0, "firstPlaces": 1},
+                    {"round": 2, "score": 180, "survival": 50, "bulletDamage": 120, "ramDamage": 0, "firstPlaces": 1},
+                ],
+                [
+                    [_fired(index, "dynamic_cluster") for index in range(10)]
+                    + [_hit("dynamic_cluster", bullet_id=index) for index in range(8)],
+                    [_fired(index, "dynamic_cluster") for index in range(10, 20)]
+                    + [_hit("dynamic_cluster", bullet_id=index) for index in range(10, 12)],
+                ],
+            )
+
+            run_summary = analyze_run(run_dir)
+            experiment_summary = analyze_experiment([run_dir])
+
+        self.assertIsNone(run_summary.accuracyFiltered)
+        self.assertFalse(run_summary.rounds[0].excludedByAccuracy)
+        self.assertNotIn("accuracyFiltered", experiment_summary)
+        self.assertNotIn("pairedAccuracyFiltered", experiment_summary)
+
     def test_filters_high_accuracy_rounds_from_cumulative_scores(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             run_dir = Path(temp_dir) / "baseline" / "run-01"
@@ -22,20 +48,49 @@ class SurferGlitchAnalysisTest(unittest.TestCase):
                 ],
             )
 
-            summary = analyze_run(run_dir)
+            summary = analyze_run(run_dir, accuracy_filter_threshold=0.30)
 
         self.assertEqual("baseline", summary.side)
         self.assertEqual(2, summary.raw.rounds)
         self.assertEqual(180, summary.raw.score)
         self.assertEqual(1, summary.raw.firstPlaces)
         self.assertEqual(10, summary.raw.hits)
-        self.assertEqual(1, summary.filtered.rounds)
-        self.assertEqual(80, summary.filtered.score)
-        self.assertEqual(0, summary.filtered.firstPlaces)
-        self.assertEqual(2, summary.filtered.hits)
-        self.assertEqual(1, summary.filtered.excludedRounds)
-        self.assertTrue(summary.rounds[0].excludedGlitch)
-        self.assertFalse(summary.rounds[1].excludedGlitch)
+        self.assertEqual(1, summary.accuracyFiltered.rounds)
+        self.assertEqual(80, summary.accuracyFiltered.score)
+        self.assertEqual(0, summary.accuracyFiltered.firstPlaces)
+        self.assertEqual(2, summary.accuracyFiltered.hits)
+        self.assertEqual(1, summary.accuracyFiltered.excludedRounds)
+        self.assertTrue(summary.rounds[0].excludedByAccuracy)
+        self.assertFalse(summary.rounds[1].excludedByAccuracy)
+
+    def test_reports_mode_economics_for_all_guns(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir) / "baseline" / "run-01"
+            _write_run(
+                run_dir,
+                [{"round": 1, "score": 100, "survival": 50, "bulletDamage": 40, "ramDamage": 0, "firstPlaces": 1}],
+                [
+                    [
+                        _fired(1, "dynamic_cluster", power=0.7),
+                        _fired(2, "displacement", power=1.3),
+                        _fired(3, "traditional_gf", power=1.5),
+                        _hit("dynamic_cluster", bullet_id=1, power=0.7, damage=2.8),
+                        _hit("displacement", bullet_id=2, power=1.3, damage=5.8),
+                    ]
+                ],
+            )
+
+            summary = analyze_run(run_dir)
+
+        self.assertEqual(3, summary.raw.shots)
+        self.assertEqual(2, summary.raw.hits)
+        self.assertEqual(1, summary.raw.modes["dynamic_cluster"]["shots"])
+        self.assertEqual(1, summary.raw.modes["dynamic_cluster"]["hits"])
+        self.assertAlmostEqual(0.7, summary.raw.modes["dynamic_cluster"]["avgPower"])
+        self.assertAlmostEqual(2.8, summary.raw.modes["dynamic_cluster"]["damage"])
+        self.assertEqual(1, summary.raw.modes["displacement"]["hits"])
+        self.assertAlmostEqual(1.3, summary.raw.modes["displacement"]["avgHitPower"])
+        self.assertEqual(0, summary.raw.modes["traditional_gf"]["hits"])
 
     def test_aggregates_baseline_candidate_delta(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -63,26 +118,26 @@ class SurferGlitchAnalysisTest(unittest.TestCase):
                 ],
             )
 
-            summary = analyze_experiment([root])
+            summary = analyze_experiment([root], accuracy_filter_threshold=0.30)
 
         self.assertEqual(2, summary["runCount"])
-        self.assertEqual(80, summary["filtered"]["baseline"]["score"])
-        self.assertEqual(210, summary["filtered"]["candidate"]["score"])
-        self.assertEqual(130, summary["filtered"]["delta"]["score"])
-        self.assertAlmostEqual(80.0, summary["filtered"]["baseline"]["scorePerRound"])
-        self.assertAlmostEqual(105.0, summary["filtered"]["candidate"]["scorePerRound"])
-        self.assertAlmostEqual(25.0, summary["filtered"]["delta"]["scorePerRound"])
-        self.assertEqual(2, summary["filtered"]["delta"]["firstPlaces"])
-        self.assertEqual(-1, summary["filtered"]["delta"]["excludedRounds"])
-        self.assertEqual(4, summary["filtered"]["candidate"]["dynamicHits"])
-        self.assertEqual(80, summary["pairedFiltered"]["baseline"]["score"])
-        self.assertEqual(120, summary["pairedFiltered"]["candidate"]["score"])
-        self.assertEqual(40, summary["pairedFiltered"]["delta"]["score"])
-        self.assertAlmostEqual(40.0, summary["pairedFiltered"]["delta"]["scorePerRound"])
-        self.assertEqual([2], summary["pairedFiltered"]["pairs"][0]["validRounds"])
-        self.assertEqual([1], summary["pairedFiltered"]["pairs"][0]["baselineExcludedRounds"])
-        self.assertEqual([], summary["pairedFiltered"]["pairs"][0]["candidateExcludedRounds"])
-        round_comparison = summary["pairedFiltered"]["pairs"][0]["rounds"][0]
+        self.assertEqual(80, summary["accuracyFiltered"]["baseline"]["score"])
+        self.assertEqual(210, summary["accuracyFiltered"]["candidate"]["score"])
+        self.assertEqual(130, summary["accuracyFiltered"]["delta"]["score"])
+        self.assertAlmostEqual(80.0, summary["accuracyFiltered"]["baseline"]["scorePerRound"])
+        self.assertAlmostEqual(105.0, summary["accuracyFiltered"]["candidate"]["scorePerRound"])
+        self.assertAlmostEqual(25.0, summary["accuracyFiltered"]["delta"]["scorePerRound"])
+        self.assertEqual(2, summary["accuracyFiltered"]["delta"]["firstPlaces"])
+        self.assertEqual(-1, summary["accuracyFiltered"]["delta"]["excludedRounds"])
+        self.assertEqual(4, summary["accuracyFiltered"]["candidate"]["dynamicHits"])
+        self.assertEqual(80, summary["pairedAccuracyFiltered"]["baseline"]["score"])
+        self.assertEqual(120, summary["pairedAccuracyFiltered"]["candidate"]["score"])
+        self.assertEqual(40, summary["pairedAccuracyFiltered"]["delta"]["score"])
+        self.assertAlmostEqual(40.0, summary["pairedAccuracyFiltered"]["delta"]["scorePerRound"])
+        self.assertEqual([2], summary["pairedAccuracyFiltered"]["pairs"][0]["validRounds"])
+        self.assertEqual([1], summary["pairedAccuracyFiltered"]["pairs"][0]["baselineExcludedRounds"])
+        self.assertEqual([], summary["pairedAccuracyFiltered"]["pairs"][0]["candidateExcludedRounds"])
+        round_comparison = summary["pairedAccuracyFiltered"]["pairs"][0]["rounds"][0]
         self.assertEqual(2, round_comparison["round"])
         self.assertEqual(80, round_comparison["baselineScore"])
         self.assertEqual(120, round_comparison["candidateScore"])
@@ -114,16 +169,16 @@ class SurferGlitchAnalysisTest(unittest.TestCase):
                 [[_fired(1, "dynamic_cluster") for _ in range(10)] + [_hit("dynamic_cluster") for _ in range(2)]],
             )
 
-            summary = analyze_experiment([root])
+            summary = analyze_experiment([root], accuracy_filter_threshold=0.30)
 
-        pair = summary["pairedFiltered"]["pairs"][0]
+        pair = summary["pairedAccuracyFiltered"]["pairs"][0]
         self.assertEqual([1], pair["validRounds"])
         self.assertEqual([], pair["baselineExcludedRounds"])
         self.assertEqual([], pair["candidateExcludedRounds"])
         self.assertEqual([2], pair["baselineUnpairedRounds"])
         self.assertEqual([], pair["candidateUnpairedRounds"])
-        self.assertEqual(0, summary["pairedFiltered"]["baseline"]["excludedRounds"])
-        self.assertEqual(1, summary["pairedFiltered"]["baseline"]["unpairedRounds"])
+        self.assertEqual(0, summary["pairedAccuracyFiltered"]["baseline"]["excludedRounds"])
+        self.assertEqual(1, summary["pairedAccuracyFiltered"]["baseline"]["unpairedRounds"])
 
     def test_paired_filtered_marks_zero_valid_round_pairs_unavailable(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -139,15 +194,15 @@ class SurferGlitchAnalysisTest(unittest.TestCase):
                 [[_fired(1, "dynamic_cluster") for _ in range(10)] + [_hit("dynamic_cluster") for _ in range(8)]],
             )
 
-            summary = analyze_experiment([root])
+            summary = analyze_experiment([root], accuracy_filter_threshold=0.30)
 
-        self.assertFalse(summary["pairedFiltered"]["available"])
-        self.assertEqual(1, summary["pairedFiltered"]["pairCount"])
-        self.assertNotIn("delta", summary["pairedFiltered"])
-        self.assertEqual([], summary["pairedFiltered"]["pairs"][0]["validRounds"])
-        self.assertEqual([1], summary["pairedFiltered"]["pairs"][0]["baselineExcludedRounds"])
-        self.assertEqual([1], summary["pairedFiltered"]["pairs"][0]["candidateExcludedRounds"])
-        self.assertTrue(any("no valid pairedFiltered rounds" in warning for warning in summary["warnings"]))
+        self.assertFalse(summary["pairedAccuracyFiltered"]["available"])
+        self.assertEqual(1, summary["pairedAccuracyFiltered"]["pairCount"])
+        self.assertNotIn("delta", summary["pairedAccuracyFiltered"])
+        self.assertEqual([], summary["pairedAccuracyFiltered"]["pairs"][0]["validRounds"])
+        self.assertEqual([1], summary["pairedAccuracyFiltered"]["pairs"][0]["baselineExcludedRounds"])
+        self.assertEqual([1], summary["pairedAccuracyFiltered"]["pairs"][0]["candidateExcludedRounds"])
+        self.assertTrue(any("no valid paired accuracy-filtered rounds" in warning for warning in summary["warnings"]))
 
     def test_paired_filtered_marks_no_matching_pairs_unavailable(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -158,11 +213,11 @@ class SurferGlitchAnalysisTest(unittest.TestCase):
                 [[_fired(1, "dynamic_cluster"), _hit("dynamic_cluster", bullet_id=1)]],
             )
 
-            summary = analyze_experiment([root])
+            summary = analyze_experiment([root], accuracy_filter_threshold=0.30)
 
-        self.assertFalse(summary["pairedFiltered"]["available"])
-        self.assertEqual(0, summary["pairedFiltered"]["pairCount"])
-        self.assertNotIn("delta", summary["pairedFiltered"])
+        self.assertFalse(summary["pairedAccuracyFiltered"]["available"])
+        self.assertEqual(0, summary["pairedAccuracyFiltered"]["pairCount"])
+        self.assertNotIn("delta", summary["pairedAccuracyFiltered"])
         self.assertTrue(any("no baseline/candidate pairs" in warning for warning in summary["warnings"]))
 
     def test_paired_filtered_does_not_collide_across_multiple_roots(self) -> None:
@@ -204,13 +259,13 @@ class SurferGlitchAnalysisTest(unittest.TestCase):
                     ],
                 )
 
-            summary = analyze_experiment(roots)
+            summary = analyze_experiment(roots, accuracy_filter_threshold=0.30)
 
-        self.assertTrue(summary["pairedFiltered"]["available"])
-        self.assertEqual(2, summary["pairedFiltered"]["pairCount"])
-        self.assertEqual(300, summary["pairedFiltered"]["baseline"]["score"])
-        self.assertEqual(320, summary["pairedFiltered"]["candidate"]["score"])
-        self.assertEqual(20, summary["pairedFiltered"]["delta"]["score"])
+        self.assertTrue(summary["pairedAccuracyFiltered"]["available"])
+        self.assertEqual(2, summary["pairedAccuracyFiltered"]["pairCount"])
+        self.assertEqual(300, summary["pairedAccuracyFiltered"]["baseline"]["score"])
+        self.assertEqual(320, summary["pairedAccuracyFiltered"]["candidate"]["score"])
+        self.assertEqual(20, summary["pairedAccuracyFiltered"]["delta"]["score"])
 
     def test_reports_missing_required_data(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -221,7 +276,7 @@ class SurferGlitchAnalysisTest(unittest.TestCase):
                 [{"round": 1, "score": 100, "survival": 50, "bulletDamage": 40, "ramDamage": 0, "firstPlaces": 1}],
             )
 
-            summary = analyze_run(run_dir)
+            summary = analyze_run(run_dir, accuracy_filter_threshold=0.30)
 
         self.assertIn("missing telemetry directory", summary.warnings)
 
@@ -247,7 +302,7 @@ class SurferGlitchAnalysisTest(unittest.TestCase):
                 [[_fired(7, "dynamic_cluster"), _hit(None, bullet_id=7)]],
             )
 
-            summary = analyze_run(run_dir)
+            summary = analyze_run(run_dir, accuracy_filter_threshold=0.30)
 
         self.assertEqual(1, summary.raw.dynamicShots)
         self.assertEqual(1, summary.raw.dynamicHits)
@@ -261,7 +316,7 @@ class SurferGlitchAnalysisTest(unittest.TestCase):
                 [[_hit(None, bullet_id=7), _fired(7, "dynamic_cluster")]],
             )
 
-            summary = analyze_run(run_dir)
+            summary = analyze_run(run_dir, accuracy_filter_threshold=0.30)
 
         self.assertEqual(1, summary.raw.hits)
         self.assertEqual(1, summary.raw.dynamicHits)
@@ -274,7 +329,7 @@ class SurferGlitchAnalysisTest(unittest.TestCase):
             (telemetry_only / "adaptive-prime-test.jsonl").write_text("", encoding="utf-8")
 
             run_dirs = discover_run_dirs([root])
-            summary = analyze_experiment([root])
+            summary = analyze_experiment([root], accuracy_filter_threshold=0.30)
 
         self.assertEqual([telemetry_only.parent], run_dirs)
         self.assertEqual(1, summary["runCount"])
@@ -303,9 +358,48 @@ class SurferGlitchAnalysisTest(unittest.TestCase):
                 [[_fired(1, "dynamic_cluster"), _hit("dynamic_cluster", bullet_id=1)]],
             )
 
-            summary = analyze_run(run_dir)
+            summary = analyze_run(run_dir, accuracy_filter_threshold=0.30)
 
         self.assertTrue(any("20+" in warning for warning in summary.warnings))
+
+    def test_cli_short_complete_run_returns_success(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir) / "candidate" / "run-01"
+            _write_run(
+                run_dir,
+                [{"round": 1, "score": 100, "survival": 50, "bulletDamage": 40, "ramDamage": 0, "firstPlaces": 1}],
+                [[_fired(1, "dynamic_cluster"), _hit("dynamic_cluster", bullet_id=1)]],
+            )
+
+            exit_code = _run_main(str(run_dir))
+
+        self.assertEqual(0, exit_code)
+
+    def test_cli_missing_data_returns_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir) / "candidate" / "run-01"
+            run_dir.mkdir(parents=True)
+            _write_runner_log(
+                run_dir,
+                [{"round": 1, "score": 100, "survival": 50, "bulletDamage": 40, "ramDamage": 0, "firstPlaces": 1}],
+            )
+
+            exit_code = _run_main(str(run_dir))
+
+        self.assertEqual(2, exit_code)
+
+    def test_cli_allow_missing_data_downgrades_missing_data_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir) / "candidate" / "run-01"
+            run_dir.mkdir(parents=True)
+            _write_runner_log(
+                run_dir,
+                [{"round": 1, "score": 100, "survival": 50, "bulletDamage": 40, "ramDamage": 0, "firstPlaces": 1}],
+            )
+
+            exit_code = _run_main(str(run_dir), "--allow-missing-data")
+
+        self.assertEqual(0, exit_code)
 
     def test_warns_when_telemetry_has_no_bullet_fired_events(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -323,7 +417,7 @@ class SurferGlitchAnalysisTest(unittest.TestCase):
             ]
             _write_run(run_dir, cumulative_results, [[] for _ in cumulative_results])
 
-            summary = analyze_run(run_dir)
+            summary = analyze_run(run_dir, accuracy_filter_threshold=0.30)
 
         self.assertIn("no bullet.fired telemetry", summary.warnings)
         self.assertTrue(any("scored rounds without shot telemetry" in warning for warning in summary.warnings))
@@ -331,7 +425,7 @@ class SurferGlitchAnalysisTest(unittest.TestCase):
     def test_rejects_threshold_outside_accuracy_range(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             with self.assertRaises(ValueError):
-                analyze_experiment([Path(temp_dir)], threshold=80)
+                analyze_experiment([Path(temp_dir)], accuracy_filter_threshold=80)
 
     def test_threshold_excludes_only_accuracy_above_cutoff(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -350,10 +444,10 @@ class SurferGlitchAnalysisTest(unittest.TestCase):
                 ],
             )
 
-            summary = analyze_run(run_dir, threshold=0.30)
+            summary = analyze_run(run_dir, accuracy_filter_threshold=0.30)
 
-        self.assertFalse(summary.rounds[0].excludedGlitch)
-        self.assertTrue(summary.rounds[1].excludedGlitch)
+        self.assertFalse(summary.rounds[0].excludedByAccuracy)
+        self.assertTrue(summary.rounds[1].excludedByAccuracy)
 
     def test_aggregates_dynamic_wave_diagnostics_with_filtering(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -394,7 +488,7 @@ class SurferGlitchAnalysisTest(unittest.TestCase):
                 ],
             )
 
-            summary = analyze_run(run_dir, threshold=0.30)
+            summary = analyze_run(run_dir, accuracy_filter_threshold=0.30)
 
         self.assertEqual(2, summary.raw.dynamicWaveVisits)
         self.assertAlmostEqual(0.15, summary.raw.dynamicAvgError)
@@ -404,10 +498,10 @@ class SurferGlitchAnalysisTest(unittest.TestCase):
         self.assertAlmostEqual(0.65, summary.raw.dynamicAvgPeakScoreRatio)
         self.assertAlmostEqual(0.2, summary.raw.dynamicAvgEffectiveBandwidth)
         self.assertAlmostEqual(0.4, summary.raw.dynamicAvgShotQuality)
-        self.assertEqual(1, summary.filtered.dynamicWaveVisits)
-        self.assertAlmostEqual(-0.1, summary.filtered.dynamicAvgError)
-        self.assertAlmostEqual(0.1, summary.filtered.dynamicAvgAbsError)
-        self.assertAlmostEqual(0.0, summary.filtered.dynamicAmbiguousRate)
+        self.assertEqual(1, summary.accuracyFiltered.dynamicWaveVisits)
+        self.assertAlmostEqual(-0.1, summary.accuracyFiltered.dynamicAvgError)
+        self.assertAlmostEqual(0.1, summary.accuracyFiltered.dynamicAvgAbsError)
+        self.assertAlmostEqual(0.0, summary.accuracyFiltered.dynamicAmbiguousRate)
 
 
 def _write_run(
@@ -432,16 +526,34 @@ def _write_run(
             stream.write(json.dumps(event) + "\n")
 
 
-def _fired(bullet_id: int, aim_mode: str) -> dict[str, object]:
-    return {"bot": "adaptive-prime", "event": "bullet.fired", "fields": {"bullet_id": bullet_id, "aim_mode": aim_mode}, "turn": 10}
+def _run_main(*args: str) -> int:
+    with patch("sys.argv", ["combat_economics_summary.py", *args]):
+        return main()
 
 
-def _hit(aim_mode: str | None, *, bullet_id: int | None = None) -> dict[str, object]:
+def _fired(bullet_id: int, aim_mode: str, *, power: float | None = None) -> dict[str, object]:
+    fields: dict[str, object] = {"bullet_id": bullet_id, "aim_mode": aim_mode}
+    if power is not None:
+        fields["power"] = power
+    return {"bot": "adaptive-prime", "event": "bullet.fired", "fields": fields, "turn": 10}
+
+
+def _hit(
+    aim_mode: str | None,
+    *,
+    bullet_id: int | None = None,
+    power: float | None = None,
+    damage: float | None = None,
+) -> dict[str, object]:
     fields: dict[str, object] = {}
     if aim_mode is not None:
         fields["aim_mode"] = aim_mode
     if bullet_id is not None:
         fields["bullet_id"] = bullet_id
+    if power is not None:
+        fields["power"] = power
+    if damage is not None:
+        fields["damage"] = damage
     return {"bot": "adaptive-prime", "event": "bullet.hit_bot", "fields": fields, "turn": 20}
 
 

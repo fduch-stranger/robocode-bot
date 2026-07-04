@@ -81,20 +81,8 @@ PRESETS: dict[str, dict[str, Any]] = {
             }
         ],
     },
-    "adaptive-1v1-boss": {
-        "description": "Adaptive Prime 1v1 benchmark against configured legacy boss bots.",
-        "rounds": 24,
-        "repeats": 3,
-        "targetBot": TARGET_BOT,
-        "matchups": [
-            {"name": "adaptive-vs-drussgt", "bots": ["bots/adaptive-prime", "legacy:drussgt"]},
-            {"name": "adaptive-vs-saguaro", "bots": ["bots/adaptive-prime", "legacy:saguaro"]},
-            {"name": "adaptive-vs-basic-gf-surfer", "bots": ["bots/adaptive-prime", "legacy:basic-gf-surfer"]},
-            {"name": "adaptive-vs-diamond", "bots": ["bots/adaptive-prime", "legacy:diamond"]},
-        ],
-    },
     "adaptive-1v1-basic-gf-surfer": {
-        "description": "Adaptive Prime focused BasicGFSurferFixed 1v1 benchmark.",
+        "description": "Historical/noisy converted BasicGFSurferFixed check; prefer the Python port for tuning.",
         "rounds": 24,
         "repeats": 3,
         "targetBot": TARGET_BOT,

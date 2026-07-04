@@ -221,7 +221,7 @@ class BasicGFSurferPort(Bot):
                 name="BasicGFSurfer Port",
                 version="1.0",
                 authors=["robocode-bot"],
-                description="Python Tank Royale port of the fixed BasicGFSurfer legacy benchmark.",
+                description="Python Tank Royale port of the fixed BasicGFSurfer reference opponent.",
                 game_types={"classic", "1v1"},
                 programming_lang="Python 3",
             )
