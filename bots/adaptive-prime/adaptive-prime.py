@@ -17,6 +17,7 @@ from bot_core.energy import (
     EnemyFireDetector,
     EnemyFirePowerPrediction,
     EnemyFirePowerPredictor,
+    FireDecision,
     GunHeatTracker,
 )
 from bot_core.gun import (
@@ -361,6 +362,13 @@ class AdaptivePrime(Bot):
             disabled_modes=frozenset() if use_segmented_gun_stats else frozenset({"traditional_gf"}),
             allow_segmented_stats=use_segmented_gun_stats,
         )
+        firepower, aim = self._maybe_apply_dynamic_shot_quality_power_scale(
+            target,
+            distance,
+            firepower,
+            aim,
+            use_segmented_gun_stats,
+        )
         score_segment = aim.segment_key if use_segmented_gun_stats else None
         if aim.mode_changed:
             self._fire_telemetry.record_gun_switch(target.bot_id, aim, self._gun.score_summary(target.bot_id, score_segment))
@@ -394,11 +402,66 @@ class AdaptivePrime(Bot):
         radar_command = lock_radar_to_target(self, target, RADAR_CONFIG)
         if abs(radar_command.turn) >= 1:
             self._radar_sweep_direction = 1 if radar_command.turn > 0 else -1
-        self.set_turn_gun_left(aim.gun_bearing)
-
         movement_mode, strafe_offset, flattening = self._set_adaptive_movement(target, distance, body_bearing)
 
         fire_decision = FIRE_GATE.decide(age, distance, aim.gun_bearing, firepower, self.energy)
+        low_energy_override = self._maybe_low_energy_endgame_firepower(target, distance, firepower, aim, fire_decision)
+        if low_energy_override is not None:
+            override_aim = self._gun.aim(
+                self,
+                target,
+                distance,
+                low_energy_override,
+                self._target_motion(target),
+                MOVEMENT_POLICY.field_margin,
+                disabled_modes=frozenset() if use_segmented_gun_stats else frozenset({"traditional_gf"}),
+                allow_segmented_stats=use_segmented_gun_stats,
+            )
+            override_alignment_limit = min(
+                FIRE_GATE.alignment_limit(distance),
+                FIRE_POLICY.low_energy_endgame_alignment_degrees,
+            )
+            override_quality = self._dynamic_shot_quality_value(override_aim, "shot_quality", default=-1.0)
+            final_reject_reason = None
+            if override_aim.mode != "dynamic_cluster":
+                final_reject_reason = "final_aim_mode"
+            elif override_quality < FIRE_POLICY.low_energy_endgame_min_shot_quality:
+                final_reject_reason = "final_shot_quality"
+            elif abs(override_aim.gun_bearing) > override_alignment_limit:
+                final_reject_reason = "final_alignment"
+            elif self.energy <= low_energy_override:
+                final_reject_reason = "final_energy"
+            if final_reject_reason is None:
+                firepower = low_energy_override
+                aim = override_aim
+                score_segment = aim.segment_key if use_segmented_gun_stats else None
+                fire_decision = FireDecision(True, "low_energy_endgame", override_alignment_limit)
+                self._record_low_energy_endgame(
+                    target,
+                    distance,
+                    aim,
+                    firepower,
+                    "final",
+                    "accepted",
+                    "firing",
+                    override_alignment_limit,
+                    override_quality,
+                    proposed_firepower=low_energy_override,
+                )
+            else:
+                self._record_low_energy_endgame(
+                    target,
+                    distance,
+                    override_aim,
+                    firepower,
+                    "final",
+                    "rejected",
+                    final_reject_reason,
+                    override_alignment_limit,
+                    override_quality,
+                    proposed_firepower=low_energy_override,
+                )
+        self.set_turn_gun_left(aim.gun_bearing)
         if age <= 2 and self.gun_heat <= 0 and self.energy > firepower:
             self._gun.maybe_add_eval_wave(self, target, firepower, aim)
         self._fire_telemetry.sample_track(
@@ -408,6 +471,7 @@ class AdaptivePrime(Bot):
                 distance=distance,
                 aim=aim,
                 radar=radar_command,
+                firepower=firepower,
                 decision=fire_decision,
                 gun_samples=self._gun.sample_count,
                 gun_scores=self._gun.score_summary(target.bot_id, score_segment),
@@ -423,6 +487,146 @@ class AdaptivePrime(Bot):
         if fire_decision.can_fire:
             self._gun.set_pending_wave(self._gun.make_wave(self, target, firepower, aim))
             self.set_fire(firepower)
+
+    def _maybe_apply_dynamic_shot_quality_power_scale(
+        self,
+        target: TargetSnapshot,
+        distance: float,
+        firepower: float,
+        aim: AimSolution,
+        use_segmented_gun_stats: bool,
+    ) -> tuple[float, AimSolution]:
+        if not FIRE_POLICY.dynamic_shot_quality_power_scaling_enabled:
+            return firepower, aim
+        if aim.mode != "dynamic_cluster":
+            return firepower, aim
+        if target.energy <= FIRE_POLICY.finish_target_energy and distance < 320:
+            return firepower, aim
+        power_scale = self._dynamic_shot_quality_value(aim, "recommended_power_scale", default=1.0)
+        adjusted_firepower = max(0.1, min(firepower, firepower * power_scale))
+        if abs(adjusted_firepower - firepower) < 0.01:
+            return firepower, aim
+        adjusted_aim = self._gun.aim(
+            self,
+            target,
+            distance,
+            adjusted_firepower,
+            self._target_motion(target),
+            MOVEMENT_POLICY.field_margin,
+            disabled_modes=frozenset() if use_segmented_gun_stats else frozenset({"traditional_gf"}),
+            allow_segmented_stats=use_segmented_gun_stats,
+        )
+        if adjusted_aim.mode != "dynamic_cluster":
+            return firepower, aim
+        return adjusted_firepower, adjusted_aim
+
+    def _maybe_low_energy_endgame_firepower(
+        self,
+        target: TargetSnapshot,
+        distance: float,
+        firepower: float,
+        aim: AimSolution,
+        fire_decision: FireDecision,
+    ) -> float | None:
+        if not FIRE_POLICY.low_energy_endgame_fire_enabled:
+            return None
+        if fire_decision.reason != "energy_margin":
+            return None
+        alignment_limit = min(
+            FIRE_GATE.alignment_limit(distance),
+            FIRE_POLICY.low_energy_endgame_alignment_degrees,
+        )
+        shot_quality = self._dynamic_shot_quality_value(aim, "shot_quality", default=-1.0)
+
+        def reject(reason: str) -> None:
+            self._record_low_energy_endgame(
+                target,
+                distance,
+                aim,
+                firepower,
+                "candidate",
+                "rejected",
+                reason,
+                alignment_limit,
+                shot_quality,
+            )
+
+        if self.energy > FIRE_POLICY.low_energy_endgame_max_energy:
+            reject("max_energy")
+            return None
+        if distance > FIRE_POLICY.low_energy_endgame_max_distance:
+            reject("distance")
+            return None
+        if abs(aim.gun_bearing) > FIRE_POLICY.low_energy_endgame_alignment_degrees:
+            reject("alignment")
+            return None
+        if aim.mode != "dynamic_cluster":
+            reject("aim_mode")
+            return None
+        target_is_finisher = target.energy <= FIRE_POLICY.finish_target_energy
+        target_has_lead = target.energy > self.energy
+        if not (target_is_finisher or target_has_lead):
+            reject("endgame_context")
+            return None
+        if shot_quality < FIRE_POLICY.low_energy_endgame_min_shot_quality:
+            reject("shot_quality")
+            return None
+        max_firepower = self.energy - FIRE_POLICY.low_energy_endgame_energy_reserve
+        if max_firepower < 0.1:
+            reject("energy_reserve")
+            return None
+        proposed_firepower = max(0.1, min(firepower, max_firepower))
+        self._record_low_energy_endgame(
+            target,
+            distance,
+            aim,
+            firepower,
+            "candidate",
+            "accepted",
+            "eligible",
+            alignment_limit,
+            shot_quality,
+            proposed_firepower=proposed_firepower,
+        )
+        return proposed_firepower
+
+    def _record_low_energy_endgame(
+        self,
+        target: TargetSnapshot,
+        distance: float,
+        aim: AimSolution,
+        firepower: float,
+        stage: str,
+        decision: str,
+        reason: str,
+        alignment_limit: float,
+        shot_quality: float | None,
+        *,
+        proposed_firepower: float | None = None,
+    ) -> None:
+        self._fire_telemetry.record_low_energy_endgame(
+            target_id=target.bot_id,
+            stage=stage,
+            decision=decision,
+            reason=reason,
+            energy=self.energy,
+            target_energy=target.energy,
+            distance=distance,
+            firepower=firepower,
+            aim_mode=aim.mode,
+            gun_bearing=aim.gun_bearing,
+            alignment_limit=alignment_limit,
+            shot_quality=shot_quality,
+            proposed_firepower=proposed_firepower,
+        )
+
+    @staticmethod
+    def _dynamic_shot_quality_value(aim: AimSolution, key: str, default: float) -> float:
+        diagnostics = aim.gun_diagnostics.get("dynamic_cluster", {})
+        if not isinstance(diagnostics, dict):
+            return default
+        value = diagnostics.get(key)
+        return float(value) if isinstance(value, (int, float)) else default
 
     def _set_adaptive_movement(
         self,

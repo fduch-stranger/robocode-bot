@@ -14,8 +14,11 @@ TRADITIONAL_GF_DEFAULTS = TraditionalGfGunConfig()
 ADAPTIVE_DYNAMIC_CLUSTER_POLICY = DynamicClusterPolicy.from_env("ROBOCODE_ADAPTIVE")
 
 
-def _env_flag(name: str) -> bool:
-    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+def _env_flag(name: str, default: bool = False) -> bool:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    return raw.lower() in {"1", "true", "yes", "on"}
 
 
 def _env_int(name: str, default: int, *, minimum: int = 1) -> int:
@@ -132,9 +135,41 @@ class GunPolicy:
 class FirePolicy:
     alignment_degrees: float = 7
     memory_turns: int = 1
+    energy_margin: float = 5
     finish_target_energy: float = 14
     melee_finish_target_energy: float = 10
     finish_distance: float = 240
+    dynamic_shot_quality_power_scaling_enabled: bool = _env_flag(
+        "ROBOCODE_ADAPTIVE_DYNAMIC_SHOT_QUALITY_POWER_SCALING",
+        default=True,
+    )
+    low_energy_endgame_fire_enabled: bool = _env_flag("ROBOCODE_ADAPTIVE_LOW_ENERGY_ENDGAME_FIRE", default=True)
+    low_energy_endgame_max_energy: float = _env_float(
+        "ROBOCODE_ADAPTIVE_LOW_ENERGY_ENDGAME_MAX_ENERGY",
+        7.0,
+        minimum=0.1,
+    )
+    low_energy_endgame_max_distance: float = _env_float(
+        "ROBOCODE_ADAPTIVE_LOW_ENERGY_ENDGAME_MAX_DISTANCE",
+        320.0,
+        minimum=0.0,
+    )
+    low_energy_endgame_alignment_degrees: float = _env_float(
+        "ROBOCODE_ADAPTIVE_LOW_ENERGY_ENDGAME_ALIGNMENT_DEGREES",
+        3.0,
+        minimum=0.0,
+    )
+    low_energy_endgame_min_shot_quality: float = _env_float(
+        "ROBOCODE_ADAPTIVE_LOW_ENERGY_ENDGAME_MIN_SHOT_QUALITY",
+        0.35,
+        minimum=0.0,
+        maximum=1.0,
+    )
+    low_energy_endgame_energy_reserve: float = _env_float(
+        "ROBOCODE_ADAPTIVE_LOW_ENERGY_ENDGAME_ENERGY_RESERVE",
+        0.1,
+        minimum=0.0,
+    )
     enemy_fire_min_drop: float = 0.1
     enemy_fire_max_drop: float = 3.0
     enemy_fire_scan_gap_turns: int = 4
@@ -240,6 +275,6 @@ FIRE_GATE = FireGate(
     FireGateConfig(
         fire_memory_turns=FIRE_POLICY.memory_turns,
         alignment_degrees=FIRE_POLICY.alignment_degrees,
-        energy_margin=5,
+        energy_margin=FIRE_POLICY.energy_margin,
     )
 )

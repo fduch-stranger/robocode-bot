@@ -367,10 +367,30 @@ class SurferGlitchAnalysisTest(unittest.TestCase):
                 [
                     [_fired(index, "dynamic_cluster") for index in range(10)]
                     + [_hit("dynamic_cluster", bullet_id=index) for index in range(5)]
-                    + [_wave_visit(0.5, 0.1, ambiguous=True, confidence=0.2, peak_ratio=0.9, bandwidth=0.3)],
+                    + [
+                        _wave_visit(
+                            0.5,
+                            0.1,
+                            ambiguous=True,
+                            confidence=0.2,
+                            peak_ratio=0.9,
+                            bandwidth=0.3,
+                            shot_quality=0.2,
+                        )
+                    ],
                     [_fired(index, "dynamic_cluster") for index in range(10, 20)]
                     + [_hit("dynamic_cluster", bullet_id=index) for index in range(10, 12)]
-                    + [_wave_visit(0.1, 0.2, ambiguous=False, confidence=0.8, peak_ratio=0.4, bandwidth=0.1)],
+                    + [
+                        _wave_visit(
+                            0.1,
+                            0.2,
+                            ambiguous=False,
+                            confidence=0.8,
+                            peak_ratio=0.4,
+                            bandwidth=0.1,
+                            shot_quality=0.6,
+                        )
+                    ],
                 ],
             )
 
@@ -383,6 +403,7 @@ class SurferGlitchAnalysisTest(unittest.TestCase):
         self.assertAlmostEqual(0.5, summary.raw.dynamicAvgAimConfidence)
         self.assertAlmostEqual(0.65, summary.raw.dynamicAvgPeakScoreRatio)
         self.assertAlmostEqual(0.2, summary.raw.dynamicAvgEffectiveBandwidth)
+        self.assertAlmostEqual(0.4, summary.raw.dynamicAvgShotQuality)
         self.assertEqual(1, summary.filtered.dynamicWaveVisits)
         self.assertAlmostEqual(-0.1, summary.filtered.dynamicAvgError)
         self.assertAlmostEqual(0.1, summary.filtered.dynamicAvgAbsError)
@@ -432,6 +453,7 @@ def _wave_visit(
     confidence: float,
     peak_ratio: float,
     bandwidth: float,
+    shot_quality: float = 0.5,
 ) -> dict[str, object]:
     return {
         "bot": "adaptive-prime",
@@ -444,6 +466,7 @@ def _wave_visit(
             "dynamic_cluster_aim_confidence": confidence,
             "dynamic_cluster_peak_score_ratio": peak_ratio,
             "dynamic_cluster_effective_bandwidth": bandwidth,
+            "dynamic_cluster_shot_quality": shot_quality,
         },
         "turn": 30,
     }

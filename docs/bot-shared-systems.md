@@ -143,6 +143,11 @@ stable/low-lateral/short-flight context tags to selector diagnostics. Broad
 selector threshold retuning should be tested separately from fire-context
 collection.
 
+Dynamic Cluster reports a KNN shot-quality score, quality reason, and
+recommended power scale so bots can lower the cost of weak KNN shots without
+hiding KNN from selector evidence. The rejected GF-softening and online
+calibration correction experiments were removed from code and telemetry.
+
 Traditional guess-factor aiming always keeps a global profile per target and,
 when a bot provides segmented gun stats, records exact and coarse segment
 profiles. Shared defaults blend normalized global and exact-segment profile
@@ -213,6 +218,10 @@ own_energy > firepower + safety_margin
 The telemetry field `gun_bearing` is a bearing error, not an absolute heading.
 `0` means the gun is aligned with the desired aim.
 `FireDecision.reason` is used as the hold reason when a bot does not fire.
+Adaptive Prime has a low-energy endgame override that can convert an
+`energy_margin` hold into a narrow `low_energy_endgame` fire decision when the
+target, alignment, range, and KNN shot quality meet explicit policy gates. It
+emits `gun.low_energy_endgame` telemetry for candidate and final decisions.
 
 ## Enemy Fire Detection
 
@@ -317,7 +326,7 @@ Telemetry is JSONL. Common event names:
 - `wall.avoid`, `separate`: sampled movement status.
 - `search`, `scan.reacquired`, `target.drop_lost`, `target.stale`: sampled
   target/radar status.
-- `bullet.fired`, `bullet.hit_bot`, `hit.bullet`.
+- `gun.low_energy_endgame`, `bullet.fired`, `bullet.hit_bot`, `hit.bullet`.
 
 Structured telemetry helpers live in `bot_core.telemetry`. `DebugLogger`
 remains the sink used by bots, while domain emitters in `telemetry.fire`,

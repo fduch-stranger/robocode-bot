@@ -338,6 +338,13 @@ is a local weighted centroid of neighbor samples around the best density bin,
 using an effective bandwidth adjusted by target hit width. Diagnostics report
 peak margin, neighbor agreement, confidence, and ambiguous secondary peaks.
 
+Shot-quality diagnostics combine aim confidence, neighbor agreement, ambiguity,
+wall-escape stability, and lateral-direction confidence. Dynamic Cluster emits
+`dynamic_cluster_shot_quality`, `dynamic_cluster_quality_reason`, and
+`dynamic_cluster_recommended_power_scale`; Adaptive can use that power scale to
+lower firepower for weak KNN shots. The rejected GF-softening and online
+calibration correction experiments were removed from code and telemetry.
+
 Samples can support decay through half-life weighting, but the current
 configuration leaves gun KNN decay disabled by default:
 

@@ -37,6 +37,15 @@ inputs so tuning can be tested without changing the component algorithm. The
 default only mildly centers highly ambiguous peaks (`ratio >= 0.85`) so the gun
 remains the primary KNN aim model rather than being hidden by selector policy.
 
+Shot-quality diagnostics combine aim confidence, neighbor agreement, ambiguity,
+wall-escape stability, and lateral confidence. They report a quality reason and
+recommended power scale. The rejected GF-softening experiment was removed, so
+shot quality affects firepower policy only.
+
+The failed online calibration apply-correction experiment was removed from the
+gun and telemetry. Do not emit telemetry for calibration corrections unless a
+real calibration behavior is reintroduced and validated.
+
 Each live bot exposes experiment-only env overrides for those dynamic-cluster
 knobs through its own prefix: `ROBOCODE_ADAPTIVE_DYNAMIC_*`,
 `ROBOCODE_CHASE_DYNAMIC_*`, `ROBOCODE_CIRCLE_DYNAMIC_*`, or
@@ -73,4 +82,4 @@ records wave score and selection data, while component-specific fields belong in
 count, feature-distance range, tag-match ratio, flight-time spread,
 wall-escape spread, lateral confidence, density score, effective bandwidth,
 best-bin guess factor, peak margin, neighbor agreement, aim confidence, peak
-ambiguity, and selected guess factor.
+ambiguity, selected guess factor, and shot-quality recommendations.

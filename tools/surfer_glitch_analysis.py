@@ -46,6 +46,8 @@ class RoundSummary:
     dynamicAvgPeakScoreRatio: float = 0.0
     dynamicBandwidthVisits: int = 0
     dynamicAvgEffectiveBandwidth: float = 0.0
+    dynamicShotQualityVisits: int = 0
+    dynamicAvgShotQuality: float = 0.0
     excludedGlitch: bool = False
 
 
@@ -76,6 +78,8 @@ class AggregateSummary:
     dynamicAvgPeakScoreRatio: float = 0.0
     dynamicBandwidthVisits: int = 0
     dynamicAvgEffectiveBandwidth: float = 0.0
+    dynamicShotQualityVisits: int = 0
+    dynamicAvgShotQuality: float = 0.0
     excludedRounds: int = 0
     unpairedRounds: int = 0
 
@@ -329,7 +333,7 @@ def _bullet_id(fields: dict[str, Any]) -> str | None:
     return str(bullet_id)
 
 
-def _record_dynamic_wave_visit(bucket: dict[str, int | float | bool], fields: dict[str, Any]) -> None:
+def _record_dynamic_wave_visit(bucket: dict[str, Any], fields: dict[str, Any]) -> None:
     if fields.get("selected_gun") != "dynamic_cluster":
         return
     bucket["dynamicWaveVisits"] = int(bucket["dynamicWaveVisits"]) + 1
@@ -354,14 +358,19 @@ def _record_dynamic_wave_visit(bucket: dict[str, int | float | bool], fields: di
     if bandwidth is not None:
         bucket["dynamicBandwidthVisits"] = int(bucket["dynamicBandwidthVisits"]) + 1
         bucket["dynamicEffectiveBandwidthSum"] = float(bucket["dynamicEffectiveBandwidthSum"]) + bandwidth
+    shot_quality = _float_or_none(fields.get("dynamic_cluster_shot_quality"))
+    if shot_quality is not None:
+        bucket["dynamicShotQualityVisits"] = int(bucket["dynamicShotQualityVisits"]) + 1
+        bucket["dynamicShotQualitySum"] = float(bucket["dynamicShotQualitySum"]) + shot_quality
 
 
-def _finalize_dynamic_wave_diagnostics(bucket: dict[str, int | float | bool]) -> None:
+def _finalize_dynamic_wave_diagnostics(bucket: dict[str, Any]) -> None:
     wave_visits = int(bucket["dynamicWaveVisits"])
     error_visits = int(bucket["dynamicErrorVisits"])
     confidence_visits = int(bucket["dynamicAimConfidenceVisits"])
     peak_ratio_visits = int(bucket["dynamicPeakRatioVisits"])
     bandwidth_visits = int(bucket["dynamicBandwidthVisits"])
+    shot_quality_visits = int(bucket["dynamicShotQualityVisits"])
     bucket["dynamicAvgError"] = float(bucket["dynamicErrorSum"]) / error_visits if error_visits else 0.0
     bucket["dynamicAvgAbsError"] = float(bucket["dynamicAbsErrorSum"]) / error_visits if error_visits else 0.0
     bucket["dynamicAmbiguousRate"] = int(bucket["dynamicAmbiguousVisits"]) / wave_visits if wave_visits else 0.0
@@ -374,12 +383,15 @@ def _finalize_dynamic_wave_diagnostics(bucket: dict[str, int | float | bool]) ->
     bucket["dynamicAvgEffectiveBandwidth"] = (
         float(bucket["dynamicEffectiveBandwidthSum"]) / bandwidth_visits if bandwidth_visits else 0.0
     )
+    bucket["dynamicAvgShotQuality"] = (
+        float(bucket["dynamicShotQualitySum"]) / shot_quality_visits if shot_quality_visits else 0.0
+    )
 
 
 def _float_or_none(value: object) -> float | None:
     if isinstance(value, bool) or value is None:
         return None
-    if isinstance(value, int | float):
+    if isinstance(value, (int, float)):
         return float(value)
     try:
         return float(str(value))
@@ -405,6 +417,7 @@ def _round_summary(
     dynamic_aim_confidence_visits = int(accuracy.get("dynamicAimConfidenceVisits", 0))
     dynamic_peak_ratio_visits = int(accuracy.get("dynamicPeakRatioVisits", 0))
     dynamic_bandwidth_visits = int(accuracy.get("dynamicBandwidthVisits", 0))
+    dynamic_shot_quality_visits = int(accuracy.get("dynamicShotQualityVisits", 0))
     return RoundSummary(
         round=round_number,
         score=score.get("score", 0),
@@ -430,6 +443,8 @@ def _round_summary(
         dynamicAvgPeakScoreRatio=float(accuracy.get("dynamicAvgPeakScoreRatio", 0.0)),
         dynamicBandwidthVisits=dynamic_bandwidth_visits,
         dynamicAvgEffectiveBandwidth=float(accuracy.get("dynamicAvgEffectiveBandwidth", 0.0)),
+        dynamicShotQualityVisits=dynamic_shot_quality_visits,
+        dynamicAvgShotQuality=float(accuracy.get("dynamicAvgShotQuality", 0.0)),
         excludedGlitch=bool(accuracy.get("excludedGlitch", hit_accuracy > threshold)),
     )
 
@@ -450,6 +465,7 @@ def _aggregate_runs(aggregates: list[AggregateSummary]) -> dict[str, int | float
     dynamic_aim_confidence_visits = sum(aggregate.dynamicAimConfidenceVisits for aggregate in aggregates)
     dynamic_peak_ratio_visits = sum(aggregate.dynamicPeakRatioVisits for aggregate in aggregates)
     dynamic_bandwidth_visits = sum(aggregate.dynamicBandwidthVisits for aggregate in aggregates)
+    dynamic_shot_quality_visits = sum(aggregate.dynamicShotQualityVisits for aggregate in aggregates)
     rounds = sum(aggregate.rounds for aggregate in aggregates)
     score = sum(aggregate.score for aggregate in aggregates)
     first_places = sum(aggregate.firstPlaces for aggregate in aggregates)
@@ -497,6 +513,10 @@ def _aggregate_runs(aggregates: list[AggregateSummary]) -> dict[str, int | float
         "dynamicAvgEffectiveBandwidth": _weighted_average(
             [(aggregate.dynamicAvgEffectiveBandwidth, aggregate.dynamicBandwidthVisits) for aggregate in aggregates]
         ),
+        "dynamicShotQualityVisits": dynamic_shot_quality_visits,
+        "dynamicAvgShotQuality": _weighted_average(
+            [(aggregate.dynamicAvgShotQuality, aggregate.dynamicShotQualityVisits) for aggregate in aggregates]
+        ),
         "excludedRounds": sum(aggregate.excludedRounds for aggregate in aggregates),
         "unpairedRounds": sum(aggregate.unpairedRounds for aggregate in aggregates),
     }
@@ -518,6 +538,7 @@ def _aggregate_round_values(
     dynamic_aim_confidence_visits = sum(round_summary.dynamicAimConfidenceVisits for round_summary in rounds)
     dynamic_peak_ratio_visits = sum(round_summary.dynamicPeakRatioVisits for round_summary in rounds)
     dynamic_bandwidth_visits = sum(round_summary.dynamicBandwidthVisits for round_summary in rounds)
+    dynamic_shot_quality_visits = sum(round_summary.dynamicShotQualityVisits for round_summary in rounds)
     return AggregateSummary(
         runs=runs,
         rounds=len(rounds),
@@ -557,6 +578,10 @@ def _aggregate_round_values(
         dynamicAvgEffectiveBandwidth=_weighted_average(
             [(round_summary.dynamicAvgEffectiveBandwidth, round_summary.dynamicBandwidthVisits) for round_summary in rounds]
         ),
+        dynamicShotQualityVisits=dynamic_shot_quality_visits,
+        dynamicAvgShotQuality=_weighted_average(
+            [(round_summary.dynamicAvgShotQuality, round_summary.dynamicShotQualityVisits) for round_summary in rounds]
+        ),
         excludedRounds=excluded_rounds,
     )
 
@@ -595,6 +620,7 @@ def _with_delta(summary_by_side: dict[str, dict[str, int | float]]) -> dict[str,
                 "dynamicAimConfidenceVisits",
                 "dynamicPeakRatioVisits",
                 "dynamicBandwidthVisits",
+                "dynamicShotQualityVisits",
                 "excludedRounds",
                 "unpairedRounds",
             ]
@@ -772,7 +798,8 @@ def _print_summary(summary: dict[str, Any]) -> None:
                 "firsts={firsts} firsts/round={firsts_per_round:.3f} "
                 "accuracy={accuracy:.3f} dynamic={dynamic_hits}/{dynamic_shots} "
                 "dynamic_accuracy={dynamic_accuracy:.3f} dyn_error={dynamic_error:.3f}/{dynamic_abs_error:.3f} "
-                "ambiguous={ambiguous:.3f} excluded={excluded} unpaired={unpaired}".format(
+                "ambiguous={ambiguous:.3f} shot_quality={shot_quality:.3f} "
+                "excluded={excluded} unpaired={unpaired}".format(
                     side=side,
                     runs=values["runs"],
                     rounds=values["rounds"],
@@ -787,6 +814,7 @@ def _print_summary(summary: dict[str, Any]) -> None:
                     dynamic_error=values["dynamicAvgError"],
                     dynamic_abs_error=values["dynamicAvgAbsError"],
                     ambiguous=values["dynamicAmbiguousRate"],
+                    shot_quality=values["dynamicAvgShotQuality"],
                     excluded=values["excludedRounds"],
                     unpaired=values.get("unpairedRounds", 0),
                 )
@@ -840,7 +868,7 @@ def _print_summary(summary: dict[str, Any]) -> None:
                     )
 
 
-def _accuracy_bucket() -> dict[str, int | float | bool]:
+def _accuracy_bucket() -> dict[str, Any]:
     return {
         "shots": 0,
         "hits": 0,
@@ -862,11 +890,13 @@ def _accuracy_bucket() -> dict[str, int | float | bool]:
         "dynamicBandwidthVisits": 0,
         "dynamicEffectiveBandwidthSum": 0.0,
         "dynamicAvgEffectiveBandwidth": 0.0,
+        "dynamicShotQualityVisits": 0,
+        "dynamicShotQualitySum": 0.0,
+        "dynamicAvgShotQuality": 0.0,
         "accuracy": 0.0,
         "dynamicAccuracy": 0.0,
         "excludedGlitch": False,
     }
-
 
 def _excluded_count(rounds: tuple[RoundSummary, ...]) -> int:
     return sum(1 for round_summary in rounds if round_summary.excludedGlitch)

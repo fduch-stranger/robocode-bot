@@ -122,6 +122,12 @@ far:
   p = 0.8
 ```
 
+The normal fire gate still requires enough remaining energy after the selected
+power. Adaptive scales down `dynamic_cluster` shots when KNN diagnostics report
+weak shot quality, and it can allow a narrow low-energy endgame shot after an
+`energy_margin` hold when range, alignment, target energy, and KNN quality all
+pass explicit gates. Both behaviors remain env-controllable for A/B isolation.
+
 ## Gun Policy
 
 Adaptive Prime uses a bot-specific `GunPolicy` to make virtual-gun switching
@@ -228,8 +234,8 @@ proof that a mode should switch live.
 
 For gun modeling and selector calibration follow-up, check the research notes
 in [docs/plans](../../docs/plans/README.md), especially the
-confidence-calibrated selector plan, before changing committed selector or
-Traditional GF defaults.
+confidence-calibrated selector plan, before changing committed selector,
+shot-quality, or Traditional GF defaults.
 
 ## Key Telemetry
 
@@ -241,6 +247,9 @@ Traditional GF defaults.
 - `enemy.fire_detected`: confirmed enemy energy-drop fire.
 - `gun.switch_decision`: sampled selector diagnostics, including candidate
   scores, visits, thresholds, margin, and rejection reason.
+- `gun.low_energy_endgame`: accepted/rejected low-energy endgame override
+  decisions, including stage, reason, energy, target energy, distance, proposed
+  firepower, aim mode, alignment, and KNN shot quality.
 - `gun.traditional_gf_profile`: sampled global/segment traditional-GF profile
   diagnostics emitted periodically, including during forced-gun tests.
 - `track`: selected target, aim mode, movement mode, radar mode, and fire hold

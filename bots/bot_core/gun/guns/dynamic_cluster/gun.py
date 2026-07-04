@@ -87,9 +87,12 @@ class DynamicClusterGun:
         )
 
     def visit_diagnostics(self, visit: GunVisit) -> dict[str, object]:
+        return self._visit_base_diagnostics(visit)
+
+    def _visit_base_diagnostics(self, visit: GunVisit) -> dict[str, object]:
         metadata = visit.wave.gun_metadata.get(self.mode)
         if isinstance(metadata, dict):
-            return metadata
+            return dict(metadata)
         prediction = self._prediction_from_samples(
             visit.wave.target_id,
             visit.wave.features,
@@ -175,12 +178,12 @@ class DynamicClusterGun:
     ) -> DensityAnalysis:
         effective_bandwidth = self._effective_bandwidth(target_distance, fire_context)
         scored_bins: list[tuple[float, float]] = []
-        for index in range(self.config.guess_factor_bins):
-            candidate = -1.0 + 2.0 * index / (self.config.guess_factor_bins - 1)
+        for density_bin_index in range(self.config.guess_factor_bins):
+            candidate = -1.0 + 2.0 * density_bin_index / (self.config.guess_factor_bins - 1)
             score = self._density_score(candidate, weighted_neighbors, effective_bandwidth)
             scored_bins.append((candidate, score))
 
-        best_index = max(range(len(scored_bins)), key=lambda index: scored_bins[index][1])
+        best_index = max(range(len(scored_bins)), key=lambda scored_bin_index: scored_bins[scored_bin_index][1])
         best_guess_factor, best_score = scored_bins[best_index]
         second_guess_factor, second_score = self._second_peak(scored_bins, best_index, effective_bandwidth)
         selected_guess_factor = self._local_peak_centroid(
@@ -215,12 +218,12 @@ class DynamicClusterGun:
             effective_bandwidth * self.config.second_peak_suppression_bandwidth_scale,
             self.config.second_peak_suppression_bin_scale * bin_width,
         )
+        previous_scores = [float("-inf"), *(score for _, score in scored_bins[:-1])]
+        next_scores = [*(score for _, score in scored_bins[1:]), float("-inf")]
         local_peaks: list[tuple[float, float]] = []
-        for index, (guess_factor, score) in enumerate(scored_bins):
+        for (guess_factor, score), previous_score, next_score in zip(scored_bins, previous_scores, next_scores):
             if abs(guess_factor - best_guess_factor) <= suppression_window:
                 continue
-            previous_score = scored_bins[index - 1][1] if index > 0 else float("-inf")
-            next_score = scored_bins[index + 1][1] if index + 1 < len(scored_bins) else float("-inf")
             if score >= previous_score and score >= next_score:
                 local_peaks.append((guess_factor, score))
         if local_peaks:
@@ -348,7 +351,7 @@ class DynamicClusterGun:
             neighbor_agreement,
             context_match,
         )
-        return {
+        diagnostics: dict[str, object] = {
             "neighbor_count": neighbor_count,
             "avg_neighbor_distance": avg_distance,
             "neighbor_distance_min": min(distances),
@@ -371,6 +374,54 @@ class DynamicClusterGun:
             "peak_score_ratio": peak_score_ratio,
             "ambiguous_peak": peak_score_ratio >= self.config.ambiguous_peak_score_ratio,
         }
+        diagnostics.update(self._shot_quality_diagnostics(fire_context, diagnostics))
+        return diagnostics
+
+    def _shot_quality_diagnostics(
+        self,
+        fire_context: FireContext,
+        diagnostics: dict[str, object],
+    ) -> dict[str, object]:
+        if not self.config.shot_quality_enabled:
+            return {
+                "shot_quality": 1.0,
+                "quality_reason": "disabled",
+                "recommended_power_scale": 1.0,
+            }
+        aim_confidence = self._diagnostic_float(diagnostics, "aim_confidence") or 0.0
+        neighbor_agreement = self._diagnostic_float(diagnostics, "neighbor_agreement") or 0.0
+        ambiguous_peak = bool(diagnostics.get("ambiguous_peak", False))
+        wall_delta = self._diagnostic_float(diagnostics, "avg_wall_escape_delta") or 0.0
+        lateral_confidence = min(
+            1.0,
+            fire_context.lateral_direction_confidence,
+            self._diagnostic_float(diagnostics, "avg_lateral_confidence") or 0.0,
+        )
+        ambiguity_factor = 0.75 if ambiguous_peak else 1.0
+        wall_stability = 1.0 - clamp(wall_delta, 0.0, 1.0)
+        quality = clamp(
+            aim_confidence * neighbor_agreement * ambiguity_factor * wall_stability * lateral_confidence,
+            0.0,
+            1.0,
+        )
+        reason = "strong"
+        power_scale = 1.0
+        if quality < self.config.shot_quality_weak_threshold:
+            reason = "very_weak"
+            power_scale = self.config.shot_quality_low_power_scale
+        elif quality < self.config.shot_quality_good_threshold:
+            reason = "weak"
+            power_scale = self.config.shot_quality_medium_power_scale
+        return {
+            "shot_quality": quality,
+            "quality_reason": reason,
+            "recommended_power_scale": power_scale,
+        }
+
+    @staticmethod
+    def _diagnostic_float(diagnostics: dict[str, object], key: str) -> float | None:
+        value = diagnostics.get(key)
+        return float(value) if isinstance(value, (int, float)) else None
 
     @staticmethod
     def _context_match_score(current: FireContext, sample: FireContext) -> float:

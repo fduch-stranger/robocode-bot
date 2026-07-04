@@ -78,6 +78,11 @@ class DynamicClusterPolicy:
     lateral_confidence_penalty: float = DYNAMIC_CLUSTER_DEFAULTS.lateral_confidence_penalty
     context_weight_min: float = DYNAMIC_CLUSTER_DEFAULTS.context_weight_min
     context_weight_max: float = DYNAMIC_CLUSTER_DEFAULTS.context_weight_max
+    shot_quality_enabled: bool = DYNAMIC_CLUSTER_DEFAULTS.shot_quality_enabled
+    shot_quality_good_threshold: float = DYNAMIC_CLUSTER_DEFAULTS.shot_quality_good_threshold
+    shot_quality_weak_threshold: float = DYNAMIC_CLUSTER_DEFAULTS.shot_quality_weak_threshold
+    shot_quality_medium_power_scale: float = DYNAMIC_CLUSTER_DEFAULTS.shot_quality_medium_power_scale
+    shot_quality_low_power_scale: float = DYNAMIC_CLUSTER_DEFAULTS.shot_quality_low_power_scale
 
     @classmethod
     def from_env(cls, prefix: str) -> "DynamicClusterPolicy":
@@ -179,6 +184,31 @@ class DynamicClusterPolicy:
                 DYNAMIC_CLUSTER_DEFAULTS.context_weight_max,
                 minimum=0.0,
             ),
+            shot_quality_enabled=not _env_flag(f"{prefix}_DYNAMIC_SHOT_QUALITY_DISABLED"),
+            shot_quality_good_threshold=_env_float(
+                f"{prefix}_DYNAMIC_SHOT_QUALITY_GOOD_THRESHOLD",
+                DYNAMIC_CLUSTER_DEFAULTS.shot_quality_good_threshold,
+                minimum=0.0,
+                maximum=1.0,
+            ),
+            shot_quality_weak_threshold=_env_float(
+                f"{prefix}_DYNAMIC_SHOT_QUALITY_WEAK_THRESHOLD",
+                DYNAMIC_CLUSTER_DEFAULTS.shot_quality_weak_threshold,
+                minimum=0.0,
+                maximum=1.0,
+            ),
+            shot_quality_medium_power_scale=_env_float(
+                f"{prefix}_DYNAMIC_SHOT_QUALITY_MEDIUM_POWER_SCALE",
+                DYNAMIC_CLUSTER_DEFAULTS.shot_quality_medium_power_scale,
+                minimum=0.0,
+                maximum=1.0,
+            ),
+            shot_quality_low_power_scale=_env_float(
+                f"{prefix}_DYNAMIC_SHOT_QUALITY_LOW_POWER_SCALE",
+                DYNAMIC_CLUSTER_DEFAULTS.shot_quality_low_power_scale,
+                minimum=0.0,
+                maximum=1.0,
+            ),
         )
 
     def __post_init__(self) -> None:
@@ -192,6 +222,11 @@ class DynamicClusterPolicy:
             context_weight_max = self.context_weight_max
             object.__setattr__(self, "context_weight_min", context_weight_max)
             object.__setattr__(self, "context_weight_max", context_weight_min)
+        if self.shot_quality_weak_threshold > self.shot_quality_good_threshold:
+            weak_threshold = self.shot_quality_weak_threshold
+            good_threshold = self.shot_quality_good_threshold
+            object.__setattr__(self, "shot_quality_weak_threshold", good_threshold)
+            object.__setattr__(self, "shot_quality_good_threshold", weak_threshold)
 
 
 def selector_config_from_policy(policy: object) -> GunSelectorConfig:
@@ -227,4 +262,9 @@ def dynamic_cluster_config_from_policy(policy: object) -> DynamicClusterGunConfi
         lateral_confidence_penalty=dynamic.lateral_confidence_penalty,
         context_weight_min=dynamic.context_weight_min,
         context_weight_max=dynamic.context_weight_max,
+        shot_quality_enabled=dynamic.shot_quality_enabled,
+        shot_quality_good_threshold=dynamic.shot_quality_good_threshold,
+        shot_quality_weak_threshold=dynamic.shot_quality_weak_threshold,
+        shot_quality_medium_power_scale=dynamic.shot_quality_medium_power_scale,
+        shot_quality_low_power_scale=dynamic.shot_quality_low_power_scale,
     )

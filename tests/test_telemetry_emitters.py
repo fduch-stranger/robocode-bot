@@ -35,7 +35,11 @@ class TelemetryEmitterTest(unittest.TestCase):
         return TargetSnapshot(target_id, 81.0, 120.0, 160.0, 45.0, 4.0, 10)
 
     @staticmethod
-    def _aim(mode: str = "dynamic_cluster", guess_factor: float | None = 0.4567) -> AimSolution:
+    def _aim(
+        mode: str = "dynamic_cluster",
+        guess_factor: float | None = 0.4567,
+        gun_diagnostics: dict[str, object] | None = None,
+    ) -> AimSolution:
         return AimSolution(
             predicted_x=130.04,
             predicted_y=170.05,
@@ -45,6 +49,7 @@ class TelemetryEmitterTest(unittest.TestCase):
             features=(0.0,) * 7,
             segment_key=(1, 2, 3),
             virtual_bearings={},
+            gun_diagnostics=gun_diagnostics or {},
         )
 
     def test_fire_telemetry_records_adaptive_track_event(self) -> None:
@@ -58,8 +63,18 @@ class TelemetryEmitterTest(unittest.TestCase):
                 target=target,
                 age=2,
                 distance=321.98,
-                aim=self._aim(),
+                aim=self._aim(
+                    gun_diagnostics={
+                        "dynamic_cluster": {
+                            "selected_guess_factor": 0.3333,
+                            "shot_quality": 0.4444,
+                            "quality_reason": "weak",
+                            "recommended_power_scale": 0.75,
+                        }
+                    }
+                ),
                 radar=radar,
+                firepower=1.2345,
                 decision=FireDecision(False, "gun_alignment", 7),
                 gun_samples=42,
                 gun_scores={"linear": "0.42/9"},
@@ -91,6 +106,11 @@ class TelemetryEmitterTest(unittest.TestCase):
                 "aim_guess_factor",
                 "gun_samples",
                 "gun_scores",
+                "dynamic_cluster_selected_guess_factor",
+                "dynamic_cluster_shot_quality",
+                "dynamic_cluster_quality_reason",
+                "dynamic_cluster_recommended_power_scale",
+                "firepower",
                 "fire_alignment_limit",
                 "hold_reason",
                 "evade_direction",
@@ -106,6 +126,10 @@ class TelemetryEmitterTest(unittest.TestCase):
         )
         self.assertEqual(-2.35, fields["gun_bearing"])
         self.assertEqual(0.457, fields["aim_guess_factor"])
+        self.assertEqual(1.234, fields["firepower"])
+        self.assertEqual(0.444, fields["dynamic_cluster_shot_quality"])
+        self.assertEqual("weak", fields["dynamic_cluster_quality_reason"])
+        self.assertEqual(0.75, fields["dynamic_cluster_recommended_power_scale"])
         self.assertEqual("safer", fields["flatten_reason"])
 
     def test_fire_telemetry_records_simple_track_and_lifecycle_events(self) -> None:
@@ -247,6 +271,45 @@ class TelemetryEmitterTest(unittest.TestCase):
         self.assertEqual(0.354, sink.records[6][2]["source_error"])
         self.assertEqual(0.1, sink.records[6][2]["power_error"])
         self.assertEqual(-0.3, sink.records[6][2]["speed_error"])
+
+    def test_fire_telemetry_records_low_energy_endgame_decision(self) -> None:
+        sink = RecordingSink()
+
+        FireTelemetry(sink).record_low_energy_endgame(
+            target_id=7,
+            stage="final",
+            decision="accepted",
+            reason="firing",
+            energy=5.4321,
+            target_energy=11.9876,
+            distance=245.67,
+            firepower=0.9,
+            proposed_firepower=0.8,
+            aim_mode="dynamic_cluster",
+            gun_bearing=1.234,
+            alignment_limit=3.0,
+            shot_quality=0.6789,
+        )
+
+        self.assertEqual(("log", "gun.low_energy_endgame"), sink.records[0][:2])
+        self.assertEqual(
+            {
+                "target": 7,
+                "stage": "final",
+                "decision": "accepted",
+                "reason": "firing",
+                "energy": 5.432,
+                "target_energy": 11.988,
+                "distance": 245.7,
+                "firepower": 0.9,
+                "proposed_firepower": 0.8,
+                "aim_mode": "dynamic_cluster",
+                "gun_bearing": 1.23,
+                "alignment_limit": 3.0,
+                "shot_quality": 0.679,
+            },
+            sink.records[0][2],
+        )
 
     def test_fire_telemetry_records_traditional_gf_diagnostics(self) -> None:
         sink = RecordingSink()
@@ -405,6 +468,9 @@ class TelemetryEmitterTest(unittest.TestCase):
                         "peak_separation": 0.4,
                         "peak_score_ratio": 0.75,
                         "ambiguous_peak": False,
+                        "shot_quality": 0.4444,
+                        "quality_reason": "weak",
+                        "recommended_power_scale": 0.75,
                     },
                     "anti_surfer": {
                         "context_tags": frozenset({"surfer"}),
@@ -446,6 +512,9 @@ class TelemetryEmitterTest(unittest.TestCase):
         self.assertEqual(0.889, fields["dynamic_cluster_neighbor_agreement"])
         self.assertEqual(0.457, fields["dynamic_cluster_aim_confidence"])
         self.assertFalse(fields["dynamic_cluster_ambiguous_peak"])
+        self.assertEqual(0.444, fields["dynamic_cluster_shot_quality"])
+        self.assertEqual("weak", fields["dynamic_cluster_quality_reason"])
+        self.assertEqual(0.75, fields["dynamic_cluster_recommended_power_scale"])
         self.assertEqual(0.6, fields["anti_surfer_context_relevance"])
         self.assertEqual(["nonlinear_mover"], fields["displacement_context_tags"])
         self.assertTrue(fields["linear_context_short_flight_time"])

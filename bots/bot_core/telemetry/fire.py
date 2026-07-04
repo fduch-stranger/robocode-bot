@@ -20,6 +20,7 @@ class FireTick:
     distance: float
     aim: AimSolution
     radar: RadarCommand
+    firepower: float
     decision: FireDecision
     gun_samples: int
     gun_scores: dict[str, str]
@@ -127,6 +128,40 @@ class FireTelemetry:
             ),
         )
 
+    def record_low_energy_endgame(
+        self,
+        *,
+        target_id: int,
+        stage: str,
+        decision: str,
+        reason: str,
+        energy: float,
+        target_energy: float,
+        distance: float,
+        firepower: float,
+        aim_mode: str,
+        gun_bearing: float,
+        alignment_limit: float,
+        shot_quality: float | None = None,
+        proposed_firepower: float | None = None,
+    ) -> None:
+        self._sink.log(
+            "gun.low_energy_endgame",
+            target=target_id,
+            stage=stage,
+            decision=decision,
+            reason=reason,
+            energy=rounded(energy, 3),
+            target_energy=rounded(target_energy, 3),
+            distance=round(distance, 1),
+            firepower=rounded(firepower, 3),
+            proposed_firepower=rounded(proposed_firepower, 3),
+            aim_mode=aim_mode,
+            gun_bearing=round(gun_bearing, 2),
+            alignment_limit=round(alignment_limit, 2),
+            shot_quality=rounded(shot_quality, 3),
+        )
+
     def record_fire_drift(
         self,
         bullet_id: int,
@@ -174,6 +209,7 @@ def _track_fields(tick: FireTick | SimpleTrackTick) -> dict[str, object]:
     return {
         **_track_base_fields(tick.target, tick.age, tick.distance, tick.aim, tick.radar, tick.gun_samples, tick.gun_scores, tick.known_targets),
         "radar_bearing": round(tick.radar.bearing, 2),
+        "firepower": rounded(tick.firepower, 3),
         "fire_alignment_limit": tick.decision.alignment_limit,
         "hold_reason": tick.decision.reason,
         "evade_direction": tick.evade_direction,
@@ -226,6 +262,27 @@ def _track_base_fields(
                 "traditional_gf_source": getattr(traditional_gf, "source", None),
             }
         )
+    fields.update(_dynamic_cluster_track_fields(aim))
+    return fields
+
+
+def _dynamic_cluster_track_fields(aim: AimSolution) -> dict[str, object]:
+    dynamic_cluster = aim.gun_diagnostics.get("dynamic_cluster", {})
+    if not isinstance(dynamic_cluster, dict):
+        return {}
+    fields: dict[str, object] = {}
+    selected_guess_factor = _diagnostic_float(dynamic_cluster, "selected_guess_factor")
+    shot_quality = _diagnostic_float(dynamic_cluster, "shot_quality")
+    quality_reason = _diagnostic_str(dynamic_cluster, "quality_reason")
+    recommended_power_scale = _diagnostic_float(dynamic_cluster, "recommended_power_scale")
+    if selected_guess_factor is not None:
+        fields["dynamic_cluster_selected_guess_factor"] = round(selected_guess_factor, 3)
+    if shot_quality is not None:
+        fields["dynamic_cluster_shot_quality"] = round(shot_quality, 3)
+    if quality_reason is not None:
+        fields["dynamic_cluster_quality_reason"] = quality_reason
+    if recommended_power_scale is not None:
+        fields["dynamic_cluster_recommended_power_scale"] = round(recommended_power_scale, 3)
     return fields
 
 
@@ -458,6 +515,9 @@ def _wave_visit_fields(visit: WaveVisit) -> dict[str, object]:
     dynamic_peak_separation = _diagnostic_float(dynamic_cluster, "peak_separation")
     dynamic_peak_score_ratio = _diagnostic_float(dynamic_cluster, "peak_score_ratio")
     dynamic_ambiguous_peak = _diagnostic_bool(dynamic_cluster, "ambiguous_peak")
+    dynamic_shot_quality = _diagnostic_float(dynamic_cluster, "shot_quality")
+    dynamic_quality_reason = _diagnostic_str(dynamic_cluster, "quality_reason")
+    dynamic_recommended_power_scale = _diagnostic_float(dynamic_cluster, "recommended_power_scale")
     if dynamic_neighbor_count is not None:
         fields["dynamic_cluster_neighbor_count"] = dynamic_neighbor_count
     if dynamic_avg_neighbor_distance is not None:
@@ -502,6 +562,12 @@ def _wave_visit_fields(visit: WaveVisit) -> dict[str, object]:
         fields["dynamic_cluster_peak_score_ratio"] = round(dynamic_peak_score_ratio, 3)
     if dynamic_ambiguous_peak is not None:
         fields["dynamic_cluster_ambiguous_peak"] = dynamic_ambiguous_peak
+    if dynamic_shot_quality is not None:
+        fields["dynamic_cluster_shot_quality"] = round(dynamic_shot_quality, 3)
+    if dynamic_quality_reason is not None:
+        fields["dynamic_cluster_quality_reason"] = dynamic_quality_reason
+    if dynamic_recommended_power_scale is not None:
+        fields["dynamic_cluster_recommended_power_scale"] = round(dynamic_recommended_power_scale, 3)
     traditional_gf = visit.gun_diagnostics.get("traditional_gf", {})
     aim_guess_factor = _diagnostic_float(traditional_gf, "aim_guess_factor")
     raw_guess_factor = _diagnostic_float(traditional_gf, "raw_guess_factor")

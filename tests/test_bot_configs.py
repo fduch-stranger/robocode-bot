@@ -68,6 +68,10 @@ class BotConfigTest(unittest.TestCase):
         self.assertEqual(default_policy.dynamic_cluster.centroid_window_bandwidth_scale, 1.0)
         self.assertEqual(default_policy.dynamic_cluster.ambiguous_peak_score_ratio, 0.85)
         self.assertEqual(default_policy.dynamic_cluster.ambiguous_peak_centering_factor, 0.8)
+        self.assertTrue(default_policy.dynamic_cluster.shot_quality_enabled)
+        self.assertTrue(default_config.FIRE_POLICY.dynamic_shot_quality_power_scaling_enabled)
+        self.assertTrue(default_config.FIRE_POLICY.low_energy_endgame_fire_enabled)
+        self.assertEqual(default_config.FIRE_POLICY.energy_margin, 5)
         self.assertEqual(default_traditional_gf.min_samples, default_gun_config.min_samples)
         self.assertEqual(default_traditional_gf.coarse_segment_min_samples, default_gun_config.coarse_segment_min_samples)
         self.assertEqual(default_traditional_gf.coarse_segment_full_weight_samples, default_gun_config.coarse_segment_full_weight_samples)
@@ -105,6 +109,12 @@ class BotConfigTest(unittest.TestCase):
                 "ROBOCODE_ADAPTIVE_DYNAMIC_CONFIDENCE_MATURE_SAMPLES": "90",
                 "ROBOCODE_ADAPTIVE_DYNAMIC_TAG_MATCH_BONUS": "0.2",
                 "ROBOCODE_ADAPTIVE_DYNAMIC_CONTEXT_WEIGHT_MAX": "1.2",
+                "ROBOCODE_ADAPTIVE_DYNAMIC_SHOT_QUALITY_GOOD_THRESHOLD": "0.6",
+                "ROBOCODE_ADAPTIVE_DYNAMIC_SHOT_QUALITY_WEAK_THRESHOLD": "0.4",
+                "ROBOCODE_ADAPTIVE_DYNAMIC_SHOT_QUALITY_LOW_POWER_SCALE": "0.5",
+                "ROBOCODE_ADAPTIVE_DYNAMIC_SHOT_QUALITY_POWER_SCALING": "1",
+                "ROBOCODE_ADAPTIVE_LOW_ENERGY_ENDGAME_FIRE": "1",
+                "ROBOCODE_ADAPTIVE_LOW_ENERGY_ENDGAME_MAX_ENERGY": "6.5",
             },
         )
         env_policy = env_config.GunPolicy()
@@ -129,6 +139,12 @@ class BotConfigTest(unittest.TestCase):
         self.assertEqual(env_dynamic.confidence_mature_samples, 90)
         self.assertEqual(env_dynamic.tag_match_bonus, 0.2)
         self.assertEqual(env_dynamic.context_weight_max, 1.2)
+        self.assertEqual(env_dynamic.shot_quality_good_threshold, 0.6)
+        self.assertEqual(env_dynamic.shot_quality_weak_threshold, 0.4)
+        self.assertEqual(env_dynamic.shot_quality_low_power_scale, 0.5)
+        self.assertTrue(env_config.FIRE_POLICY.dynamic_shot_quality_power_scaling_enabled)
+        self.assertTrue(env_config.FIRE_POLICY.low_energy_endgame_fire_enabled)
+        self.assertEqual(env_config.FIRE_POLICY.low_energy_endgame_max_energy, 6.5)
 
         inverted_dynamic_config = _load_config(
             path,
@@ -137,6 +153,8 @@ class BotConfigTest(unittest.TestCase):
                 "ROBOCODE_ADAPTIVE_DYNAMIC_BANDWIDTH_MAX": "0.1",
                 "ROBOCODE_ADAPTIVE_DYNAMIC_CONTEXT_WEIGHT_MIN": "1.8",
                 "ROBOCODE_ADAPTIVE_DYNAMIC_CONTEXT_WEIGHT_MAX": "0.6",
+                "ROBOCODE_ADAPTIVE_DYNAMIC_SHOT_QUALITY_GOOD_THRESHOLD": "0.2",
+                "ROBOCODE_ADAPTIVE_DYNAMIC_SHOT_QUALITY_WEAK_THRESHOLD": "0.8",
             },
         )
         inverted_dynamic = inverted_dynamic_config.GunPolicy().dynamic_cluster
@@ -144,6 +162,8 @@ class BotConfigTest(unittest.TestCase):
         self.assertEqual(inverted_dynamic.bandwidth_max, 0.5)
         self.assertEqual(inverted_dynamic.context_weight_min, 0.6)
         self.assertEqual(inverted_dynamic.context_weight_max, 1.8)
+        self.assertEqual(inverted_dynamic.shot_quality_weak_threshold, 0.2)
+        self.assertEqual(inverted_dynamic.shot_quality_good_threshold, 0.8)
 
     def test_chase_gun_policy_defaults_and_env(self) -> None:
         path = ROOT / "bots" / "chase-lock" / "chase_config.py"

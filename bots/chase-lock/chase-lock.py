@@ -395,6 +395,7 @@ class ChaseLock(Bot):
                 distance=distance,
                 aim=aim,
                 radar=radar_command,
+                firepower=firepower,
                 decision=fire_decision,
                 gun_samples=self._gun.sample_count,
                 gun_scores=self._gun.score_summary(target.bot_id, score_segment),

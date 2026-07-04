@@ -36,6 +36,11 @@ class DynamicClusterGunConfig:
     lateral_confidence_penalty: float = 0.12
     context_weight_min: float = 0.25
     context_weight_max: float = 1.5
+    shot_quality_enabled: bool = True
+    shot_quality_good_threshold: float = 0.55
+    shot_quality_weak_threshold: float = 0.35
+    shot_quality_medium_power_scale: float = 0.75
+    shot_quality_low_power_scale: float = 0.55
 
     def mode_policy(self) -> GunModePolicy:
         return GunModePolicy(

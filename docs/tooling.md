@@ -343,7 +343,9 @@ Incomplete inputs and runs shorter than 20 scored rounds are reported as
 warnings and make the CLI exit nonzero unless `--allow-missing-data` is passed.
 For dynamic-cluster runs, the summary also reports kept/excluded diagnostic
 averages such as selected-vs-actual guess-factor error, ambiguity rate, aim
-confidence, peak score ratio, and effective bandwidth.
+confidence, peak score ratio, effective bandwidth, and shot quality. Removed
+Dynamic Cluster calibration experiments are not reported because the bot no
+longer emits calibration residual, correction, trust, or bucket telemetry.
 
 The browser viewer keeps raw JSONL fields available through the event API and
 source files. Its decision stream uses readable event summaries, while cards,
