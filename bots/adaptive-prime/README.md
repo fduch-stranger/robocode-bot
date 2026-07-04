@@ -157,9 +157,9 @@ surface is grouped under `TraditionalGfPolicy`:
 - Melee keeps segmented gun stats and live `traditional_gf` bearings disabled;
   `traditional_gf` candidates can appear as unavailable in switch diagnostics.
 - Adaptive's normal selectable gun modes are `linear`, `traditional_gf`, and
-  `dynamic_cluster`. `displacement` and `anti_surfer` are still built by the
-  standard runtime and can be forced for isolated experiments, but they are not
-  part of Adaptive's normal selectable-mode set.
+  `dynamic_cluster`. Every gun wired by the standard runtime can be pinned for
+  isolated experiments, but non-default modes are not part of Adaptive's normal
+  selectable-mode set unless `ROBOCODE_ADAPTIVE_GUN_SET` changes it.
 - Switching uses a small confidence penalty until a mode has enough virtual
   visits. The shared selector also applies trait-based priors: KNN gets a
   maturity bonus and can match nonlinear/adaptive movement history, linear is
@@ -178,12 +178,10 @@ For isolated gun testing, set:
 ROBOCODE_ADAPTIVE_GUN_MODE=traditional_gf scripts/run-battle.sh --rounds 8 bots/adaptive-prime bots/chase-lock
 ```
 
-Valid values are `linear`, `displacement`, `traditional_gf`,
-`dynamic_cluster`, and `anti_surfer`. A forced gun is used only on ticks where
-that gun has enough data to produce an aim bearing; otherwise the selector
-falls back to an available mode. `displacement` and `anti_surfer` are included
-here for isolated experiments even though they are outside Adaptive's normal
-selectable-mode set.
+Valid pinned values are `head_on`, `linear`, `linear_wall_aware`,
+`displacement`, `traditional_gf`, `dynamic_cluster`, and `anti_surfer`. A
+forced gun is used only on ticks where that gun has enough data to produce an
+aim bearing; otherwise the selector falls back to an available mode.
 
 For displacement density-only validation, Adaptive also accepts:
 

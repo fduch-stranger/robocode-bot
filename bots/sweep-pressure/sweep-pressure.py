@@ -13,6 +13,7 @@ from robocode_tank_royale.bot_api.events import (
 )
 
 from sweep_config import (
+    SWEEP_FORCE_GUN_MODES,
     FIRE_POLICY,
     GUN_POLICY,
     MOVEMENT_POLICY,
@@ -35,6 +36,7 @@ from bot_core.gun import (
     TargetMotion,
     VirtualGunSystem,
     dynamic_cluster_config_from_policy,
+    gun_policy_status_fields,
     selector_config_from_policy,
     should_log_switch_decision,
 )
@@ -117,6 +119,7 @@ class SweepPressure(Bot):
         self._fire_telemetry = FireTelemetry(self._debug)
         self._movement_telemetry = MovementTelemetry(self._debug)
         self._targeting_telemetry = TargetingTelemetry(self._debug)
+        self._debug.log("bot.config", **gun_policy_status_fields(GUN_POLICY, SWEEP_FORCE_GUN_MODES))
         self._fired_bullets = FiredBulletTracker()
         self._last_gun_decision_log_turn: dict[int, int] = {}
 

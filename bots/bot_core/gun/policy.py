@@ -1,11 +1,27 @@
 import os
 from dataclasses import dataclass, fields
+from typing import cast
 
 from bot_core.gun.config import GunSelectorConfig
 from bot_core.gun.guns.dynamic_cluster.config import DynamicClusterGunConfig
 
 
 DEFAULT_LIVE_GUN_MODES = frozenset({"linear", "traditional_gf", "dynamic_cluster"})
+STANDARD_FORCE_GUN_MODES = DEFAULT_LIVE_GUN_MODES | frozenset({
+    "anti_surfer",
+    "displacement",
+    "head_on",
+    "linear_wall_aware",
+})
+DEFAULT_MODE_PRIORITY = (
+    "linear",
+    "dynamic_cluster",
+    "traditional_gf",
+    "linear_wall_aware",
+    "head_on",
+    "displacement",
+    "anti_surfer",
+)
 
 
 @dataclass(frozen=True)
@@ -54,6 +70,50 @@ def _env_float(name: str, default: float, *, minimum: float | None = None, maxim
     if maximum is not None:
         value = min(maximum, value)
     return value
+
+
+def gun_mode_from_env(prefix: str, allowed_modes: frozenset[str]) -> str | None:
+    per_bot_mode = os.environ.get(f"{prefix}_GUN_MODE", "").strip()
+    if per_bot_mode:
+        return per_bot_mode if per_bot_mode in allowed_modes else None
+    global_mode = os.environ.get("ROBOCODE_GUN_MODE", "").strip()
+    if global_mode in allowed_modes:
+        return global_mode
+    return None
+
+
+def gun_modes_from_env(
+    prefix: str,
+    default_modes: frozenset[str],
+    allowed_modes: frozenset[str],
+) -> frozenset[str]:
+    per_bot_modes = _parse_gun_modes(os.environ.get(f"{prefix}_GUN_SET", ""))
+    if per_bot_modes:
+        return frozenset(per_bot_modes) if all(mode in allowed_modes for mode in per_bot_modes) else default_modes
+    global_modes = _parse_gun_modes(os.environ.get("ROBOCODE_GUN_SET", ""))
+    if global_modes and all(mode in allowed_modes for mode in global_modes):
+        return frozenset(global_modes)
+    return default_modes
+
+
+def _parse_gun_modes(raw: str) -> tuple[str, ...]:
+    return tuple(part.strip() for part in raw.strip().replace(",", " ").split())
+
+
+def default_gun_mode_for(selectable_modes: frozenset[str]) -> str:
+    for mode in DEFAULT_MODE_PRIORITY:
+        if mode in selectable_modes:
+            return mode
+    return sorted(selectable_modes)[0]
+
+
+def gun_policy_status_fields(policy: object, force_modes: frozenset[str]) -> dict[str, object]:
+    return {
+        "selectable_guns": sorted(getattr(policy, "selectable_modes", ())),
+        "force_guns": sorted(force_modes),
+        "forced_gun": getattr(policy, "forced_mode", None),
+        "eval_waves": bool(getattr(policy, "eval_waves_enabled", False)),
+    }
 
 
 @dataclass(frozen=True)
@@ -232,6 +292,9 @@ class DynamicClusterPolicy:
 def selector_config_from_policy(policy: object) -> GunSelectorConfig:
     defaults = GunSelectorConfig()
     values = {field.name: getattr(policy, field.name, getattr(defaults, field.name)) for field in fields(GunSelectorConfig)}
+    selectable_modes = cast(frozenset[str], values["selectable_modes"])
+    if values["default_mode"] not in selectable_modes:
+        values["default_mode"] = default_gun_mode_for(selectable_modes)
     return GunSelectorConfig(**values)
 
 

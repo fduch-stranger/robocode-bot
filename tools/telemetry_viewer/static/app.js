@@ -263,6 +263,7 @@ function renderMetrics() {
   const lastDistance = lastMatchingEvent(bot, (event) => event.normalized?.distance != null);
   const lastMovement = lastMatchingEvent(bot, (event) => event.normalized?.movementMode);
   const lastThreat = lastEvent(bot, "enemy.fire_detected");
+  const botConfig = lastEvent(bot, "bot.config");
 
   const cards = [
     ["Turn", latest?.turn],
@@ -272,6 +273,8 @@ function renderMetrics() {
     ["Movement", movementModeFromEvent(lastMovement) || "-"],
     ["Evasion", latest?.normalized?.evading ?? lastThreat?.normalized?.evasion ?? "-"],
     ["Gun", gunModeFromEvent(lastAim) || gunModeFromEvent(lastFire) || lastGunSwitch?.fields?.selected || "-"],
+    ["Live Guns", gunList(botConfig?.fields?.selectable_guns)],
+    ["Pinned Gun", botConfig?.fields?.forced_gun || "-"],
     ["Gun Bearing Error", format(lastAim?.normalized?.gunBearing)],
     ["Firepower", format(lastFire?.normalized?.power)],
     ["Gun Confidence", format(lastFire?.fields?.gun_confidence)],
@@ -578,6 +581,16 @@ function lastMatchingEvent(bot, predicate) {
     if (predicate(bot.events[index])) return bot.events[index];
   }
   return null;
+}
+
+function gunList(value) {
+  if (Array.isArray(value) && value.length > 0) {
+    return value.join(", ");
+  }
+  if (typeof value === "string" && value.trim()) {
+    return value;
+  }
+  return "-";
 }
 
 function numberAt(object, path) {

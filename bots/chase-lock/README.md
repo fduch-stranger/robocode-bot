@@ -109,11 +109,14 @@ movement fallback. It live-selects `linear`, `traditional_gf`, and
 `dynamic_cluster` in 1v1. Melee keeps segmented gun stats and live
 `traditional_gf` bearings disabled, so `traditional_gf` candidates can appear
 as unavailable in switch diagnostics.
-`displacement` is available only for forced experiments:
+Every gun wired by the standard runtime can be pinned for isolated experiments:
 
 ```sh
-ROBOCODE_CHASE_GUN_MODE=displacement scripts/run-battle.sh --rounds 8 bots/chase-lock bots/sweep-pressure
+ROBOCODE_CHASE_GUN_MODE=anti_surfer scripts/run-battle.sh --rounds 8 bots/chase-lock bots/sweep-pressure
 ```
+
+Valid pinned values are `head_on`, `linear`, `linear_wall_aware`,
+`displacement`, `traditional_gf`, `dynamic_cluster`, and `anti_surfer`.
 
 The retained policy uses aligned aggressive KNN and Traditional GF gates with
 the shared trait-based selector priors. Primary KNN can leave fallback linear

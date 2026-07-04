@@ -25,7 +25,14 @@ flowchart TD
 
 ## Environment
 
-Local machine settings live in `.env`, copied from `.env.example`.
+Local machine settings live in `.env`, copied from `.env.example`. Temporary
+GUI/debug gun overrides can live in `.env.guns`, copied from
+`.env.guns.example`. Scripts and GUI bot launchers load `.env` first, then
+`.env.guns`; variables already exported in the shell still take precedence over
+both files. In a source checkout these files live at the repo root; in an
+extracted GUI bot package they live beside the extracted bot directories. Empty
+assignments in `.env.guns` clear matching `.env` gun settings because
+`.env.guns` loads later.
 
 Important variables:
 
@@ -44,8 +51,39 @@ Important variables:
 - `ROBOCODE_DEBUG_QUEUE_SIZE`: bounded async debug-log queue size, default
   `8192`.
 - `ROBOCODE_DEBUG_SYNC=1`: force legacy synchronous debug-log writes.
+- `ROBOCODE_GUN_MODE`: pin all bots to any standard wired gun mode:
+  `head_on`, `linear`, `linear_wall_aware`, `displacement`, `traditional_gf`,
+  `dynamic_cluster`, or `anti_surfer`.
+- `ROBOCODE_GUN_SET`: comma-separated live selectable gun set for bots that
+  support every listed mode.
+- `ROBOCODE_ADAPTIVE_GUN_MODE`, `ROBOCODE_CHASE_GUN_MODE`,
+  `ROBOCODE_CIRCLE_GUN_MODE`, `ROBOCODE_SWEEP_GUN_MODE`: per-bot gun pins.
+- `ROBOCODE_ADAPTIVE_GUN_SET`, `ROBOCODE_CHASE_GUN_SET`,
+  `ROBOCODE_CIRCLE_GUN_SET`, `ROBOCODE_SWEEP_GUN_SET`: per-bot selectable gun
+  sets.
 
-The `.env` file is intentionally ignored by git.
+With no gun overrides enabled, no bot is pinned. Every bot's live selectable
+set defaults to `linear`, `traditional_gf`, and `dynamic_cluster`; every bot can
+still be pinned to any standard wired gun listed above.
+
+Some guns need target history before they can aim, so a pinned or narrowed set
+can show a short startup fallback in `gun.switch` telemetry before the requested
+mode becomes available.
+
+The `.env` and `.env.guns` files are intentionally ignored by git.
+
+Gun override examples:
+
+```sh
+# Pin Adaptive Prime to Traditional GF in GUI battles.
+ROBOCODE_ADAPTIVE_GUN_MODE=traditional_gf
+
+# Let Adaptive Prime live-select only Dynamic Cluster and Traditional GF.
+ROBOCODE_ADAPTIVE_GUN_SET=dynamic_cluster,traditional_gf
+
+# Pin every bot to linear where supported.
+ROBOCODE_GUN_MODE=linear
+```
 
 ## Setup
 
@@ -192,6 +230,10 @@ scripts/run-battle.sh --telemetry --rounds 3 bots/adaptive-prime bots/chase-lock
 
 `--telemetry` writes JSONL only. Add `--telemetry-viewer` to start the browser
 viewer daemon, or `--telemetry-open` to start and open it.
+
+The selected-bot metrics panel shows the bot's current gun, live-selectable
+guns, and any pinned gun reported by startup `bot.config` telemetry. Raw
+`bot.config` records still include the standard force-testable gun list.
 
 Telemetry and debug logs are buffered through bounded background writers by
 default. When a queue fills, events or log lines are dropped instead of blocking

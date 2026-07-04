@@ -96,6 +96,13 @@
     if (event.event === "telemetry.session") {
       return summarizeKeys(fields, [["pid", "pid"], ["queue_size", "queue_size"]]);
     }
+    if (event.event === "bot.config") {
+      return summarizeKeys(fields, [
+        ["selectable_guns", "selectable"],
+        ["forced_gun", "pinned"],
+        ["eval_waves", "eval"],
+      ]);
+    }
     if (event.event === "gun.switch") {
       return summarizeKeys(fields, [["target", "target"], ["previous", "previous"], ["selected", "selected"]]);
     }
@@ -252,7 +259,7 @@
     if (filter === "movement") return name.startsWith("movement.") || ["wall.avoid", "separate"].includes(name);
     if (filter === "targeting") return name.startsWith("target.") || name.startsWith("scan.") || name === "search";
     if (filter === "combat") return name.startsWith("hit.") || name.startsWith("bullet.") || name.startsWith("enemy.");
-    if (filter === "telemetry") return name.startsWith("telemetry.") || name === "round.reset" || name === "battle.reset";
+    if (filter === "telemetry") return name.startsWith("telemetry.") || name === "bot.config" || name === "round.reset" || name === "battle.reset";
     return true;
   }
 

@@ -2,18 +2,28 @@ import os
 from dataclasses import dataclass
 
 from bot_core.energy import EnergyDropConfig, FireGate, FireGateConfig
-from bot_core.gun import DEFAULT_LIVE_GUN_MODES, DynamicClusterPolicy, LINEAR_VARIANT_MODES, SHARED_GUN_POLICY_DEFAULTS
+from bot_core.gun import (
+    DEFAULT_LIVE_GUN_MODES,
+    DynamicClusterPolicy,
+    SHARED_GUN_POLICY_DEFAULTS,
+    STANDARD_FORCE_GUN_MODES,
+    gun_mode_from_env,
+    gun_modes_from_env,
+)
 from bot_core.radar import RadarLockConfig
 
 
 SWEEP_SELECTABLE_GUN_MODES = DEFAULT_LIVE_GUN_MODES
-SWEEP_FORCE_GUN_MODES = SWEEP_SELECTABLE_GUN_MODES | LINEAR_VARIANT_MODES | frozenset({"displacement"})
+SWEEP_FORCE_GUN_MODES = STANDARD_FORCE_GUN_MODES
 SWEEP_DYNAMIC_CLUSTER_POLICY = DynamicClusterPolicy.from_env("ROBOCODE_SWEEP")
 
 
+def _selectable_gun_modes() -> frozenset[str]:
+    return gun_modes_from_env("ROBOCODE_SWEEP", SWEEP_SELECTABLE_GUN_MODES, SWEEP_FORCE_GUN_MODES)
+
+
 def _forced_gun_mode() -> str | None:
-    mode = os.environ.get("ROBOCODE_SWEEP_GUN_MODE", "").strip()
-    return mode if mode in SWEEP_FORCE_GUN_MODES else None
+    return gun_mode_from_env("ROBOCODE_SWEEP", SWEEP_FORCE_GUN_MODES)
 
 
 def _env_flag(name: str) -> bool:
@@ -32,7 +42,7 @@ def _env_int(name: str, default: int) -> int:
 
 @dataclass(frozen=True)
 class GunPolicy:
-    selectable_modes: frozenset[str] = SWEEP_SELECTABLE_GUN_MODES
+    selectable_modes: frozenset[str] = _selectable_gun_modes()
     forced_mode: str | None = _forced_gun_mode()
     eval_waves_enabled: bool = _env_flag("ROBOCODE_SWEEP_GUN_EVAL")
     eval_wave_min_interval: int = _env_int("ROBOCODE_SWEEP_GUN_EVAL_INTERVAL", 8)

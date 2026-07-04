@@ -59,6 +59,7 @@ The browser viewer and telemetry audit normalize bot-specific fields into a comm
 | Event | Required Fields | Optional Fields | Aliases |
 | --- | --- | --- | --- |
 | `battle.reset` | - | `rounds`, `game_type` | - |
+| `bot.config` | - | `selectable_guns`, `force_guns`, `forced_gun`, `eval_waves` | - |
 | `round.reset` | - | `previous_turn`, `current_turn` | - |
 | `telemetry.dropped` | `count` | - | - |
 | `telemetry.session` | - | - | - |

@@ -9,6 +9,7 @@ scripts/package.sh
 
 Important local config:
 - `.env` is private and ignored by git.
+- `.env.guns` is private and ignored by git; copy `.env.guns.example` for GUI/debug gun pins and selectable-set overrides. It loads after `.env`, while already-exported process variables still win; empty assignments clear matching `.env` gun settings. With no overrides enabled, bots have no pinned gun and the live set is `linear`, `traditional_gf`, `dynamic_cluster`; all standard wired guns remain pinnable. Source-tree runs read it from the repo root; packaged GUI runs read it from the package/extraction root beside the bot directories via `bot_core/launcher_env.sh`. Some guns need target history before they return an aim bearing, so real battles can show a short startup fallback before a pinned/narrowed mode becomes active.
 - `PYTHON_BIN` controls venv creation.
 - `ROBOCODE_PYTHON_BIN` overrides bot launcher/telemetry Python.
 - `ROBOCODE_LEGACY_BOTS_ROOT` points to converted legacy bots. If empty, scripts use ignored repo-local `legacy-bots/`.
@@ -25,6 +26,7 @@ Battle/tool commands:
 - Legacy discovery when configured: `scripts/run-battle.sh --list-legacy`.
 - Active legacy boss aliases: `drussgt`, `saguaro`, `basic-gf-surfer`, `diamond`.
 - Telemetry viewer commands: `scripts/telemetry-ui.sh start|stop|stop-all|disable|status`.
+- Telemetry viewer selected-bot metrics show current gun, live-selectable guns, and pinned gun from startup `bot.config` telemetry; raw `bot.config` records still include force-testable guns.
 - Telemetry viewer generations reset on `telemetry.session` for new processes/files and on bot-emitted `battle.reset` for same-process GUI game restarts; normal `round.reset` remains within the same generation unless it looks like an aborted/reset GUI run.
 - Telemetry audit: `tools/telemetry_audit.py battle-results/runs/<run>/telemetry --require-bot adaptive-prime`.
 - Gun/eval summary: `tools/gun_eval_summary.py battle-results/runs/<run>/telemetry --bot adaptive-prime`.

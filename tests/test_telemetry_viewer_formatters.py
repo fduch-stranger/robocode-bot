@@ -50,6 +50,7 @@ class TelemetryViewerFormattersTest(unittest.TestCase):
               stale: view.summarizeEvent({event: "target.stale", fields: {bot_id: 4, age: 12}}),
               drop: view.summarizeEvent({event: "target.drop_lost", fields: {bot_id: 5, age: 31, cached_distance: 412, known_targets: 2}}),
               reset: view.summarizeEvent({event: "round.reset", fields: {previous_turn: 41, current_turn: 1}}),
+              config: view.summarizeEvent({event: "bot.config", fields: {selectable_guns: ["dynamic_cluster", "traditional_gf"], force_guns: ["linear", "displacement"], forced_gun: "traditional_gf", eval_waves: true}}),
               ignored: view.summarizeEvent({event: "enemy.energy_drop_ignored", fields: {bot_id: 8, reason: "same_turn", corrected_drop: 0.4, raw_drop: 3.1, distance: 221, energy: 88}})
             })
             """
@@ -58,6 +59,9 @@ class TelemetryViewerFormattersTest(unittest.TestCase):
         self.assertEqual("target=4 age=12", summaries["stale"])
         self.assertEqual("target=5 age=31 cached_distance=412 known_targets=2", summaries["drop"])
         self.assertEqual("previous_turn=41 current_turn=1", summaries["reset"])
+        self.assertIn("selectable=dynamic_cluster,traditional_gf", summaries["config"])
+        self.assertIn("pinned=traditional_gf", summaries["config"])
+        self.assertNotIn("force=", summaries["config"])
         self.assertIn("target=8", summaries["ignored"])
         self.assertIn("reason=same_turn", summaries["ignored"])
         self.assertIn("drop=0.4", summaries["ignored"])
@@ -203,6 +207,7 @@ class TelemetryViewerFormattersTest(unittest.TestCase):
               movementIncludesWall: view.eventMatchesStreamFilter({event: "wall.avoid"}, "movement"),
               targetingIncludesScan: view.eventMatchesStreamFilter({event: "scan.reacquired"}, "targeting"),
               combatIncludesEnemy: view.eventMatchesStreamFilter({event: "enemy.fire_detected"}, "combat"),
+              telemetryIncludesBotConfig: view.eventMatchesStreamFilter({event: "bot.config"}, "telemetry"),
               allIncludesTrack: view.eventMatchesStreamFilter({event: "track"}, "all")
             })
             """
@@ -217,6 +222,7 @@ class TelemetryViewerFormattersTest(unittest.TestCase):
         self.assertTrue(result["movementIncludesWall"])
         self.assertTrue(result["targetingIncludesScan"])
         self.assertTrue(result["combatIncludesEnemy"])
+        self.assertTrue(result["telemetryIncludesBotConfig"])
         self.assertTrue(result["allIncludesTrack"])
 
 

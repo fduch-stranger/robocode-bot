@@ -1,8 +1,9 @@
 load_repo_env() {
   local root_dir="$1"
   local env_file="${ROBOCODE_ENV_FILE:-$root_dir/.env}"
+  local gun_env_file="${ROBOCODE_GUN_ENV_FILE:-$root_dir/.env.guns}"
 
-  if [[ -f "$env_file" ]]; then
+  if [[ -f "$env_file" || -f "$gun_env_file" ]]; then
     local restore_names=()
     local restore_values=()
     local name
@@ -17,8 +18,14 @@ load_repo_env() {
     esac
     set +u
     set -a
-    # shellcheck disable=SC1090
-    source "$env_file"
+    if [[ -f "$env_file" ]]; then
+      # shellcheck disable=SC1090
+      source "$env_file"
+    fi
+    if [[ -f "$gun_env_file" ]]; then
+      # shellcheck disable=SC1090
+      source "$gun_env_file"
+    fi
     set +a
     for index in "${!restore_names[@]}"; do
       export "${restore_names[$index]}=${restore_values[$index]}"

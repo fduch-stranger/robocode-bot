@@ -110,11 +110,14 @@ aggressive KNN and Traditional GF gates with the shared trait-based selector
 priors. Primary KNN can leave fallback linear early, situational profile guns
 need a larger margin over KNN unless KNN is in a low-score slump with trusted
 source/context evidence, and global-source situational trials are not retained.
-`displacement` is available only for forced experiments:
+Every gun wired by the standard runtime can be pinned for isolated experiments:
 
 ```sh
-ROBOCODE_SWEEP_GUN_MODE=displacement scripts/run-battle.sh --rounds 8 bots/sweep-pressure bots/circle-strafer
+ROBOCODE_SWEEP_GUN_MODE=anti_surfer scripts/run-battle.sh --rounds 8 bots/sweep-pressure bots/circle-strafer
 ```
+
+Valid pinned values are `head_on`, `linear`, `linear_wall_aware`,
+`displacement`, `traditional_gf`, `dynamic_cluster`, and `anti_surfer`.
 
 For neutral gun-evaluation telemetry, set:
 

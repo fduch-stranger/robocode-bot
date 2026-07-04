@@ -105,7 +105,7 @@ class AimModeSelector:
 
         current = self.active_modes.get(target_id, self.config.default_mode)
         if current not in self.config.selectable_modes or current not in virtual_bearings:
-            current = self.config.default_mode if self.config.default_mode in virtual_bearings else next(iter(virtual_bearings))
+            current = self._fallback_available_mode(virtual_bearings)
 
         best_mode = current
         (
@@ -222,6 +222,14 @@ class AimModeSelector:
 
         self.active_modes[target_id] = best_mode
         return best_mode, previous, previous != best_mode, tuple(candidates[mode] for mode in ordered_modes)
+
+    def _fallback_available_mode(self, virtual_bearings: Mapping[str, float]) -> str:
+        if self.config.default_mode in self.config.selectable_modes and self.config.default_mode in virtual_bearings:
+            return self.config.default_mode
+        for mode in virtual_bearings:
+            if mode in self.config.selectable_modes:
+                return mode
+        return next(iter(virtual_bearings))
 
     def _score_with_confidence(
         self,

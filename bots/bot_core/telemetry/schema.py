@@ -45,6 +45,10 @@ class TelemetryEventSpec:
 EVENT_SPECS: dict[str, TelemetryEventSpec] = {
     "telemetry.session": TelemetryEventSpec("lifecycle"),
     "telemetry.dropped": TelemetryEventSpec("lifecycle", required_fields=("count",)),
+    "bot.config": TelemetryEventSpec(
+        "lifecycle",
+        optional_fields=("selectable_guns", "force_guns", "forced_gun", "eval_waves"),
+    ),
     "battle.reset": TelemetryEventSpec("lifecycle", optional_fields=("rounds", "game_type")),
     "round.reset": TelemetryEventSpec("lifecycle", optional_fields=("previous_turn", "current_turn")),
     "scan.new": TelemetryEventSpec(

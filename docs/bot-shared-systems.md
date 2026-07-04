@@ -96,6 +96,19 @@ churn. `gun.switch_decision` records sampled candidate diagnostics so tuning
 can distinguish unavailable guns from candidates blocked by visits, score
 floor, margin, or a better superseding candidate.
 
+Local GUI/debug overrides can change this behavior without changing bot
+defaults. `ROBOCODE_GUN_MODE` pins every bot to any standard wired gun mode,
+while per-bot variables such as `ROBOCODE_ADAPTIVE_GUN_MODE` override that
+global pin. The standard pinned modes are `head_on`, `linear`,
+`linear_wall_aware`, `displacement`, `traditional_gf`, `dynamic_cluster`, and
+`anti_surfer`. `ROBOCODE_GUN_SET` changes the live selectable set for bots that
+support every listed mode, and per-bot variables such as
+`ROBOCODE_ADAPTIVE_GUN_SET` override the global set. The intended workflow is to copy
+`.env.guns.example` to ignored `.env.guns`, edit those temporary overrides,
+and restart GUI-launched bot processes. Some modes need target history before
+they can return an aim bearing, so the selector can use a short startup fallback
+until the pinned or selectable gun becomes available.
+
 Guns also declare generic `GunModeTraits` so selector heuristics are not tied
 to concrete gun names. Current shared labels treat `dynamic_cluster` as the
 primary KNN-GF learner, `traditional_gf` as a situational profile-GF gun, and

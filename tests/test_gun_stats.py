@@ -1250,6 +1250,42 @@ class GunStatsTest(unittest.TestCase):
         self.assertEqual("linear", previous)
         self.assertTrue(changed)
 
+    def test_aim_mode_selector_prefers_available_selectable_fallback(self) -> None:
+        config = runtime_config(
+            selector=GunSelectorConfig(
+                default_mode="dynamic_cluster",
+                selectable_modes=frozenset({"anti_surfer", "dynamic_cluster"}),
+            ),
+        )
+        scorer = VirtualGunScorer(scoring_config(config), {}, {})
+        selector = make_selector(config, scorer, {1: "linear"}, {})
+
+        selected, previous, changed = selector.select(
+            1,
+            {"head_on": 0.0, "dynamic_cluster": 1.0},
+            None,
+        )
+
+        self.assertEqual("dynamic_cluster", selected)
+        self.assertEqual("linear", previous)
+        self.assertTrue(changed)
+
+    def test_aim_mode_selector_uses_any_bearing_only_when_no_selectable_available(self) -> None:
+        config = runtime_config(
+            selector=GunSelectorConfig(
+                default_mode="dynamic_cluster",
+                selectable_modes=frozenset({"anti_surfer", "dynamic_cluster"}),
+            ),
+        )
+        scorer = VirtualGunScorer(scoring_config(config), {}, {})
+        selector = make_selector(config, scorer, {}, {})
+
+        selected, previous, changed = selector.select(1, {"head_on": 0.0, "linear": 1.0}, None)
+
+        self.assertIn(selected, {"head_on", "linear"})
+        self.assertIsNone(previous)
+        self.assertTrue(changed)
+
     def test_aim_mode_selector_forced_diagnostics_keep_previous_score(self) -> None:
         config = runtime_config(
             selector=GunSelectorConfig(

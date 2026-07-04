@@ -28,6 +28,7 @@ class AdaptiveConfigTest(unittest.TestCase):
                 "linear_wall_aware",
                 "traditional_gf",
                 "dynamic_cluster",
+                "head_on",
                 "anti_surfer",
                 "displacement",
             }),
