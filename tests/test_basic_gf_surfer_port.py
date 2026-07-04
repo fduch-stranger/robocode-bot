@@ -26,11 +26,12 @@ port = load_port_module()
 
 
 class FakeAimBot:
-    def __init__(self, fire_result: bool) -> None:
-        self.energy = 100.0
+    def __init__(self, fire_result: bool, energy: float = 100.0) -> None:
+        self.energy = energy
         self._last_enemy_velocity = 0.0
         self._lateral_direction = 1
         self._gun_waves = []
+        self._enemy_location = port.Point(100.0, 300.0)
         self.buffer = [0 for _ in range(port.GUN_BINS)]
         self.fire_result = fire_result
         self.fire_attempts = 0
@@ -44,6 +45,9 @@ class FakeAimBot:
 
     def _turn_gun_to(self, java_angle: float) -> None:
         self.aim_angle = java_angle
+
+    def _gun_current_bin(self, wave: port.GunWave) -> int:
+        return port.BasicGFSurferPort._gun_current_bin(wave)
 
     def set_fire(self, firepower: float) -> bool:
         self.fire_attempts += 1
@@ -93,6 +97,9 @@ class FakeGunWaveBot:
                 buffer=[0 for _ in range(port.GUN_BINS)],
             )
         ]
+
+    def _gun_current_bin(self, wave: port.GunWave) -> int:
+        return port.BasicGFSurferPort._gun_current_bin(wave)
 
 
 class BasicGFSurferPortTest(unittest.TestCase):
@@ -257,6 +264,22 @@ print(module.BasicGFSurferPort.__name__)
         self.assertEqual(1, bot.fire_attempts)
         self.assertEqual([], bot._gun_waves)
 
+    def test_insufficient_energy_rejected_fire_does_not_track_gun_wave(self) -> None:
+        bot = FakeAimBot(fire_result=False, energy=port.BULLET_POWER - 0.1)
+
+        port.BasicGFSurferPort._aim_and_fire(
+            bot,
+            port.Point(100.0, 100.0),
+            port.Point(100.0, 300.0),
+            0.0,
+            200.0,
+            0.0,
+            0.0,
+        )
+
+        self.assertEqual(1, bot.fire_attempts)
+        self.assertEqual([], bot._gun_waves)
+
     def test_accepted_fire_creates_one_gun_wave(self) -> None:
         bot = FakeAimBot(fire_result=True)
 
@@ -332,6 +355,17 @@ print(module.BasicGFSurferPort.__name__)
         port.BasicGFSurferPort._update_gun_waves(bot)
 
         self.assertAlmostEqual(first_distance + port.bullet_velocity(port.BULLET_POWER), bot._gun_waves[0].distance_traveled)
+
+    def test_gun_wave_logs_arrival_and_is_removed(self) -> None:
+        bot = FakeGunWaveBot()
+        bot._enemy_location = port.Point(100.0, 120.0)
+        bot._gun_waves[0].target_location = port.Point(100.0, 120.0)
+        buffer = bot._gun_waves[0].buffer
+
+        port.BasicGFSurferPort._update_gun_waves(bot)
+
+        self.assertEqual(1, buffer[port.GUN_MIDDLE_BIN])
+        self.assertEqual([], bot._gun_waves)
 
     def test_round_reset_preserves_battle_persistent_stats(self) -> None:
         bot = port.BasicGFSurferPort()

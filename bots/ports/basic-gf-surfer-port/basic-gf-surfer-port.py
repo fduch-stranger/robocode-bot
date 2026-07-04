@@ -574,7 +574,7 @@ class BasicGFSurferPort(Bot):
         offset = self._gun_most_visited_bearing_offset(buffer, self._lateral_direction)
         aim_angle = enemy_absolute_bearing + offset
         self._turn_gun_to(aim_angle)
-        if self.energy >= BULLET_POWER and self.set_fire(BULLET_POWER):
+        if self.set_fire(BULLET_POWER):
             self._gun_waves.append(
                 GunWave(
                     gun_location=Point(my_location.x, my_location.y),

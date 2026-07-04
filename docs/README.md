@@ -10,6 +10,7 @@ Navigation hub for the Robocode bot workspace.
 | Understand shared bot behavior | [Shared Bot Systems](bot-shared-systems.md) |
 | Understand shared structures and formulas | [Bot Core Data Structures](bot-core-data-structures.md) |
 | Inspect generated telemetry events | [Telemetry Event Schema](telemetry-schema.md) |
+| Port converted legacy bots to native Python | [Legacy Bot Porting Guideline](legacy-bot-porting-guideline.md) |
 | Review concrete gun packages | [Gun Component Docs](#gun-component-docs) |
 | Tune or inspect a specific bot | [Bot Docs](#bot-docs) |
 | Review local championship snapshot | [Championship Results](championship-results.md) |

@@ -7,7 +7,7 @@ virtual-gun and movement stacks:
 
 - 47-bin wave-surfing danger profile
 - enemy energy-drop surf waves
-- fixed-power segmented guess-factor gun
+- fixed-power segmented guess-factor gun with explicit once-per-turn wave timing
 - staged radar search/lock that leaves recent scan locks intact
 - no-wave orbit fallback
 - wall and stationary escape recovery from the fixed legacy variant
@@ -35,5 +35,5 @@ When changing parity behavior, compare against the embedded
 legacy jar setup, not Robowiki source alone. The fixed benchmark also depends on
 the Tank Royale `robocode-api-bridge` compatibility layer.
 
-Parity work for this port is tracked in
-[BasicGFSurfer Python parity](../../../docs/plans/basic-gf-surfer-python-parity-plan.md).
+Parity lessons from this port are captured in the
+[legacy bot porting guideline](../../../docs/legacy-bot-porting-guideline.md).

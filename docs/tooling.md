@@ -134,6 +134,41 @@ tools/combat_economics_summary.py battle-results/runs/<legacy-run> \
 Do not apply that filter to `bots/ports/basic-gf-surfer-port`; ported-surfer
 runs are already the preferred clean benchmark.
 
+For legacy BasicGFSurfer parity runs, also inspect for visible fixed-Java bot
+immobility. If the Java bridge bot is stuck and the Python port farms a very
+lopsided score, treat that run as suspect reference evidence instead of clean
+parity proof.
+
+Use runner tick sampling for a repeatable immobility sanity check:
+
+```sh
+scripts/run-battle.sh \
+  --rounds 12 \
+  --tick-sample 10 \
+  --run-dir battle-results/runs/surfer-parity-sampled \
+  bots/ports/basic-gf-surfer-port \
+  --legacy basic-gf-surfer
+
+tools/bot_motion_sanity.py \
+  battle-results/runs/surfer-parity-sampled/runner.log \
+  --bot BasicGFSurferFixed \
+  --json-output battle-results/runs/surfer-parity-sampled/motion-sanity.json
+```
+
+`bot_motion_sanity.py` reports suspect rounds and, when `runner.log` contains
+round results, a clean/suspect score split. Treat the clean score as the useful
+parity signal and the suspect score as bridge-glitch context.
+
+The input can also be a run directory or a series directory; the tool will find
+nested `runner.log` files and aggregate the clean/suspect score split:
+
+```sh
+tools/bot_motion_sanity.py \
+  battle-results/series/<series-dir> \
+  --bot BasicGFSurferFixed \
+  --json-output battle-results/series/<series-dir>/motion-sanity.json
+```
+
 ## A/B Runs
 
 Main wrapper:
@@ -173,6 +208,11 @@ Use `1-8` rounds for smoke checks, `12-16` rounds for exploration, and
 `24 x 3` for promotion. Ask before spending `50+` rounds. Converted legacy
 opponents are not quality gates; port useful opponents into `bots/ports/`
 before treating them as tuning targets.
+
+Use `run-ab.sh` for real baseline/candidate comparisons. When validating one
+current tree against a reference bot, use `scripts/run-battle-series.sh`
+instead; invoking A/B without distinct worktrees compares the same dirty tree on
+both sides and is not a meaningful promotion gate.
 
 ## Battle Series
 
