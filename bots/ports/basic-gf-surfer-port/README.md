@@ -22,3 +22,11 @@ The legacy Java fixed bot remains available through `--legacy basic-gf-surfer`.
 This Python port is useful for checking whether surfer behavior can be made
 stable without the legacy bridge, but it is not currently strength-equivalent
 to the fixed Java legacy bot.
+
+When changing parity behavior, compare against the embedded
+`wiki/BasicGFSurferFixed.java` source and generated wrapper from the local fixed
+legacy jar setup, not Robowiki source alone. The fixed benchmark also depends on
+the Tank Royale `robocode-api-bridge` compatibility layer.
+
+Parity work for this port is tracked in
+[BasicGFSurfer Python parity](../../../docs/plans/basic-gf-surfer-python-parity-plan.md).

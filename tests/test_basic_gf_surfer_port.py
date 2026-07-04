@@ -28,8 +28,7 @@ class FakeAimBot:
     def __init__(self, fire_result: bool) -> None:
         self.energy = 100.0
         self._last_enemy_velocity = 0.0
-        self._move_direction = 1
-        self._gun_lateral_direction = 1
+        self._lateral_direction = 1
         self._gun_waves = []
         self.buffer = [0 for _ in range(port.GUN_BINS)]
         self.fire_result = fire_result
@@ -50,7 +49,48 @@ class FakeAimBot:
         return self.fire_result
 
 
+class FakeMoveBot:
+    def __init__(self, direction: float = 0.0) -> None:
+        self.direction = direction
+        self.commands = []
+
+    def set_turn_left(self, degrees: float) -> None:
+        self.commands.append(("turn_left", degrees))
+
+    def set_turn_right(self, degrees: float) -> None:
+        self.commands.append(("turn_right", degrees))
+
+    def set_forward(self, distance: float) -> None:
+        self.commands.append(("forward", distance))
+
+    def set_back(self, distance: float) -> None:
+        self.commands.append(("back", distance))
+
+
+class FakeGunWaveBot:
+    def __init__(self) -> None:
+        self.turn_number = 10
+        self._last_gun_wave_update_turn = -1
+        self._enemy_location = port.Point(100.0, 500.0)
+        self._gun_waves = [
+            port.GunWave(
+                gun_location=port.Point(100.0, 100.0),
+                target_location=port.Point(100.0, 500.0),
+                bullet_power=port.BULLET_POWER,
+                bearing=0.0,
+                lateral_direction=1,
+                buffer=[0 for _ in range(port.GUN_BINS)],
+            )
+        ]
+
+
 class BasicGFSurferPortTest(unittest.TestCase):
+    def assertCommandsAlmostEqual(self, expected, actual) -> None:
+        self.assertEqual(len(expected), len(actual))
+        for expected_command, actual_command in zip(expected, actual, strict=True):
+            self.assertEqual(expected_command[0], actual_command[0])
+            self.assertAlmostEqual(expected_command[1], actual_command[1])
+
     def test_manifest_and_launcher_use_requested_name(self) -> None:
         manifest = json.loads((BOT_DIR / "basic-gf-surfer-port.json").read_text(encoding="utf-8"))
 
@@ -142,9 +182,37 @@ class BasicGFSurferPortTest(unittest.TestCase):
         self.assertEqual(1, bot.fire_attempts)
         self.assertEqual(1, len(bot._gun_waves))
 
-    def test_gun_lateral_direction_does_not_change_movement_direction(self) -> None:
+    def test_set_back_as_front_uses_forward_positive_turn_branch(self) -> None:
+        bot = FakeMoveBot()
+
+        port.BasicGFSurferPort._set_back_as_front(bot, port.tank_degrees_to_java_radians(30.0))
+
+        self.assertCommandsAlmostEqual([("turn_left", 30.0), ("forward", 100.0)], bot.commands)
+
+    def test_set_back_as_front_uses_forward_negative_turn_branch(self) -> None:
+        bot = FakeMoveBot()
+
+        port.BasicGFSurferPort._set_back_as_front(bot, port.tank_degrees_to_java_radians(-30.0))
+
+        self.assertCommandsAlmostEqual([("turn_left", -30.0), ("forward", 100.0)], bot.commands)
+
+    def test_set_back_as_front_uses_back_negative_turn_branch(self) -> None:
+        bot = FakeMoveBot()
+
+        port.BasicGFSurferPort._set_back_as_front(bot, port.tank_degrees_to_java_radians(120.0))
+
+        self.assertCommandsAlmostEqual([("turn_left", -60.0), ("back", 100.0)], bot.commands)
+
+    def test_set_back_as_front_uses_back_positive_turn_branch(self) -> None:
+        bot = FakeMoveBot()
+
+        port.BasicGFSurferPort._set_back_as_front(bot, port.tank_degrees_to_java_radians(-120.0))
+
+        self.assertCommandsAlmostEqual([("turn_left", 60.0), ("back", 100.0)], bot.commands)
+
+    def test_gun_and_movement_share_legacy_lateral_direction(self) -> None:
         bot = FakeAimBot(fire_result=True)
-        bot._move_direction = 1
+        bot._lateral_direction = 1
 
         port.BasicGFSurferPort._aim_and_fire(
             bot,
@@ -156,9 +224,59 @@ class BasicGFSurferPortTest(unittest.TestCase):
             math.pi / 2.0,
         )
 
-        self.assertEqual(1, bot._move_direction)
-        self.assertEqual(-1, bot._gun_lateral_direction)
+        self.assertEqual(-1, bot._lateral_direction)
         self.assertEqual(-1, bot._gun_waves[0].lateral_direction)
+
+    def test_gun_waves_advance_once_per_turn(self) -> None:
+        bot = FakeGunWaveBot()
+
+        port.BasicGFSurferPort._update_gun_waves(bot)
+        first_distance = bot._gun_waves[0].distance_traveled
+        port.BasicGFSurferPort._update_gun_waves(bot)
+
+        self.assertAlmostEqual(port.bullet_velocity(port.BULLET_POWER), first_distance)
+        self.assertAlmostEqual(first_distance, bot._gun_waves[0].distance_traveled)
+
+        bot.turn_number += 1
+        port.BasicGFSurferPort._update_gun_waves(bot)
+
+        self.assertAlmostEqual(first_distance + port.bullet_velocity(port.BULLET_POWER), bot._gun_waves[0].distance_traveled)
+
+    def test_round_reset_preserves_battle_persistent_stats(self) -> None:
+        bot = port.BasicGFSurferPort()
+        bot._state.surf_stats[0] = 7.0
+        bot._state.gun_stats[0][0][0][0] = 3
+        bot._enemy_waves = [
+            port.EnemyWave(
+                fire_location=port.Point(100.0, 100.0),
+                fire_time=1,
+                bullet_velocity=port.bullet_velocity(port.BULLET_POWER),
+                direct_angle=0.0,
+                distance_traveled=0.0,
+                direction=1,
+            )
+        ]
+        bot._gun_waves = [
+            port.GunWave(
+                gun_location=port.Point(100.0, 100.0),
+                target_location=port.Point(100.0, 500.0),
+                bullet_power=port.BULLET_POWER,
+                bearing=0.0,
+                lateral_direction=1,
+                buffer=[0 for _ in range(port.GUN_BINS)],
+            )
+        ]
+        bot._last_turn_number = 42
+        bot._last_gun_wave_update_turn = 42
+
+        bot.on_round_ended(object())
+
+        self.assertEqual([], bot._enemy_waves)
+        self.assertEqual([], bot._gun_waves)
+        self.assertEqual(-1, bot._last_turn_number)
+        self.assertEqual(-1, bot._last_gun_wave_update_turn)
+        self.assertEqual(7.0, bot._state.surf_stats[0])
+        self.assertEqual(3, bot._state.gun_stats[0][0][0][0])
 
 
 if __name__ == "__main__":

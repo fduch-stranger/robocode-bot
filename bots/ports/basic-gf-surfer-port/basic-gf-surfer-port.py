@@ -8,6 +8,8 @@ from robocode_tank_royale.bot_api.events import (
     GameStartedEvent,
     HitByBulletEvent,
     HitWallEvent,
+    RoundEndedEvent,
+    RoundStartedEvent,
     ScannedBotEvent,
 )
 
@@ -152,8 +154,7 @@ class BasicGFSurferPort(Bot):
         self._surf_abs_bearings: list[float] = []
         self._enemy_location: Point | None = None
         self._opp_energy = 100.0
-        self._move_direction = 1
-        self._gun_lateral_direction = 1
+        self._lateral_direction = 1
         self._last_enemy_velocity = 0.0
         self._wall_escape_until = 0
         self._wall_stuck_ticks = 0
@@ -161,6 +162,7 @@ class BasicGFSurferPort(Bot):
         self._stationary_ticks = 0
         self._last_movement_check_location: Point | None = None
         self._last_turn_number = -1
+        self._last_gun_wave_update_turn = -1
 
     def run(self) -> None:
         self.body_color = Color.from_rgb(40, 75, 210)
@@ -180,6 +182,14 @@ class BasicGFSurferPort(Bot):
             self.go()
 
     def on_game_started(self, event: GameStartedEvent) -> None:
+        self._reset_round_state()
+        self._last_turn_number = -1
+
+    def on_round_started(self, event: RoundStartedEvent) -> None:
+        self._reset_round_state()
+        self._last_turn_number = -1
+
+    def on_round_ended(self, event: RoundEndedEvent) -> None:
         self._reset_round_state()
         self._last_turn_number = -1
 
@@ -243,7 +253,7 @@ class BasicGFSurferPort(Bot):
             self._enemy_waves.remove(hit_wave)
 
     def on_hit_wall(self, event: HitWallEvent) -> None:
-        self._move_direction = -self._move_direction
+        self._lateral_direction = -self._lateral_direction
         self._wall_escape_until = self.turn_number + WALL_ESCAPE_TICKS
         self._escape_toward_center(self._my_location())
 
@@ -254,14 +264,14 @@ class BasicGFSurferPort(Bot):
         self._surf_abs_bearings = []
         self._enemy_location = None
         self._opp_energy = 100.0
-        self._move_direction = 1
-        self._gun_lateral_direction = 1
+        self._lateral_direction = 1
         self._last_enemy_velocity = 0.0
         self._wall_escape_until = 0
         self._wall_stuck_ticks = 0
         self._last_wall_check_location = None
         self._stationary_ticks = 0
         self._last_movement_check_location = None
+        self._last_gun_wave_update_turn = -1
 
     def _reset_if_new_round(self) -> None:
         if self._last_turn_number >= 0 and self.turn_number < self._last_turn_number:
@@ -359,7 +369,7 @@ class BasicGFSurferPort(Bot):
         self._set_back_as_front(go_angle)
 
     def _fallback_orbit(self, my_location: Point, abs_bearing_to_enemy: float) -> None:
-        orientation = 1 if self._move_direction >= 0 else -1
+        orientation = 1 if self._lateral_direction >= 0 else -1
         go_angle = self._wall_smoothing(my_location, abs_bearing_to_enemy + math.pi / 2.0 * orientation, orientation)
         self._set_back_as_front(go_angle)
 
@@ -379,7 +389,7 @@ class BasicGFSurferPort(Bot):
         self._last_wall_check_location = Point(my_location.x, my_location.y)
 
         if (walls >= 2 and self._wall_stuck_ticks >= 1) or (walls >= 1 and self._wall_stuck_ticks >= 3):
-            self._move_direction = -self._move_direction
+            self._lateral_direction = -self._lateral_direction
             self._wall_escape_until = self.turn_number + WALL_ESCAPE_TICKS
             self._wall_stuck_ticks = 0
             return True
@@ -399,8 +409,8 @@ class BasicGFSurferPort(Bot):
             return False
 
         self._stationary_ticks = 0
-        self._move_direction = -self._move_direction
-        orientation = 1 if self._move_direction >= 0 else -1
+        self._lateral_direction = -self._lateral_direction
+        orientation = 1 if self._lateral_direction >= 0 else -1
         go_angle = self._wall_smoothing(my_location, abs_bearing_to_enemy + math.pi / 2.0 * orientation, orientation)
         self._set_back_as_front(go_angle)
         return True
@@ -446,15 +456,18 @@ class BasicGFSurferPort(Bot):
     def _set_back_as_front(self, go_angle: float) -> None:
         tank_bearing = java_radians_to_tank_degrees(go_angle)
         relative = normal_relative_degrees(tank_bearing - self.direction)
-        target_speed = 8.0
+        move_back = False
         if relative > 90.0:
             relative -= 180.0
-            target_speed = -8.0
+            move_back = True
         elif relative < -90.0:
             relative += 180.0
-            target_speed = -8.0
-        self.target_speed = target_speed
+            move_back = True
         self.set_turn_left(relative)
+        if move_back:
+            self.set_back(100.0)
+        else:
+            self.set_forward(100.0)
 
     def _aim_and_fire(
         self,
@@ -467,11 +480,11 @@ class BasicGFSurferPort(Bot):
     ) -> None:
         lateral = enemy_velocity * math.sin(enemy_heading - enemy_absolute_bearing)
         if enemy_velocity != 0:
-            self._gun_lateral_direction = sign(lateral)
+            self._lateral_direction = sign(lateral)
 
         buffer = self._gun_buffer(enemy_distance, enemy_velocity, self._last_enemy_velocity)
         self._last_enemy_velocity = enemy_velocity
-        offset = self._gun_most_visited_bearing_offset(buffer, self._gun_lateral_direction)
+        offset = self._gun_most_visited_bearing_offset(buffer, self._lateral_direction)
         aim_angle = enemy_absolute_bearing + offset
         self._turn_gun_to(aim_angle)
         if self.energy >= BULLET_POWER and self.set_fire(BULLET_POWER):
@@ -481,7 +494,7 @@ class BasicGFSurferPort(Bot):
                     target_location=Point(enemy_location.x, enemy_location.y),
                     bullet_power=BULLET_POWER,
                     bearing=enemy_absolute_bearing,
-                    lateral_direction=self._gun_lateral_direction,
+                    lateral_direction=self._lateral_direction,
                     buffer=buffer,
                 )
             )
@@ -503,6 +516,9 @@ class BasicGFSurferPort(Bot):
         return lateral_direction * GUN_BIN_WIDTH * (most_visited - GUN_MIDDLE_BIN)
 
     def _update_gun_waves(self) -> None:
+        if self._last_gun_wave_update_turn == self.turn_number:
+            return
+        self._last_gun_wave_update_turn = self.turn_number
         if self._enemy_location is None:
             return
         kept = []

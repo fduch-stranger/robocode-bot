@@ -8,5 +8,6 @@ README files.
 | [Confidence-calibrated virtual selector](confidence-calibrated-virtual-selector-plan.md) | Selector-level calibration plan that maps virtual scores to real hit probability before switching guns. |
 | [Displacement virtual-gun integration](displacement-virtual-gun-integration-plan.md) | Plan to promote the improved displacement gun into the live virtual-gun candidate set for all bots as a situational mode. |
 | [Anti-surfer safety surface rebuild](gun-anti-surfer-safety-surface-rebuild.md) | Plan to rebuild anti-surfer as a reachable valley/gate safety-surface gun. |
+| [BasicGFSurfer Python parity](basic-gf-surfer-python-parity-plan.md) | Plan to make the native Python BasicGFSurfer port closer to the fixed Java legacy bot without recreating the full Java bridge. |
 | [Markov Tactician bot implementation](markov-tactician-bot-implementation-plan.md) | Plan for a new bot variant using a battle-persistent MDL-bounded Markov tactical automaton. |
 | [Particle-flow gun V2](particle-flow-gun-v2.md) | Plan for a physics-based particle, regime, soft-minimax, and real-hit-calibrated experimental gun. |
