@@ -1,13 +1,35 @@
-# Confidence-Calibrated Virtual Selector Plan
+# Damage-Calibrated Virtual Selector Plan
 
 This plan describes an upgrade to virtual gun selection:
 
 ```text
-Confidence-Calibrated Virtual Selector
+Damage-Calibrated Virtual Selector
 ```
 
 This is not a new aim formula. It is a better decision layer for choosing which
 gun is allowed to control real shots.
+
+The original version of this plan targeted calibrated real hit probability. That
+is still a useful alternative and should remain visible in telemetry. The
+current combat-economics direction makes expected shot value the primary target:
+
+```text
+estimated gun value =
+  calibrated_real_hit_probability
+  * proposed_bullet_damage
+  - uncertainty_penalty
+  - enemy_pressure_cost
+```
+
+Keep both views during passive and shadow phases:
+
+```text
+hit_probability_score
+damage_value_score
+```
+
+Do not decide upfront which one is final. Let telemetry and port-focused A/Bs
+show whether hit probability or damage value predicts better live performance.
 
 ## Current Selector
 
@@ -41,8 +63,14 @@ which gun has the best virtual score after gates?
 The calibrated selector should answer:
 
 ```text
-given this gun's virtual score, source, samples, context, and past real
-conversion, what is the probability it will actually hit if selected now?
+given this gun's virtual score, source, samples, context, proposed firepower,
+and past real conversion, what real shot value should we expect if selected now?
+```
+
+Alternative shadow question:
+
+```text
+what is the probability this gun will actually hit if selected now?
 ```
 
 ## Validated Implementation Direction
@@ -62,7 +90,7 @@ not a replacement of the existing one:
 virtual_score selector:
   current AimModeSelector behavior
 
-confidence_calibrated selector:
+damage_calibrated selector:
   same availability, visit, score-floor, forced-mode, and margin semantics
   but candidate decision score can use online calibration
 ```
@@ -71,6 +99,17 @@ confidence_calibrated selector:
 defaults must continue to use the current selector. Adaptive Prime should be the
 first bot wired to the calibrated selector, behind an explicit disabled-by-
 default config/env flag during passive and shadow phases.
+
+Do not implement live calibrated selection before the combat-economics
+foundation exists:
+
+1. Shared `CombatRegime` vocabulary.
+2. `CombatProfileStore` or equivalent real combat profile.
+3. Fire-time shot-value telemetry from the EV fire-gate work.
+4. Real shot outcome attribution by gun/source/regime/firepower.
+
+Without those inputs, selector calibration can improve hit rate while still
+choosing low-value shots that lose bullet damage.
 
 Forced gun mode must bypass calibrated selection. It may still record passive
 calibration observations, but it must not be blocked, reranked, or exploration-
@@ -84,8 +123,10 @@ policy/config data.
 
 ## Target Behavior
 
-The selector should prefer calibrated real hit probability over raw virtual
-score.
+The selector should prefer calibrated expected shot value over raw virtual
+score when damage-value evidence is reliable. Calibrated real hit probability
+remains a shadow score and possible fallback when damage-value evidence is too
+sparse.
 
 Example:
 
@@ -102,16 +143,18 @@ Calibrated selector may choose `dynamic_cluster`:
 traditional_gf global source:
   virtual score = 0.32
   post-switch real hit rate = 0.09
-  calibrated score = 0.17
+  hit_probability_score = 0.17
+  damage_value_score = 0.15
 
 dynamic_cluster:
   virtual score = 0.27
   post-switch real hit rate = 0.20
-  calibrated score = 0.25
+  hit_probability_score = 0.25
+  damage_value_score = 0.31 if proposed firepower is stronger
 ```
 
 The goal is not to punish one gun forever. The goal is to learn when each score
-source is trustworthy.
+source is trustworthy and valuable.
 
 ## Calibration Inputs
 
@@ -121,11 +164,14 @@ Track calibration by:
 target id
 gun mode
 profile/source type
+combat regime subset
 distance bucket
 wall bucket
 sample bucket
 target speed/lateral bucket
 raw virtual score bucket
+proposed firepower bucket
+enemy pressure bucket
 ```
 
 Source type examples:
@@ -153,6 +199,9 @@ post_switch_shots
 post_switch_hits
 virtual_score_sum
 real_hit_rate
+damage_per_shot
+avg_hit_power
+expected_bullet_damage
 calibration_error
 last_updated_turn
 ```
@@ -225,12 +274,23 @@ calibration should reuse that terminology carefully: offline summary remains an
 analysis tool, while the new calibration store is live battle state used for
 passive measurement, shadow scoring, and later gated selection.
 
-## Calibrated Score
+## Calibrated Scores
 
-Initial formula:
+Primary formula:
 
 ```text
-calibrated_score =
+damage_value_score =
+  calibrated_hit_probability
+  * bullet_damage_for_power(proposed_firepower)
+  - uncertainty_penalty
+  - source_penalty
+  - enemy_pressure_cost
+```
+
+Alternative shadow/fallback formula:
+
+```text
+hit_probability_score =
   raw_virtual_score
   * reliability_multiplier
   - uncertainty_penalty
@@ -251,7 +311,7 @@ expected_real_hit_rate = smoothed_real_hits / smoothed_real_shots
 expected_from_virtual = raw_virtual_score
 calibration_error = expected_from_virtual - expected_real_hit_rate
 
-calibrated_score = raw_virtual_score - calibration_error_weight * max(0, calibration_error)
+hit_probability_score = raw_virtual_score - calibration_error_weight * max(0, calibration_error)
 ```
 
 Use Bayesian smoothing so low sample counts do not overreact:
@@ -268,6 +328,12 @@ prior_shots = 12
 prior_hit_rate = mode baseline or global bot baseline
 ```
 
+Damage-value calibration should use the same calibrated hit probability, but
+multiply it by the proposed bullet damage. Enemy pressure cost should come from
+the combat profile, not from gun-specific hacks. If combat profile data is
+missing, set enemy pressure cost to zero and keep the damage score marked as
+low-confidence.
+
 ## Context Confidence
 
 Not all calibration buckets should be trusted equally.
@@ -281,13 +347,24 @@ context_confidence = clamp(real_shots / full_weight_shots, 0, 1)
 Then:
 
 ```text
-calibrated_score =
+hit_probability_score =
   raw_score * (1 - context_confidence)
   + context_adjusted_score * context_confidence
 ```
 
 This keeps early behavior close to current selector and lets calibration take
 over as evidence accumulates.
+
+Damage-value selection should require separate confidence:
+
+```text
+damage_value_confidence =
+  min(context_confidence, combat_profile_confidence, firepower_bucket_confidence)
+```
+
+If `damage_value_confidence` is low, live selection should fall back to the
+current virtual selector or the calibrated hit-probability score depending on
+which shadow mode performed better.
 
 ## Source-Specific Rules
 
@@ -361,11 +438,12 @@ bots/bot_core/gun/calibration.py
   GunCalibrationStats
   GunCalibrationStore
   GunSelectionSnapshot
-  calibrated_score()
+  hit_probability_score()
+  damage_value_score()
 
 bots/bot_core/gun/aim.py
   AimModeSelector remains the current virtual-score selector
-  ConfidenceCalibratedAimModeSelector applies calibration when enabled
+  DamageCalibratedAimModeSelector applies calibration when enabled
   shared selector protocol/helper preserves forced-mode and gate semantics
 
 bots/bot_core/gun/models.py
@@ -386,6 +464,10 @@ selector_calibration_prior_shots: int = 12
 selector_calibration_prior_hit_rate: float = 0.14
 selector_calibration_full_weight_shots: int = 40
 selector_calibration_error_weight: float = 0.6
+selector_damage_value_enabled: bool = False
+selector_damage_value_shadow: bool = False
+selector_damage_value_min_confidence: float = 0.45
+selector_enemy_pressure_cost_scale: float = 1.0
 selector_exploration_enabled: bool = False
 selector_exploration_interval: int = 24
 selector_exploration_max_score_gap: float = 0.05
@@ -406,12 +488,18 @@ validation justifies broader rollout.
 Extend `gun.switch_decision` with:
 
 ```text
-calibrated_score
+hit_probability_score
+damage_value_score
 raw_score
+proposed_firepower
+expected_bullet_damage
 calibration_hit_rate
+calibration_damage_per_shot
 calibration_samples
 calibration_error
 calibration_confidence
+damage_value_confidence
+enemy_pressure_cost
 calibration_key
 exploration_candidate
 exploration_selected
@@ -431,10 +519,15 @@ mode
 source
 context
 raw_score
-calibrated_score
+hit_probability_score
+damage_value_score
 real_shots
 real_hits
 real_hit_rate
+damage_per_shot
+avg_hit_power
+proposed_firepower
+expected_bullet_damage
 post_switch_shots
 post_switch_hits
 post_switch_hit_rate
@@ -446,8 +539,10 @@ Telemetry questions:
 
 ```text
 Which modes are over-confident?
+Which modes produce real damage value, not only hit rate?
 Which profile sources convert?
-Does calibrated_score predict real hit rate better than raw_score?
+Does hit_probability_score predict real hit rate better than raw_score?
+Does damage_value_score predict score/bullet-damage outcomes better than hit_probability_score?
 Which switch decisions changed because of calibration?
 ```
 
@@ -470,18 +565,18 @@ report raw score vs real conversion by mode/source/context
 identify over-confident guns
 ```
 
-Phase 3: shadow calibrated score
+Phase 3: shadow calibrated scores
 
 ```text
-compute calibrated_score
+compute hit_probability_score and damage_value_score
 log what selector would have chosen
 do not change live selection
 ```
 
-Phase 4: gated selection
+Phase 4: gated selection by chosen score
 
 ```text
-enable calibrated score for Adaptive only
+enable the better shadow score for Adaptive only
 keep forced mode unaffected
 keep exploration disabled
 run A/B
@@ -502,7 +597,9 @@ Unit tests:
 calibration store updates hit/miss by bullet id
 Bayesian smoothing avoids overreacting to one hit/miss
 context confidence blends raw and calibrated scores
-selector chooses lower raw score when calibrated score is better
+damage-value score includes proposed firepower and bullet damage
+damage-value score falls back or stays shadow when confidence is low
+selector can choose lower raw score when selected calibrated score is better
 forced mode bypasses calibration gates
 ```
 
@@ -523,18 +620,19 @@ A/B:
 
 ```text
 scripts/run-ab.sh --name adaptive-selector-calibration \
-  --preset adaptive-1v1-core \
-  --rounds 12 \
-  --repeats 3
+  --preset adaptive-1v1-basic-gf-surfer-port \
+  --rounds 24 \
+  --repeats 3 \
+  --telemetry
+
+tools/combat_economics_summary.py battle-results/ab/<experiment>
+for telemetry in battle-results/ab/<experiment>/candidate/adaptive-vs-basic-gf-surfer-port/run-*/telemetry; do
+  tools/gun_eval_summary.py "$telemetry" --bot adaptive-prime
+done
 ```
 
-Boss/surfer checks:
-
-```text
-BasicGFSurfer
-another stable surfer if available
-one non-surfer mover
-```
+Use local bots as smoke/regression checks after the port-focused gate, not as
+the primary evidence for the combat-economics problem.
 
 ## Promotion Gates
 
@@ -549,7 +647,8 @@ summary can identify over-confident modes
 Shadow mode is successful if:
 
 ```text
-calibrated_score predicts real hit rate better than raw_score
+hit_probability_score predicts real hit rate better than raw_score
+damage_value_score predicts score/bullet-damage shape better than hit_probability_score
 changed decisions look reasonable in telemetry
 ```
 
@@ -557,7 +656,9 @@ Live calibrated selection is successful if:
 
 ```text
 overall score improves or stays neutral
+bullet damage and damage per shot improve or stay neutral
 post-switch hit rate improves
+post-switch damage value improves
 bad traditional_gf/anti_surfer switches decrease
 dynamic_cluster is not unfairly suppressed
 ```
@@ -609,12 +710,14 @@ Current selector:
 virtual score + gates
 ```
 
-Calibrated selector:
+Calibrated selector alternatives:
 
 ```text
 virtual score -> estimated real hit probability -> switch decision
+virtual score -> estimated real shot value -> switch decision
 ```
 
-This should be a high-value reliability upgrade because it prevents over-trusted
-guns from stealing real shots and lets strong guns win control when their scores
-actually convert.
+This should be a high-value reliability upgrade only if telemetry proves the
+chosen calibrated score predicts real outcomes. Keep hit probability and damage
+value side by side until the evidence decides which is better for live
+selection.
