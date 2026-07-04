@@ -65,18 +65,24 @@ current target becomes stale.
 
 Priority order:
 
-1. Wall escape: turn toward arena center.
+1. Wall escape: drive to a clamped interior point.
 2. Separation: move away from close enemy or recent collision.
 3. Melee minimum-risk destination.
 4. Normal orbit.
 5. 1v1 flattener direction flip.
 
 Wall escape and separation both use clear margins so the bot does not chatter
-between states near the threshold. Normal 1v1 orbit uses a wider flattener
-strafe offset and a longer direction-switch cooldown so the bot commits to a
-visible strafe before changing direction. Separation uses a mirrored point away
-from the close enemy plus a lateral offset. This keeps the bot from ramming
-while preserving lateral motion.
+between states near the threshold. Wall escape starts on current or projected
+wall risk and uses the shared destination driver toward a clamped interior
+point, so it can reverse out when that is a cleaner exit than pushing forward
+along the edge. Normal 1v1 orbit uses a wider flattener strafe offset and a
+longer direction-switch cooldown so the bot commits to a visible strafe before
+changing direction. On detected enemy fire, Circle can briefly tighten or widen
+its orbit instead of permanently flipping direction; the feint is disabled near
+walls using a wider guard than normal wall escape, during close separation, and
+while on cooldown. Separation uses a mirrored point away from the close enemy
+plus a lateral offset. This keeps the bot from ramming while preserving lateral
+motion.
 
 ## Firepower Policy
 
@@ -131,6 +137,7 @@ extra telemetry volume is acceptable.
 
 - `wall.avoid`: wall escape.
 - `separate`: close enemy or collision escape.
+- `movement.feint`: enemy-fire timed orbit-radius feint.
 - `movement.minimum_risk`: melee destination.
 - `movement.flatten`: orbit direction changes.
 - `gun.switch_decision`: sampled virtual-gun candidate scores and rejection
@@ -145,10 +152,12 @@ launch, reset, audit, and stop commands.
 ## Tuning Checklist
 
 - Wall clipping or wall twitching: inspect `wall.avoid`, `WALL_MARGIN`,
-  `WALL_CLEAR_MARGIN`, `WALL_ESCAPE_TURNS`.
+  `WALL_CLEAR_MARGIN`, `WALL_ESCAPE_DESTINATION_MARGIN`,
+  `WALL_LOOKAHEAD_TICKS`, `WALL_ESCAPE_TURNS`, `WALL_ESCAPE_TURN_LIMIT`.
 - Close combat losses: inspect `separate`, `SEPARATION_DISTANCE`,
   `SEPARATION_CLEAR_DISTANCE`, `PANIC_DISTANCE`.
 - Predictable orbit or excess direction flips: inspect `movement.flatten`,
   `movement.profile_visit`, `FLATTENER_SWITCH_MARGIN`, and
-  `FLATTENER_SWITCH_COOLDOWN`.
+  `FLATTENER_SWITCH_COOLDOWN`. If wall contact clusters around feints, inspect
+  `movement.feint` and `FEINT_WALL_MARGIN`.
 - Low damage: inspect `hold_reason`, `firepower`, and `aim_mode`.

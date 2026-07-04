@@ -23,9 +23,11 @@ Battle/tool commands:
 - Telemetry with viewer daemon: `scripts/run-battle.sh --telemetry --telemetry-viewer bots/adaptive-prime bots/chase-lock`.
 - Telemetry with opened viewer: `scripts/run-battle.sh --telemetry --telemetry-open bots/adaptive-prime bots/chase-lock`.
 - A/B smoke: `scripts/run-ab.sh --name smoke --preset adaptive-1v1-core --rounds 1 --repeats 1`.
+- Python surfer-port smoke: `scripts/run-ab.sh --name surfer-port-smoke --preset adaptive-1v1-basic-gf-surfer-port --rounds 1 --repeats 1`.
 - Legacy discovery when configured: `scripts/run-battle.sh --list-legacy`.
 - Active legacy boss aliases: `drussgt`, `saguaro`, `basic-gf-surfer`, `basic-gf-surfer-original`, `diamond`.
-- `basic-gf-surfer` now prefers `wiki.BasicGFSurferFixed_1.02` when present and falls back to `wiki.BasicGFSurfer_1.02`; use `basic-gf-surfer-original` or `legacy:wiki.BasicGFSurfer_1.02` for the unpatched converted bot.
+- `basic-gf-surfer` prefers `wiki.BasicGFSurferFixed_1.02` when present and falls back to `wiki.BasicGFSurfer_1.02`; use `basic-gf-surfer-original` or `legacy:wiki.BasicGFSurfer_1.02` for the unpatched converted bot.
+- Native Python surfer benchmark: `bots/ports/basic-gf-surfer-port`; A/B preset `adaptive-1v1-basic-gf-surfer-port`. It is runnable and packaged, but current validation is not strength-equivalent to the fixed Java legacy bot, so keep using `--legacy basic-gf-surfer` as the stronger reference surfer until the port is improved.
 - Telemetry viewer commands: `scripts/telemetry-ui.sh start|stop|stop-all|disable|status`.
 - Telemetry viewer selected-bot metrics show current gun, live-selectable guns, and pinned gun from startup `bot.config` telemetry; raw `bot.config` records still include force-testable guns.
 - Telemetry viewer generations reset on `telemetry.session` for new processes/files and on bot-emitted `battle.reset` for same-process GUI game restarts; normal `round.reset` remains within the same generation unless it looks like an aborted/reset GUI run.

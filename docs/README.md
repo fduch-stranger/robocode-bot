@@ -20,6 +20,7 @@ This is the navigation hub for the Robocode bot workspace.
 | Bot | Focus |
 | --- | --- |
 | [Adaptive Prime](../bots/adaptive-prime/README.md) | 1v1 champion candidate, go-to surfing, potential fields, adaptive firepower |
+| [BasicGFSurfer Port](../bots/ports/basic-gf-surfer-port/README.md) | native Python port of the fixed BasicGFSurfer legacy benchmark |
 | [Chase Lock](../bots/chase-lock/README.md) | target-lock pressure, range-band chase movement, conservative firepower |
 | [Circle Strafer](../bots/circle-strafer/README.md) | stable orbiting, wall escape, separation, defensive movement |
 | [Sweep Pressure](../bots/sweep-pressure/README.md) | sweeping pressure, projected wall avoidance, direct engagement |

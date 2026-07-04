@@ -64,6 +64,10 @@ During an evasion window:
 turn_rate = -SWEEP_TURN_RATE * move_direction
 ```
 
+Enemy-fire feints use that counter-sweep shape for a short window without
+permanently flipping `move_direction`. Feints are disabled near walls, in melee,
+and while on cooldown.
+
 Wall projection:
 
 ```text
@@ -137,6 +141,7 @@ extra telemetry volume is acceptable.
 ## Key Telemetry
 
 - `wall.avoid`: projected wall risk response.
+- `movement.feint`: enemy-fire timed counter-sweep.
 - `movement.minimum_risk`: melee destination.
 - `movement.flatten`: sweep direction change.
 - `track`: target, radar, aim mode, fire hold reason.

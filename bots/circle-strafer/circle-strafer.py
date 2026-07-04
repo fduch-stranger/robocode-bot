@@ -48,7 +48,7 @@ from bot_core.radar import lock_priority_radar
 from bot_core.geometry.angles import body_bearing_to
 from bot_core.geometry.numeric import clamp
 from bot_core.geometry.position import distance_to
-from bot_core.movement.navigation import drive_to_destination
+from bot_core.movement.navigation import drive_command_to_destination, drive_to_destination
 from bot_core.target_snapshot import TargetSnapshot, interpolate_target, target_from_hit_bot, target_from_scan
 from bot_core.telemetry.energy import EnergyTelemetry
 from bot_core.telemetry.fire import (
@@ -76,6 +76,9 @@ class CircleStrafer(Bot):
         self._target_id: int | None = None
         self._collision_escape_until_turn = -1
         self._separation_escape_until_turn = -1
+        self._feint_until_turn = -1
+        self._last_feint_turn = -1000
+        self._feint_turn_scale = 1.0
         self._last_collision_turn = -1000
         self._wall_escape_until_turn = -1
         self._last_wall_hit_turn = -1000
@@ -150,10 +153,20 @@ class CircleStrafer(Bot):
 
     def _move(self) -> None:
         if self._wall_escape_active():
-            center_bearing = body_bearing_to(self, self.arena_width / 2, self.arena_height / 2)
-            self.target_speed = MOVEMENT_POLICY.wall_escape_speed
-            self.turn_rate = clamp(center_bearing, -10, 10)
-            self._movement_telemetry.sample_wall_avoid(self.x, self.y, center_bearing, self._move_direction)
+            escape_x, escape_y = self._wall_escape_destination()
+            turn, speed = drive_command_to_destination(
+                self,
+                escape_x,
+                escape_y,
+                MOVEMENT_POLICY.wall_escape_speed,
+            )
+            self.turn_rate = clamp(
+                turn,
+                -MOVEMENT_POLICY.wall_escape_turn_limit,
+                MOVEMENT_POLICY.wall_escape_turn_limit,
+            )
+            self.target_speed = speed
+            self._movement_telemetry.sample_wall_avoid(self.x, self.y, turn, self._move_direction)
             return
 
         close_target = self._nearest_target()
@@ -210,10 +223,13 @@ class CircleStrafer(Bot):
             if self.turn_number <= self._evade_until_turn
             else 0
         )
-        self.turn_rate = (MOVEMENT_POLICY.orbit_turn_rate + evade_boost) * self._move_direction
+        turn_rate = MOVEMENT_POLICY.orbit_turn_rate + evade_boost
+        if self.turn_number <= self._feint_until_turn:
+            turn_rate *= self._feint_turn_scale
+        self.turn_rate = turn_rate * self._move_direction
 
     def _wall_escape_active(self) -> bool:
-        if self._near_wall(MOVEMENT_POLICY.wall_margin):
+        if self._near_wall(MOVEMENT_POLICY.wall_margin) or self._wall_risk(MOVEMENT_POLICY.wall_margin):
             self._wall_escape_until_turn = max(
                 self._wall_escape_until_turn,
                 self.turn_number + MOVEMENT_POLICY.wall_escape_turns,
@@ -221,7 +237,10 @@ class CircleStrafer(Bot):
             return True
         return (
             self.turn_number <= self._wall_escape_until_turn
-            and self._near_wall(MOVEMENT_POLICY.wall_clear_margin)
+            and (
+                self._near_wall(MOVEMENT_POLICY.wall_clear_margin)
+                or self._wall_risk(MOVEMENT_POLICY.wall_clear_margin)
+            )
         )
 
     def _separation_active(self, distance: float, escaping_collision: bool) -> bool:
@@ -246,6 +265,30 @@ class CircleStrafer(Bot):
             or self.x > self.arena_width - margin
             or self.y < margin
             or self.y > self.arena_height - margin
+        )
+
+    def _wall_escape_destination(self) -> tuple[float, float]:
+        margin = MOVEMENT_POLICY.wall_escape_destination_margin
+        return (
+            clamp(self.x, margin, self.arena_width - margin),
+            clamp(self.y, margin, self.arena_height - margin),
+        )
+
+    def _wall_risk(self, margin: float | None = None) -> bool:
+        margin = MOVEMENT_POLICY.wall_margin if margin is None else margin
+        heading = math.radians(self.direction)
+        projection = (
+            MOVEMENT_POLICY.orbit_speed
+            * self._move_direction
+            * MOVEMENT_POLICY.wall_lookahead_ticks
+        )
+        projected_x = self.x + math.cos(heading) * projection
+        projected_y = self.y + math.sin(heading) * projection
+        return (
+            projected_x < margin
+            or projected_x > self.arena_width - margin
+            or projected_y < margin
+            or projected_y > self.arena_height - margin
         )
 
     def on_game_started(self, event: GameStartedEvent) -> None:
@@ -302,10 +345,7 @@ class CircleStrafer(Bot):
             fired_turn=estimated_fire_turn,
             **self._own_motion.movement_wave_kwargs(self.turn_number),
         )
-        active_evasion = not self._near_wall()
-        if active_evasion:
-            self._move_direction *= -1
-        self._evade_until_turn = max(self._evade_until_turn, self.turn_number + signal.evade_ticks)
+        active_evasion = self._maybe_start_enemy_fire_feint(event.scanned_bot_id, distance, signal.evade_ticks)
         power_mae = self._enemy_fire_power.mean_absolute_error(event.scanned_bot_id)
         self._energy_telemetry.record_enemy_fire_detected(
             event.scanned_bot_id,
@@ -326,6 +366,43 @@ class CircleStrafer(Bot):
             fire_source_offset=math.hypot(current_target.x - fire_source.x, current_target.y - fire_source.y),
         )
         return True
+
+    def _maybe_start_enemy_fire_feint(self, target_id: int, distance: float, evade_ticks: int) -> bool:
+        if not self._feint_allowed(distance):
+            return False
+        if self.turn_number - self._last_feint_turn < MOVEMENT_POLICY.feint_cooldown:
+            return False
+
+        variant = "tight" if (self.turn_number + target_id) % 2 == 0 else "wide"
+        turn_scale = (
+            MOVEMENT_POLICY.feint_tight_turn_scale
+            if variant == "tight"
+            else MOVEMENT_POLICY.feint_wide_turn_scale
+        )
+        duration = max(1, MOVEMENT_POLICY.feint_ticks)
+        self._feint_turn_scale = turn_scale
+        self._last_feint_turn = self.turn_number
+        self._feint_until_turn = self.turn_number + duration
+        self._evade_until_turn = max(self._evade_until_turn, self.turn_number + min(duration, max(1, evade_ticks)))
+        self._movement_telemetry.record_feint(
+            target_id,
+            "orbit_radius",
+            "enemy_fire",
+            duration,
+            self._move_direction,
+            self._near_wall(MOVEMENT_POLICY.wall_clear_margin),
+            variant=variant,
+            turn_scale=turn_scale,
+        )
+        return True
+
+    def _feint_allowed(self, distance: float) -> bool:
+        return (
+            self.enemy_count <= 1
+            and not self._near_wall(MOVEMENT_POLICY.feint_wall_margin)
+            and not self._wall_risk(MOVEMENT_POLICY.feint_wall_margin)
+            and distance >= MOVEMENT_POLICY.separation_clear_distance
+        )
 
     def _update_target_motion_stats(self, event: ScannedBotEvent, previous: TargetSnapshot) -> None:
         speed_delta = event.speed - previous.speed
@@ -468,6 +545,9 @@ class CircleStrafer(Bot):
             self._target_id = None
             self._collision_escape_until_turn = -1
             self._separation_escape_until_turn = -1
+            self._feint_until_turn = -1
+            self._last_feint_turn = -1000
+            self._feint_turn_scale = 1.0
             self._last_collision_turn = -1000
             self._wall_escape_until_turn = -1
             self._last_wall_hit_turn = -1000
@@ -493,6 +573,9 @@ class CircleStrafer(Bot):
         self._target_id = None
         self._collision_escape_until_turn = -1
         self._separation_escape_until_turn = -1
+        self._feint_until_turn = -1
+        self._last_feint_turn = -1000
+        self._feint_turn_scale = 1.0
         self._last_collision_turn = -1000
         self._wall_escape_until_turn = -1
         self._last_wall_hit_turn = -1000
@@ -596,10 +679,23 @@ class CircleStrafer(Bot):
             self._move_direction *= -1
         self._last_wall_hit_turn = self.turn_number
         self._wall_escape_until_turn = self.turn_number + MOVEMENT_POLICY.wall_escape_turns
-        self.set_turn_left(60)
+        escape_x, escape_y = self._wall_escape_destination()
+        turn, speed = drive_command_to_destination(
+            self,
+            escape_x,
+            escape_y,
+            MOVEMENT_POLICY.wall_escape_speed,
+        )
+        self.target_speed = speed
+        self.turn_rate = clamp(
+            turn,
+            -MOVEMENT_POLICY.wall_escape_turn_limit,
+            MOVEMENT_POLICY.wall_escape_turn_limit,
+        )
         self._log(
             "hit.wall",
             move_direction=self._move_direction,
+            center_bearing=round(turn, 3),
             wall_escape_until=self._wall_escape_until_turn,
         )
 

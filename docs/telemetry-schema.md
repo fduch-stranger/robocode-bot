@@ -70,6 +70,7 @@ The browser viewer and telemetry audit normalize bot-specific fields into a comm
 | --- | --- | --- | --- |
 | `movement.duel_flatten` | - | `target`, `suggested_direction`, `distance` | - |
 | `movement.duel_potential` | - | `target`, `destination_x`, `destination_y`, `force_x`, `force_y`, `distance`, `mode`, `evading`, `turn`, `speed` | `movement_mode` from `mode` |
+| `movement.feint` | - | `target`, `mode`, `reason`, `duration`, `move_direction`, `near_wall`, `variant`, `turn_scale` | - |
 | `movement.flatten` | - | `target`, `current_direction`, `suggested_direction`, `bucket`, `current_count`, `alternative_count`, `distance`, `reason` | - |
 | `movement.flatten_shadow` | - | `target`, `current_direction`, `suggested_direction`, `bucket`, `current_count`, `alternative_count`, `distance`, `reason` | - |
 | `movement.goto_surf` | - | `target`, `destination_x`, `destination_y`, `danger`, `wave_kind`, `turn`, `speed` | `movement_mode` from `mode` |

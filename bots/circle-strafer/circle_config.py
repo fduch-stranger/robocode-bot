@@ -101,15 +101,23 @@ class RadarPolicy:
 @dataclass(frozen=True)
 class MovementPolicy:
     field_margin: float = 24
-    wall_margin: float = 110
-    wall_clear_margin: float = 145
+    wall_margin: float = 135
+    wall_clear_margin: float = 180
+    wall_escape_destination_margin: float = 210
+    wall_lookahead_ticks: int = 10
     wall_escape_speed: float = 7
+    wall_escape_turn_limit: float = 10
     orbit_speed: float = 8
     orbit_turn_rate: float = 6
     evade_turn_boost: float = 3
     flattener_strafe_offset: float = 105
     flattener_switch_margin: float = 2.4
     flattener_switch_cooldown: int = 30
+    feint_ticks: int = 12
+    feint_cooldown: int = 42
+    feint_wall_margin: float = 210
+    feint_tight_turn_scale: float = 1.25
+    feint_wide_turn_scale: float = 0.75
     separation_distance: float = 170
     separation_clear_distance: float = 215
     separation_escape_turns: int = 12

@@ -102,6 +102,15 @@ PRESETS: dict[str, dict[str, Any]] = {
             {"name": "adaptive-vs-basic-gf-surfer", "bots": ["bots/adaptive-prime", "legacy:basic-gf-surfer"]},
         ],
     },
+    "adaptive-1v1-basic-gf-surfer-port": {
+        "description": "Adaptive Prime focused Python BasicGFSurfer port benchmark.",
+        "rounds": 24,
+        "repeats": 3,
+        "targetBot": TARGET_BOT,
+        "matchups": [
+            {"name": "adaptive-vs-basic-gf-surfer-port", "bots": ["bots/adaptive-prime", "bots/ports/basic-gf-surfer-port"]},
+        ],
+    },
 }
 
 

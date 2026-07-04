@@ -54,6 +54,22 @@ class RunAbTest(unittest.TestCase):
             preset["matchups"],
         )
 
+    def test_basic_gf_surfer_port_preset_is_focused_on_port(self) -> None:
+        preset = run_ab.PRESETS["adaptive-1v1-basic-gf-surfer-port"]
+
+        self.assertEqual("Adaptive Prime", preset["targetBot"])
+        self.assertEqual(24, preset["rounds"])
+        self.assertEqual(3, preset["repeats"])
+        self.assertEqual(
+            [
+                {
+                    "name": "adaptive-vs-basic-gf-surfer-port",
+                    "bots": ["bots/adaptive-prime", "bots/ports/basic-gf-surfer-port"],
+                }
+            ],
+            preset["matchups"],
+        )
+
     def test_resolve_bot_args_keeps_legacy_token(self) -> None:
         repo = Path("/repo")
 

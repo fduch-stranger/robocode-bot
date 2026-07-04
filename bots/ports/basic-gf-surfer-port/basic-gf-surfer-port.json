@@ -1,0 +1,12 @@
+{
+  "name": "BasicGFSurfer Port",
+  "version": "1.0",
+  "authors": ["robocode-bot"],
+  "description": "Python Tank Royale port of the fixed BasicGFSurfer legacy benchmark.",
+  "homepage": "",
+  "countryCodes": ["DK"],
+  "gameTypes": ["classic", "1v1"],
+  "platform": "Python 3.13",
+  "programmingLang": "Python 3",
+  "base": "basic-gf-surfer-port"
+}

@@ -44,6 +44,22 @@ class MovementTelemetry:
             **_minimum_risk_fields(target_id, decision, command, known_targets, fire_threat_id, include_fire_threat),
         )
 
+    def record_feint(
+        self,
+        target_id: int,
+        mode: str,
+        reason: str,
+        duration: int,
+        move_direction: int,
+        near_wall: bool,
+        variant: str | None = None,
+        turn_scale: float | None = None,
+    ) -> None:
+        self._sink.log(
+            "movement.feint",
+            **_feint_fields(target_id, mode, reason, duration, move_direction, near_wall, variant, turn_scale),
+        )
+
     def record_profile_visit(self, visit: MovementProfileVisit) -> None:
         self._sink.log("movement.profile_visit", **_profile_visit_fields(visit))
 
@@ -147,6 +163,31 @@ def _minimum_risk_fields(
     }
     if include_fire_threat or fire_threat_id is not None:
         fields["fire_threat"] = fire_threat_id
+    return fields
+
+
+def _feint_fields(
+    target_id: int,
+    mode: str,
+    reason: str,
+    duration: int,
+    move_direction: int,
+    near_wall: bool,
+    variant: str | None,
+    turn_scale: float | None,
+) -> dict[str, object]:
+    fields: dict[str, object] = {
+        "target": target_id,
+        "mode": mode,
+        "reason": reason,
+        "duration": duration,
+        "move_direction": move_direction,
+        "near_wall": near_wall,
+    }
+    if variant is not None:
+        fields["variant"] = variant
+    if turn_scale is not None:
+        fields["turn_scale"] = round(turn_scale, 3)
     return fields
 
 

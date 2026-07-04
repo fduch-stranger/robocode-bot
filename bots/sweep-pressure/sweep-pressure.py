@@ -87,6 +87,8 @@ class SweepPressure(Bot):
         )
         self._wall_escape_until_turn = -1
         self._last_wall_hit_turn = -1000
+        self._feint_until_turn = -1
+        self._last_feint_turn = -1000
         self._evade_until_turn = -1
         self._target_accel: dict[int, float] = {}
         self._last_velocity_change_turn: dict[int, int] = {}
@@ -172,8 +174,8 @@ class SweepPressure(Bot):
 
         self.target_speed = MOVEMENT_POLICY.sweep_speed * self._move_direction
         self.turn_rate = (
-            -MOVEMENT_POLICY.sweep_turn_rate * self._move_direction
-            if self.turn_number <= self._evade_until_turn
+            -MOVEMENT_POLICY.sweep_turn_rate
+            if self.turn_number <= self._feint_until_turn
             else MOVEMENT_POLICY.sweep_turn_rate
         )
 
@@ -272,10 +274,7 @@ class SweepPressure(Bot):
             fired_turn=estimated_fire_turn,
             **self._own_motion.movement_wave_kwargs(self.turn_number),
         )
-        active_evasion = not self._wall_risk()
-        if active_evasion:
-            self._move_direction *= -1
-        self._evade_until_turn = max(self._evade_until_turn, self.turn_number + signal.evade_ticks)
+        active_evasion = self._maybe_start_enemy_fire_feint(event.scanned_bot_id, signal.evade_ticks)
         power_mae = self._enemy_fire_power.mean_absolute_error(event.scanned_bot_id)
         self._energy_telemetry.record_enemy_fire_detected(
             event.scanned_bot_id,
@@ -296,6 +295,34 @@ class SweepPressure(Bot):
             fire_source_offset=math.hypot(current_target.x - fire_source.x, current_target.y - fire_source.y),
         )
         return True
+
+    def _maybe_start_enemy_fire_feint(self, target_id: int, evade_ticks: int) -> bool:
+        if not self._feint_allowed():
+            return False
+        if self.turn_number - self._last_feint_turn < MOVEMENT_POLICY.feint_cooldown:
+            return False
+
+        duration = max(1, MOVEMENT_POLICY.feint_ticks)
+        self._last_feint_turn = self.turn_number
+        self._feint_until_turn = self.turn_number + duration
+        self._evade_until_turn = max(self._evade_until_turn, self.turn_number + min(duration, max(1, evade_ticks)))
+        self._movement_telemetry.record_feint(
+            target_id,
+            "counter_sweep",
+            "enemy_fire",
+            duration,
+            self._move_direction,
+            self._near_wall(MOVEMENT_POLICY.wall_clear_margin),
+            variant="counter_sweep",
+        )
+        return True
+
+    def _feint_allowed(self) -> bool:
+        return (
+            self.enemy_count <= 1
+            and not self._near_wall(MOVEMENT_POLICY.wall_clear_margin)
+            and not self._wall_risk(MOVEMENT_POLICY.wall_clear_margin)
+        )
 
     def _update_target_motion_stats(self, event: ScannedBotEvent, previous: TargetSnapshot) -> None:
         speed_delta = event.speed - previous.speed
@@ -439,6 +466,8 @@ class SweepPressure(Bot):
             self._move_direction = 1
             self._wall_escape_until_turn = -1
             self._last_wall_hit_turn = -1000
+            self._feint_until_turn = -1
+            self._last_feint_turn = -1000
             self._enemy_fire_detector.clear_round_state()
             self._evade_until_turn = -1
             self._target_accel.clear()
@@ -462,6 +491,8 @@ class SweepPressure(Bot):
         self._move_direction = 1
         self._wall_escape_until_turn = -1
         self._last_wall_hit_turn = -1000
+        self._feint_until_turn = -1
+        self._last_feint_turn = -1000
         self._enemy_energy_corrections.clear()
         self._enemy_fire_power.clear()
         self._enemy_fire_detector.clear_round_state()

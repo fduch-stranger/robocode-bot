@@ -81,6 +81,7 @@ scripts/run-battle.sh --telemetry --rounds 1 bots/adaptive-prime bots/chase-lock
 | Bot | Role | Documentation |
 | --- | --- | --- |
 | Adaptive Prime | 1v1 champion candidate with go-to surfing, potential fields, and adaptive firepower | [README](bots/adaptive-prime/README.md) |
+| BasicGFSurfer Port | Python port of the fixed BasicGFSurfer legacy benchmark | [README](bots/ports/basic-gf-surfer-port/README.md) |
 | Chase Lock | target-lock pressure bot with range-band chase movement | [README](bots/chase-lock/README.md) |
 | Circle Strafer | stable defensive orbital bot | [README](bots/circle-strafer/README.md) |
 | Sweep Pressure | direct pressure bot with sweeping movement | [README](bots/sweep-pressure/README.md) |

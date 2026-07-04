@@ -427,6 +427,10 @@ EVENT_SPECS: dict[str, TelemetryEventSpec] = {
         optional_fields=("target", "destination_x", "destination_y", "danger", "wave_kind", "turn", "speed"),
         aliases={"movement_mode": ("mode",)},
     ),
+    "movement.feint": TelemetryEventSpec(
+        "movement",
+        optional_fields=("target", "mode", "reason", "duration", "move_direction", "near_wall", "variant", "turn_scale"),
+    ),
     "movement.duel_potential": TelemetryEventSpec(
         "movement",
         optional_fields=("target", "destination_x", "destination_y", "force_x", "force_y", "distance", "mode", "evading", "turn", "speed"),

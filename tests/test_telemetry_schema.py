@@ -54,6 +54,7 @@ class TelemetrySchemaTest(unittest.TestCase):
             "enemy.fire_detected",
             "movement.flatten",
             "movement.flatten_shadow",
+            "movement.feint",
             "movement.minimum_risk",
             "hit.bullet",
         ):

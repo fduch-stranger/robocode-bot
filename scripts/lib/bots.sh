@@ -2,7 +2,7 @@ discover_bot_dirs() {
   local root_dir="$1"
   local bot
 
-  for bot in "$root_dir"/bots/*; do
+  for bot in "$root_dir"/bots/* "$root_dir"/bots/ports/*; do
     if [[ -d "$bot" ]] && compgen -G "$bot/*.json" > /dev/null; then
       printf '%s\n' "$bot"
     fi

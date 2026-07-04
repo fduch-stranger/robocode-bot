@@ -623,6 +623,15 @@ class TelemetryEmitterTest(unittest.TestCase):
             move_direction=-1,
             collision_escape=False,
         )
+        telemetry.record_feint(
+            target_id=5,
+            mode="counter_sweep",
+            reason="enemy_fire",
+            duration=12,
+            move_direction=-1,
+            near_wall=False,
+            variant="counter_sweep",
+        )
         telemetry.record_flattening(7, flattening, 200.12)
         telemetry.record_profile_visit(profile)
 
@@ -632,6 +641,7 @@ class TelemetryEmitterTest(unittest.TestCase):
                 ("sample", "wall.avoid"),
                 ("sample", "search.wall_avoid"),
                 ("sample", "separate"),
+                ("log", "movement.feint"),
                 ("log", "movement.flatten"),
                 ("log", "movement.profile_visit"),
             ],
@@ -657,6 +667,18 @@ class TelemetryEmitterTest(unittest.TestCase):
         )
         self.assertEqual(
             {
+                "target": 5,
+                "mode": "counter_sweep",
+                "reason": "enemy_fire",
+                "duration": 12,
+                "move_direction": -1,
+                "near_wall": False,
+                "variant": "counter_sweep",
+            },
+            sink.records[4][2],
+        )
+        self.assertEqual(
+            {
                 "target": 7,
                 "suggested_direction": -1,
                 "bucket": 4,
@@ -664,13 +686,13 @@ class TelemetryEmitterTest(unittest.TestCase):
                 "alternative_count": 1.1,
                 "distance": 200.1,
             },
-            sink.records[4][2],
+            sink.records[5][2],
         )
         self.assertEqual(
             {"target", "guess_factor", "bin", "bucket", "visits", "wave_age", "ensemble_danger", "ensemble_samples"},
-            set(sink.records[5][2]),
+            set(sink.records[6][2]),
         )
-        self.assertEqual(0.457, sink.records[5][2]["ensemble_danger"])
+        self.assertEqual(0.457, sink.records[6][2]["ensemble_danger"])
 
     def test_movement_telemetry_records_adaptive_events(self) -> None:
         sink = RecordingSink()

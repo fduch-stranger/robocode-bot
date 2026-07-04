@@ -112,6 +112,8 @@ class MovementPolicy:
     flattener_switch_margin: float = 2.2
     flattener_switch_cooldown: int = 30
     wall_hit_flip_cooldown: int = 8
+    feint_ticks: int = 12
+    feint_cooldown: int = 42
 
 
 GUN_POLICY = GunPolicy()

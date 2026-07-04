@@ -458,6 +458,7 @@ not a true before/after comparison.
 | `adaptive-melee-core` | Adaptive Prime | four local bots |
 | `adaptive-1v1-boss` | Adaptive Prime | DrussGT, Saguaro, BasicGFSurferFixed, Diamond |
 | `adaptive-1v1-basic-gf-surfer` | Adaptive Prime | BasicGFSurferFixed only |
+| `adaptive-1v1-basic-gf-surfer-port` | Adaptive Prime | Python BasicGFSurfer port only |
 
 Default preset settings are 24 rounds and 3 repeats unless overridden.
 
@@ -485,6 +486,7 @@ scripts/run-ab.sh \
   --candidate <candidate-worktree>
 
 scripts/run-ab.sh --name smoke --preset adaptive-1v1-core --rounds 1 --repeats 1
+scripts/run-ab.sh --name surfer-port-smoke --preset adaptive-1v1-basic-gf-surfer-port --rounds 1 --repeats 1
 ```
 
 ### Historical Commit A/B With Current Analysis
@@ -603,6 +605,7 @@ scripts/run-battle.sh --rounds 10 bots/adaptive-prime --legacy drussgt
 scripts/run-battle.sh --rounds 10 bots/adaptive-prime --legacy saguaro
 scripts/run-battle.sh --rounds 10 bots/adaptive-prime --legacy basic-gf-surfer
 scripts/run-battle.sh --rounds 10 bots/adaptive-prime --legacy basic-gf-surfer-original
+scripts/run-battle.sh --rounds 10 bots/adaptive-prime bots/ports/basic-gf-surfer-port
 scripts/run-battle.sh --rounds 10 bots/adaptive-prime --legacy diamond
 scripts/run-battle.sh bots/adaptive-prime legacy:wiki.BasicGFSurferFixed_1.02
 scripts/run-battle.sh --legacy all
@@ -618,6 +621,11 @@ The `basic-gf-surfer` alias is the default BasicGFSurfer check and prefers
 round-stall behavior. Use `basic-gf-surfer-original` or
 `legacy:wiki.BasicGFSurfer_1.02` when you specifically need the unpatched
 converted bot.
+
+`bots/ports/basic-gf-surfer-port` is a native Python port of the fixed legacy surfer.
+Use it when you want a non-legacy local surfer opponent; compare it against
+`--legacy basic-gf-surfer` before treating its strength as equivalent to the
+fixed Java legacy bot.
 
 ## Recommended Workflows
 
