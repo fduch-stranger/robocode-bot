@@ -239,6 +239,41 @@ excluded-round runs, or raw stuck-surfer score.
 Only add a displacement availability/confidence gate after density selection and
 candidate matching are improved, and only if diagnostics show a clear cutoff.
 
+## July 2026 Implementation Evidence
+
+Implemented density-best replay aggregation, coarse-regime candidate bonuses,
+soft order-2 Markov candidate weighting, and replay-quality diagnostics. Forced
+Adaptive displacement checks:
+
+```text
+local bots, 12 rounds each:
+  Chase Lock:     Adaptive 2014, opponent 323, firsts 12-0
+  Circle Strafer: Adaptive 1964, opponent 246, firsts 12-0
+  Sweep Pressure: Adaptive 1875, opponent 254, firsts 12-0
+
+BasicGFSurfer, Markov on:
+  run: battle-results/runs/20260704-125200
+  raw: 24 rounds, Adaptive 2092, firsts 17, accuracy 16.6%
+  filtered: 20 rounds, score 1372, firsts 13, accuracy 11.1%
+  filtered displacement: 976 shots, 108 hits, 11.1% hit rate
+  filtered displacement wave average: 0.0523
+  diagnostics: replay_count 15.85, peak_share 0.6122,
+    bearing_spread 5.8916, markov_confidence 0.4975
+
+BasicGFSurfer, density-only Markov off:
+  run: battle-results/runs/20260704-125647
+  raw: 24 rounds, Adaptive 1623, firsts 11, accuracy 13.7%
+  filtered: 22 rounds, score 1262, firsts 9, accuracy 11.5%
+  filtered displacement: 1008 shots, 112 hits, 11.1% hit rate
+  filtered displacement wave average: 0.0607
+```
+
+Interpretation: Markov weighting is not yet a strong hit-rate discriminator,
+but the Markov-on run had clearly better raw and filtered score/first-place
+results than the density-only comparison, so the first implementation keeps the
+soft Markov signal default-on. The diagnostics do not yet justify a hard
+displacement confidence gate.
+
 Reasonable future gate signals:
 
 ```text
