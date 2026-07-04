@@ -102,11 +102,17 @@ class RadarPolicy:
 class MovementPolicy:
     field_margin: float = 24
     wall_margin: float = 110
-    wall_escape_speed: float = 6
+    wall_clear_margin: float = 145
+    wall_escape_speed: float = 7
     orbit_speed: float = 8
     orbit_turn_rate: float = 6
-    flattener_strafe_offset: float = 92
+    evade_turn_boost: float = 3
+    flattener_strafe_offset: float = 105
+    flattener_switch_margin: float = 2.4
+    flattener_switch_cooldown: int = 30
     separation_distance: float = 170
+    separation_clear_distance: float = 215
+    separation_escape_turns: int = 12
     panic_distance: float = 115
     collision_escape_turns: int = 20
     wall_escape_turns: int = 18

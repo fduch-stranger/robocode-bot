@@ -37,10 +37,16 @@ discover_legacy_bot_dirs() {
   fi
 
   for bot in "$legacy_root"/*; do
-    if [[ -d "$bot" ]] && compgen -G "$bot/*.json" > /dev/null && compgen -G "$bot/*.sh" > /dev/null; then
+    if is_valid_legacy_bot_dir "$bot"; then
       printf '%s\n' "$bot"
     fi
   done
+}
+
+is_valid_legacy_bot_dir() {
+  local bot="$1"
+
+  [[ -d "$bot" ]] && compgen -G "$bot/*.json" > /dev/null && compgen -G "$bot/*.sh" > /dev/null
 }
 
 legacy_bot_dir() {
@@ -58,7 +64,13 @@ legacy_bot_dir() {
     drussgt|jk.mega.drussgt|jk.mega.drussgt_3.1.12)
       candidate="$legacy_root/jk.mega.DrussGT_3.1.12"
       ;;
-    basic-gf-surfer|basicgfsurfer|wiki.basicgfsurfer|wiki.basicgfsurfer_1.02)
+    basic-gf-surfer|basicgfsurfer|wiki.basicgfsurferfixed|wiki.basicgfsurferfixed_1.02)
+      candidate="$legacy_root/wiki.BasicGFSurferFixed_1.02"
+      if ! is_valid_legacy_bot_dir "$candidate"; then
+        candidate="$legacy_root/wiki.BasicGFSurfer_1.02"
+      fi
+      ;;
+    basic-gf-surfer-original|basicgfsurfer-original|wiki.basicgfsurfer|wiki.basicgfsurfer_1.02)
       candidate="$legacy_root/wiki.BasicGFSurfer_1.02"
       ;;
     diamond|voidious.diamond|voidious.diamond_1.8.28)
@@ -72,7 +84,7 @@ legacy_bot_dir() {
       ;;
   esac
 
-  if [[ -d "$candidate" ]] && compgen -G "$candidate/*.json" > /dev/null && compgen -G "$candidate/*.sh" > /dev/null; then
+  if is_valid_legacy_bot_dir "$candidate"; then
     printf '%s\n' "$candidate"
     return 0
   fi
@@ -84,6 +96,11 @@ list_legacy_bots() {
   local root_dir="$1"
   local bot
   local name
+  local legacy_root
+  local fixed_basic_gf_surfer
+
+  legacy_root="$(legacy_bots_root "$root_dir")"
+  fixed_basic_gf_surfer="$legacy_root/wiki.BasicGFSurferFixed_1.02"
 
   while IFS= read -r bot; do
     name="$(basename "$bot")"
@@ -91,8 +108,15 @@ list_legacy_bots() {
       jk.mega.DrussGT_3.1.12)
         printf '%s\t%s\n' "drussgt" "$bot"
         ;;
-      wiki.BasicGFSurfer_1.02)
+      wiki.BasicGFSurferFixed_1.02)
         printf '%s\t%s\n' "basic-gf-surfer" "$bot"
+        ;;
+      wiki.BasicGFSurfer_1.02)
+        if is_valid_legacy_bot_dir "$fixed_basic_gf_surfer"; then
+          printf '%s\t%s\n' "basic-gf-surfer-original" "$bot"
+        else
+          printf '%s\t%s\n' "basic-gf-surfer" "$bot"
+        fi
         ;;
       voidious.Diamond_1.8.28)
         printf '%s\t%s\n' "diamond" "$bot"

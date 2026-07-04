@@ -85,6 +85,8 @@ class SweepPressure(Bot):
             self._enemy_energy_corrections,
             fire_power=self._enemy_fire_power,
         )
+        self._wall_escape_until_turn = -1
+        self._last_wall_hit_turn = -1000
         self._evade_until_turn = -1
         self._target_accel: dict[int, float] = {}
         self._last_velocity_change_turn: dict[int, int] = {}
@@ -110,6 +112,8 @@ class SweepPressure(Bot):
                 bullet_hit_visit_weight=1.0,
                 bullet_shadow_enabled=True,
                 bullet_shadow_danger_multiplier=0.65,
+                switch_margin=MOVEMENT_POLICY.flattener_switch_margin,
+                switch_cooldown=MOVEMENT_POLICY.flattener_switch_cooldown,
             )
         )
         self._own_motion = OwnMotionTracker()
@@ -142,7 +146,7 @@ class SweepPressure(Bot):
             self.go()
 
     def _move(self) -> None:
-        if self._wall_risk():
+        if self._wall_escape_active():
             center_bearing = body_bearing_to(self, self.arena_width / 2, self.arena_height / 2)
             self.target_speed = MOVEMENT_POLICY.wall_escape_speed
             self.turn_rate = clamp(center_bearing, -10, 10)
@@ -167,17 +171,51 @@ class SweepPressure(Bot):
                     return
 
         self.target_speed = MOVEMENT_POLICY.sweep_speed * self._move_direction
-        self.turn_rate = -MOVEMENT_POLICY.sweep_turn_rate * self._move_direction if self.turn_number <= self._evade_until_turn else MOVEMENT_POLICY.sweep_turn_rate
+        self.turn_rate = (
+            -MOVEMENT_POLICY.sweep_turn_rate * self._move_direction
+            if self.turn_number <= self._evade_until_turn
+            else MOVEMENT_POLICY.sweep_turn_rate
+        )
 
-    def _wall_risk(self) -> bool:
-        heading = math.radians(self.direction)
-        projected_x = self.x + math.cos(heading) * MOVEMENT_POLICY.sweep_speed * self._move_direction * MOVEMENT_POLICY.wall_lookahead_ticks
-        projected_y = self.y + math.sin(heading) * MOVEMENT_POLICY.sweep_speed * self._move_direction * MOVEMENT_POLICY.wall_lookahead_ticks
+    def _wall_escape_active(self) -> bool:
+        if self._near_wall(MOVEMENT_POLICY.wall_margin) or self._wall_risk(MOVEMENT_POLICY.wall_margin):
+            self._wall_escape_until_turn = max(
+                self._wall_escape_until_turn,
+                self.turn_number + MOVEMENT_POLICY.wall_escape_turns,
+            )
+            return True
         return (
-            projected_x < MOVEMENT_POLICY.wall_margin
-            or projected_x > self.arena_width - MOVEMENT_POLICY.wall_margin
-            or projected_y < MOVEMENT_POLICY.wall_margin
-            or projected_y > self.arena_height - MOVEMENT_POLICY.wall_margin
+            self.turn_number <= self._wall_escape_until_turn
+            and (
+                self._near_wall(MOVEMENT_POLICY.wall_clear_margin)
+                or self._wall_risk(MOVEMENT_POLICY.wall_clear_margin)
+            )
+        )
+
+    def _near_wall(self, margin: float | None = None) -> bool:
+        margin = MOVEMENT_POLICY.wall_margin if margin is None else margin
+        return (
+            self.x < margin
+            or self.x > self.arena_width - margin
+            or self.y < margin
+            or self.y > self.arena_height - margin
+        )
+
+    def _wall_risk(self, margin: float | None = None) -> bool:
+        margin = MOVEMENT_POLICY.wall_margin if margin is None else margin
+        heading = math.radians(self.direction)
+        projection = (
+            MOVEMENT_POLICY.sweep_speed
+            * self._move_direction
+            * MOVEMENT_POLICY.wall_lookahead_ticks
+        )
+        projected_x = self.x + math.cos(heading) * projection
+        projected_y = self.y + math.sin(heading) * projection
+        return (
+            projected_x < margin
+            or projected_x > self.arena_width - margin
+            or projected_y < margin
+            or projected_y > self.arena_height - margin
         )
 
     def on_game_started(self, event: GameStartedEvent) -> None:
@@ -399,6 +437,8 @@ class SweepPressure(Bot):
             self._targets.clear()
             self._target_id = None
             self._move_direction = 1
+            self._wall_escape_until_turn = -1
+            self._last_wall_hit_turn = -1000
             self._enemy_fire_detector.clear_round_state()
             self._evade_until_turn = -1
             self._target_accel.clear()
@@ -420,6 +460,8 @@ class SweepPressure(Bot):
         self._targets.clear()
         self._target_id = None
         self._move_direction = 1
+        self._wall_escape_until_turn = -1
+        self._last_wall_hit_turn = -1000
         self._enemy_energy_corrections.clear()
         self._enemy_fire_power.clear()
         self._enemy_fire_detector.clear_round_state()
@@ -491,12 +533,19 @@ class SweepPressure(Bot):
         return self._enemy_energy_corrections.consume(target_id, current_turn, after_turn)
 
     def on_hit_wall(self, event: HitWallEvent) -> None:
-        self._move_direction *= -1
+        if self.turn_number - self._last_wall_hit_turn > MOVEMENT_POLICY.wall_hit_flip_cooldown:
+            self._move_direction *= -1
+        self._last_wall_hit_turn = self.turn_number
+        self._wall_escape_until_turn = self.turn_number + MOVEMENT_POLICY.wall_escape_turns
         self.set_turn_left(35)
-        self._log("hit.wall", move_direction=self._move_direction)
+        self._log(
+            "hit.wall",
+            move_direction=self._move_direction,
+            wall_escape_until=self._wall_escape_until_turn,
+        )
 
     def on_hit_by_bullet(self, event: HitByBulletEvent) -> None:
-        if not self._wall_risk():
+        if not self._near_wall() and not self._wall_risk():
             self._move_direction *= -1
         self.set_turn_left(25 * self._move_direction)
         movement_visit = None

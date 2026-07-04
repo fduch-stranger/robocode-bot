@@ -14,8 +14,10 @@ Shared systems are documented in:
 
 - Constant lateral orbit is the default behavior.
 - Close enemy separation has higher priority than aiming pressure.
-- Wall escape is simple and conservative.
-- 1v1 movement learning only changes orbit direction.
+- Wall escape is simple, conservative, and held until the bot is clearly away
+  from the edge.
+- 1v1 movement learning only changes orbit direction, with surf danger included
+  in the direction choice.
 - Melee uses minimum-risk movement when enough targets are known.
 
 ## Turn Flow
@@ -69,8 +71,12 @@ Priority order:
 4. Normal orbit.
 5. 1v1 flattener direction flip.
 
-Separation uses a mirrored point away from the close enemy plus a lateral offset.
-This keeps the bot from ramming while preserving lateral motion.
+Wall escape and separation both use clear margins so the bot does not chatter
+between states near the threshold. Normal 1v1 orbit uses a wider flattener
+strafe offset and a longer direction-switch cooldown so the bot commits to a
+visible strafe before changing direction. Separation uses a mirrored point away
+from the close enemy plus a lateral offset. This keeps the bot from ramming
+while preserving lateral motion.
 
 ## Firepower Policy
 
@@ -138,8 +144,11 @@ launch, reset, audit, and stop commands.
 
 ## Tuning Checklist
 
-- Wall clipping: inspect `wall.avoid`, `WALL_MARGIN`, `WALL_ESCAPE_TURNS`.
+- Wall clipping or wall twitching: inspect `wall.avoid`, `WALL_MARGIN`,
+  `WALL_CLEAR_MARGIN`, `WALL_ESCAPE_TURNS`.
 - Close combat losses: inspect `separate`, `SEPARATION_DISTANCE`,
-  `PANIC_DISTANCE`.
-- Predictable orbit: inspect `movement.flatten` and `movement.profile_visit`.
+  `SEPARATION_CLEAR_DISTANCE`, `PANIC_DISTANCE`.
+- Predictable orbit or excess direction flips: inspect `movement.flatten`,
+  `movement.profile_visit`, `FLATTENER_SWITCH_MARGIN`, and
+  `FLATTENER_SWITCH_COOLDOWN`.
 - Low damage: inspect `hold_reason`, `firepower`, and `aim_mode`.

@@ -75,6 +75,7 @@ class CircleStrafer(Bot):
         self._targets: dict[int, TargetSnapshot] = {}
         self._target_id: int | None = None
         self._collision_escape_until_turn = -1
+        self._separation_escape_until_turn = -1
         self._last_collision_turn = -1000
         self._wall_escape_until_turn = -1
         self._last_wall_hit_turn = -1000
@@ -114,6 +115,8 @@ class CircleStrafer(Bot):
                 bullet_hit_visit_weight=1.0,
                 bullet_shadow_enabled=True,
                 bullet_shadow_danger_multiplier=0.65,
+                switch_margin=MOVEMENT_POLICY.flattener_switch_margin,
+                switch_cooldown=MOVEMENT_POLICY.flattener_switch_cooldown,
             )
         )
         self._own_motion = OwnMotionTracker()
@@ -146,7 +149,7 @@ class CircleStrafer(Bot):
             self.go()
 
     def _move(self) -> None:
-        if self._near_wall() or self.turn_number <= self._wall_escape_until_turn:
+        if self._wall_escape_active():
             center_bearing = body_bearing_to(self, self.arena_width / 2, self.arena_height / 2)
             self.target_speed = MOVEMENT_POLICY.wall_escape_speed
             self.turn_rate = clamp(center_bearing, -10, 10)
@@ -157,7 +160,7 @@ class CircleStrafer(Bot):
         if close_target is not None:
             distance = distance_to(self, close_target.x, close_target.y)
             escaping_collision = self.turn_number <= self._collision_escape_until_turn
-            if escaping_collision or distance < MOVEMENT_POLICY.separation_distance:
+            if self._separation_active(distance, escaping_collision):
                 away_bearing = body_bearing_to(
                     self,
                     self.x - (close_target.x - self.x),
@@ -202,15 +205,47 @@ class CircleStrafer(Bot):
                     return
 
         self.target_speed = MOVEMENT_POLICY.orbit_speed * self._move_direction
-        evade_boost = 4 if self.turn_number <= self._evade_until_turn else 0
+        evade_boost = (
+            MOVEMENT_POLICY.evade_turn_boost
+            if self.turn_number <= self._evade_until_turn
+            else 0
+        )
         self.turn_rate = (MOVEMENT_POLICY.orbit_turn_rate + evade_boost) * self._move_direction
 
-    def _near_wall(self) -> bool:
+    def _wall_escape_active(self) -> bool:
+        if self._near_wall(MOVEMENT_POLICY.wall_margin):
+            self._wall_escape_until_turn = max(
+                self._wall_escape_until_turn,
+                self.turn_number + MOVEMENT_POLICY.wall_escape_turns,
+            )
+            return True
         return (
-            self.x < MOVEMENT_POLICY.wall_margin
-            or self.x > self.arena_width - MOVEMENT_POLICY.wall_margin
-            or self.y < MOVEMENT_POLICY.wall_margin
-            or self.y > self.arena_height - MOVEMENT_POLICY.wall_margin
+            self.turn_number <= self._wall_escape_until_turn
+            and self._near_wall(MOVEMENT_POLICY.wall_clear_margin)
+        )
+
+    def _separation_active(self, distance: float, escaping_collision: bool) -> bool:
+        if distance < MOVEMENT_POLICY.separation_distance:
+            self._separation_escape_until_turn = max(
+                self._separation_escape_until_turn,
+                self.turn_number + MOVEMENT_POLICY.separation_escape_turns,
+            )
+        return (
+            escaping_collision
+            or distance < MOVEMENT_POLICY.separation_distance
+            or (
+                self.turn_number <= self._separation_escape_until_turn
+                and distance < MOVEMENT_POLICY.separation_clear_distance
+            )
+        )
+
+    def _near_wall(self, margin: float | None = None) -> bool:
+        margin = MOVEMENT_POLICY.wall_margin if margin is None else margin
+        return (
+            self.x < margin
+            or self.x > self.arena_width - margin
+            or self.y < margin
+            or self.y > self.arena_height - margin
         )
 
     def on_game_started(self, event: GameStartedEvent) -> None:
@@ -432,6 +467,7 @@ class CircleStrafer(Bot):
             self._targets.clear()
             self._target_id = None
             self._collision_escape_until_turn = -1
+            self._separation_escape_until_turn = -1
             self._last_collision_turn = -1000
             self._wall_escape_until_turn = -1
             self._last_wall_hit_turn = -1000
@@ -456,6 +492,7 @@ class CircleStrafer(Bot):
         self._targets.clear()
         self._target_id = None
         self._collision_escape_until_turn = -1
+        self._separation_escape_until_turn = -1
         self._last_collision_turn = -1000
         self._wall_escape_until_turn = -1
         self._last_wall_hit_turn = -1000

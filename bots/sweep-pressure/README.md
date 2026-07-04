@@ -13,8 +13,10 @@ Shared systems are documented in:
 ## What Makes It Different
 
 - Sweep movement is the default.
-- Wall risk is projected ahead using heading, speed, and lookahead ticks.
-- 1v1 flattener flips sweep direction when learned danger says to.
+- Wall risk combines actual near-wall position with projected heading, speed,
+  and lookahead ticks, then holds briefly until the path is clearly safe.
+- 1v1 flattener flips sweep direction when learned danger says to, with surf
+  danger included in the direction choice.
 - Melee uses minimum-risk destinations instead of plain sweeping.
 - Close-range firepower is slightly more aggressive than Circle.
 
@@ -69,8 +71,12 @@ projected_x = x + cos(direction) * SWEEP_SPEED * move_direction * WALL_LOOKAHEAD
 projected_y = y + sin(direction) * SWEEP_SPEED * move_direction * WALL_LOOKAHEAD_TICKS
 ```
 
-If the projected point violates `WALL_MARGIN`, the bot turns toward the arena
-center.
+If the bot is inside `WALL_MARGIN` or the projected point violates
+`WALL_MARGIN`, the bot turns toward the arena center. It keeps that escape
+active until both the current position and projected path clear
+`WALL_CLEAR_MARGIN`, which avoids rapid wall-enter/wall-exit flicker. Repeated
+wall hits also use a short direction-flip cooldown so one bad edge contact does
+not immediately become several alternating reversals.
 
 ## Target Scoring
 
@@ -145,8 +151,12 @@ launch, reset, audit, and stop commands.
 
 ## Tuning Checklist
 
-- Wall hits: inspect `wall.avoid`, `WALL_MARGIN`, `WALL_LOOKAHEAD_TICKS`.
-- Predictable sweep: inspect `movement.flatten` and `move_direction`.
+- Wall hits or wall twitching: inspect `wall.avoid`, `WALL_MARGIN`,
+  `WALL_CLEAR_MARGIN`, `WALL_LOOKAHEAD_TICKS`, `WALL_ESCAPE_TURNS`, and
+  `WALL_HIT_FLIP_COOLDOWN`.
+- Predictable sweep or excess direction flips: inspect `movement.flatten`,
+  `move_direction`, `FLATTENER_SWITCH_MARGIN`, and
+  `FLATTENER_SWITCH_COOLDOWN`.
 - Bad melee survival: inspect `movement.minimum_risk`.
 - Wasted energy: inspect `firepower`, `hold_reason`, and hit rate by
   `aim_mode`.

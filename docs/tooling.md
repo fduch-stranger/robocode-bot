@@ -20,7 +20,7 @@ flowchart TD
     O["scripts/verify-telemetry.sh"] --> E
     O --> M
     P["tools/telemetry_schema_docs.py"] --> Q["docs/telemetry-schema.md"]
-    R["tools/surfer_glitch_analysis.py"] --> S["filter high-accuracy BasicGFSurfer rounds"]
+    R["tools/surfer_glitch_analysis.py"] --> S["filter high-accuracy BasicGFSurferFixed rounds"]
 ```
 
 ## Environment
@@ -360,7 +360,9 @@ the next N real shots, production wave average, eval-wave average, and
 score-vs-hit gaps. Use this to identify modes that look strong virtually but
 underperform with real bullets before changing live switch policy.
 
-For BasicGFSurfer-style legacy validation, use 20+ round telemetry runs so KNN
+For BasicGFSurfer-style legacy validation, `basic-gf-surfer` resolves to the
+fixed local variant when present, falling back to the original converted bot
+only when the fixed folder is unavailable. Use 20+ round telemetry runs so KNN
 memory can warm up, then filter likely stuck-surfer rounds where Adaptive hit
 accuracy is abnormally high:
 
@@ -377,7 +379,7 @@ and `pairedFiltered` metrics after excluding rounds where Adaptive accuracy is
 greater than the threshold. `pairedFiltered` keeps only round numbers that are
 valid on both baseline and candidate, reports excluded and unpaired rounds
 separately, and prints round-by-round score/first-place/accuracy deltas. Use
-`pairedFiltered` and per-round deltas when judging BasicGFSurfer gun
+`pairedFiltered` and per-round deltas when judging BasicGFSurferFixed gun
 experiments; summed filtered deltas can be misleading when baseline and
 candidate exclude different numbers of rounds. Raw improvements can be
 dominated by rounds where the legacy surfer was stuck or glitchy.
@@ -454,8 +456,8 @@ not a true before/after comparison.
 | `circle-1v1-core` | Circle Strafer | vs Adaptive, Chase, Sweep |
 | `sweep-1v1-core` | Sweep Pressure | vs Adaptive, Chase, Circle |
 | `adaptive-melee-core` | Adaptive Prime | four local bots |
-| `adaptive-1v1-boss` | Adaptive Prime | DrussGT, Saguaro, BasicGFSurfer, Diamond |
-| `adaptive-1v1-basic-gf-surfer` | Adaptive Prime | BasicGFSurfer only |
+| `adaptive-1v1-boss` | Adaptive Prime | DrussGT, Saguaro, BasicGFSurferFixed, Diamond |
+| `adaptive-1v1-basic-gf-surfer` | Adaptive Prime | BasicGFSurferFixed only |
 
 Default preset settings are 24 rounds and 3 repeats unless overridden.
 
@@ -512,7 +514,7 @@ tools/surfer_glitch_analysis.py \
   --json-output battle-results/ab/<timestamp>-simple-knn-vs-current-basic-gf-surfer/surfer-filtered-summary.json
 ```
 
-Use `pairedFiltered` from `surfer_glitch_analysis.py` as the BasicGFSurfer
+Use `pairedFiltered` from `surfer_glitch_analysis.py` as the BasicGFSurferFixed
 decision metric. The baseline worktree uses its historical bot code and
 launcher, but the analyzer reads the newly generated telemetry from both sides,
 so old JSONL compatibility is not required. Start with `--rounds 1 --repeats 1`
@@ -560,7 +562,7 @@ Decision labels:
 Telemetry is off by default during A/B runs. The runner warns if telemetry
 viewers are discovered afterward, because live telemetry can add noise and make
 benchmark results less comparable. Use `--telemetry` for diagnostics or
-BasicGFSurfer validation that needs per-round hit-rate filtering:
+BasicGFSurferFixed validation that needs per-round hit-rate filtering:
 
 ```sh
 scripts/run-ab.sh \
@@ -600,8 +602,9 @@ scripts/run-battle.sh --list-legacy
 scripts/run-battle.sh --rounds 10 bots/adaptive-prime --legacy drussgt
 scripts/run-battle.sh --rounds 10 bots/adaptive-prime --legacy saguaro
 scripts/run-battle.sh --rounds 10 bots/adaptive-prime --legacy basic-gf-surfer
+scripts/run-battle.sh --rounds 10 bots/adaptive-prime --legacy basic-gf-surfer-original
 scripts/run-battle.sh --rounds 10 bots/adaptive-prime --legacy diamond
-scripts/run-battle.sh bots/adaptive-prime legacy:wiki.BasicGFSurfer_1.02
+scripts/run-battle.sh bots/adaptive-prime legacy:wiki.BasicGFSurferFixed_1.02
 scripts/run-battle.sh --legacy all
 ```
 
@@ -609,6 +612,12 @@ Legacy bots are resolved from `ROBOCODE_LEGACY_BOTS_ROOT`, or from the
 repo-local ignored `legacy-bots/` directory when the variable is empty. For
 headless CLI battles, the runner creates a small shim so converted legacy bots
 can run in the headless process environment.
+
+The `basic-gf-surfer` alias is the default BasicGFSurfer check and prefers
+`wiki.BasicGFSurferFixed_1.02`, a locally fixed legacy variant with reduced
+round-stall behavior. Use `basic-gf-surfer-original` or
+`legacy:wiki.BasicGFSurfer_1.02` when you specifically need the unpatched
+converted bot.
 
 ## Recommended Workflows
 

@@ -183,7 +183,9 @@ Valid pinned values are `head_on`, `linear`, `linear_wall_aware`,
 forced gun is used only on ticks where that gun has enough data to produce an
 aim bearing; otherwise the selector falls back to an available mode.
 
-For displacement density-only validation, Adaptive also accepts:
+For displacement density-only validation, Adaptive also accepts the following
+override. The `basic-gf-surfer` alias prefers the fixed local BasicGFSurfer
+variant when configured:
 
 ```sh
 ROBOCODE_ADAPTIVE_GUN_MODE=displacement \

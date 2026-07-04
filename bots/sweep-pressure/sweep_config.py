@@ -102,11 +102,16 @@ class RadarPolicy:
 class MovementPolicy:
     field_margin: float = 18
     wall_margin: float = 45
+    wall_clear_margin: float = 75
     wall_lookahead_ticks: int = 12
+    wall_escape_turns: int = 12
     wall_escape_speed: float = 7
     sweep_speed: float = 7
     sweep_turn_rate: float = 3.5
     flattener_strafe_offset: float = 92
+    flattener_switch_margin: float = 2.2
+    flattener_switch_cooldown: int = 30
+    wall_hit_flip_cooldown: int = 8
 
 
 GUN_POLICY = GunPolicy()

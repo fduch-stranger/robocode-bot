@@ -94,7 +94,7 @@ PRESETS: dict[str, dict[str, Any]] = {
         ],
     },
     "adaptive-1v1-basic-gf-surfer": {
-        "description": "Adaptive Prime focused BasicGFSurfer 1v1 benchmark.",
+        "description": "Adaptive Prime focused BasicGFSurferFixed 1v1 benchmark.",
         "rounds": 24,
         "repeats": 3,
         "targetBot": TARGET_BOT,

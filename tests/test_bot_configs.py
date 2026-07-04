@@ -344,6 +344,15 @@ class BotConfigTest(unittest.TestCase):
         self.assertEqual(default_config.TARGET_POLICY.switch_margin, 110)
         self.assertEqual(default_config.RADAR_POLICY.search_rate, -16)
         self.assertEqual(default_config.MOVEMENT_POLICY.orbit_speed, 8)
+        self.assertEqual(default_config.MOVEMENT_POLICY.wall_escape_speed, 7)
+        self.assertEqual(default_config.MOVEMENT_POLICY.flattener_strafe_offset, 105)
+        self.assertGreater(default_config.MOVEMENT_POLICY.wall_clear_margin, default_config.MOVEMENT_POLICY.wall_margin)
+        self.assertGreater(
+            default_config.MOVEMENT_POLICY.separation_clear_distance,
+            default_config.MOVEMENT_POLICY.separation_distance,
+        )
+        self.assertGreater(default_config.MOVEMENT_POLICY.flattener_switch_margin, 1.5)
+        self.assertGreaterEqual(default_config.MOVEMENT_POLICY.flattener_switch_cooldown, 30)
         self.assertEqual(default_config.build_fire_gate().config.low_energy_hold, default_config.FIRE_POLICY.low_energy_hold)
         self.assertEqual(default_config.build_radar_config().rescan_interval, default_config.RADAR_POLICY.rescan_interval)
 
@@ -386,6 +395,11 @@ class BotConfigTest(unittest.TestCase):
         self.assertEqual(default_config.RADAR_POLICY.reacquire_overscan, 24)
         self.assertEqual(default_config.MOVEMENT_POLICY.sweep_turn_rate, 3.5)
         self.assertEqual(default_config.MOVEMENT_POLICY.wall_lookahead_ticks, 12)
+        self.assertGreater(default_config.MOVEMENT_POLICY.wall_clear_margin, default_config.MOVEMENT_POLICY.wall_margin)
+        self.assertGreaterEqual(default_config.MOVEMENT_POLICY.wall_escape_turns, 10)
+        self.assertGreater(default_config.MOVEMENT_POLICY.flattener_switch_margin, 1.5)
+        self.assertGreaterEqual(default_config.MOVEMENT_POLICY.flattener_switch_cooldown, 30)
+        self.assertGreaterEqual(default_config.MOVEMENT_POLICY.wall_hit_flip_cooldown, 8)
         self.assertEqual(
             default_config.build_fire_gate().config.far_alignment_distance,
             default_config.FIRE_POLICY.far_alignment_distance,
