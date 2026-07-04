@@ -26,27 +26,27 @@ Battle/tool commands:
 - A/B smoke: `scripts/run-ab.sh --name smoke --preset adaptive-1v1-core --rounds 1 --repeats 1`.
 - Python surfer-port smoke: `scripts/run-ab.sh --name surfer-port-smoke --preset adaptive-1v1-basic-gf-surfer-port --rounds 1 --repeats 1`.
 - Legacy discovery when configured: `scripts/run-battle.sh --list-legacy`.
-- Active legacy boss aliases: `drussgt`, `saguaro`, `basic-gf-surfer`, `basic-gf-surfer-original`, `diamond`.
+- Known converted legacy aliases include `drussgt`, `saguaro`, `basic-gf-surfer`, `basic-gf-surfer-original`, and `diamond`; use them for parity, historical comparison, or porting reference, not as quality gates.
 - `basic-gf-surfer` prefers `wiki.BasicGFSurferFixed_1.02` when present and falls back to `wiki.BasicGFSurfer_1.02`; use `basic-gf-surfer-original` or `legacy:wiki.BasicGFSurfer_1.02` for the unpatched converted bot.
-- Native Python surfer benchmark: `bots/ports/basic-gf-surfer-port`; A/B preset `adaptive-1v1-basic-gf-surfer-port`. A July 2026 parity pass restored distance-style movement commands, staged radar search/lock that does not overwrite recent scan locks, shared lateral direction, one-update-per-turn gun waves, and explicit round reset handlers. The latest direct 24-round port-vs-fixed run favored the port (`2045` / `1897`) with equal survival/firsts, but the promotion gate has not passed; keep using `--legacy basic-gf-surfer` as the authoritative reference surfer until `docs/plans/basic-gf-surfer-python-parity-plan.md` says otherwise.
+- Native Python surfer benchmark: `bots/ports/basic-gf-surfer-port`; A/B preset `adaptive-1v1-basic-gf-surfer-port`. This is the primary clean surfer target for repeatable tuning. Converted legacy `basic-gf-surfer` remains for parity, historical comparison, and porting reference only; do not treat it as the normal promotion gate.
 - Telemetry viewer commands: `scripts/telemetry-ui.sh start|stop|stop-all|disable|status`.
 - Telemetry viewer selected-bot metrics show current gun, live-selectable guns, and pinned gun from startup `bot.config` telemetry; raw `bot.config` records still include force-testable guns.
 - Telemetry viewer generations reset on `telemetry.session` for new processes/files and on bot-emitted `battle.reset` for same-process GUI game restarts; normal `round.reset` remains within the same generation unless it looks like an aborted/reset GUI run.
 - Telemetry audit: `tools/telemetry_audit.py battle-results/runs/<run>/telemetry --require-bot adaptive-prime`.
 - Gun/eval summary: `tools/gun_eval_summary.py battle-results/runs/<run>/telemetry --bot adaptive-prime`.
-- BasicGFSurferFixed glitch filtering: `tools/surfer_glitch_analysis.py battle-results/ab/<experiment>` filters rounds where Adaptive hit accuracy is greater than the default `0.30` cutoff and warns/fails on incomplete telemetry or short runs. Prefer `pairedFiltered` for A/B judging: it keeps only baseline/candidate round numbers that are valid on both sides, reports excluded glitch rounds separately from unpaired/missing rounds, and prints round-by-round score/first-place/accuracy deltas.
-- Focused BasicGFSurfer A/B: `scripts/run-ab.sh --preset adaptive-1v1-basic-gf-surfer --rounds 24 --repeats 3 --telemetry`, with repeatable `--baseline-env KEY=VALUE` / `--candidate-env KEY=VALUE` for forced-gun and tuning sweeps.
-- Historical simple-KNN vs current BasicGFSurfer workflow: create a detached worktree at `02d571e` (parent of density/context-sensitive dynamic-cluster commit `168ef33`), run current `scripts/run-ab.sh --baseline <old-worktree> --candidate . --preset adaptive-1v1-basic-gf-surfer --telemetry`, then run current `tools/surfer_glitch_analysis.py` on the newly generated A/B directory. This avoids old telemetry schema compatibility issues.
+- Combat economics analysis: `tools/combat_economics_summary.py battle-results/runs/<run>` reports raw score, firsts, firepower, damage, and per-gun real conversion. It replaces the old surfer-specific glitch analyzer. Accuracy filtering is optional legacy diagnostic context via `--accuracy-filter-threshold 0.30`; do not apply it to `bots/ports/basic-gf-surfer-port`.
+- Focused surfer A/B: `scripts/run-ab.sh --preset adaptive-1v1-basic-gf-surfer-port --rounds 24 --repeats 3 --telemetry`, with repeatable `--baseline-env KEY=VALUE` / `--candidate-env KEY=VALUE` for forced-gun and tuning sweeps.
 
 A/B round guidance:
 - `1-8` rounds are smoke checks only: crashes, packaging, telemetry shape, and obvious churn/regression signals.
 - `12-16` rounds with `2` repeats is the exploratory A/B tier while searching for candidate thresholds.
 - `24` rounds with `3` repeats is the promotion gate before treating tuning as broadly enabled.
 - `50-100+` rounds on key matchups is an optional expensive confirmation tier for high-risk or near-merge changes; get user confirmation first.
-- Boss-bot checks should be repeated; one short legacy run is not representative.
+- Converted legacy opponents are not quality gates; port useful opponents into `bots/ports/` before treating them as tuning targets.
 
 Keep telemetry off for performance A/B benchmarks unless debugging telemetry itself. CLI `--telemetry` writes JSONL only by default; viewer startup requires explicit `--telemetry-viewer` or `--telemetry-open`. CLI runs write artifacts under `battle-results/runs/<timestamp>/`; A/B runs under `battle-results/ab/<timestamp>-<name>/`.
 
-Legacy boss notes:
-- `basic-gf-surfer` is currently the default efficient surfer check and maps to the fixed variant when configured.
-- `diamond` can be contaminated by legacy-side file-write/NPE issues in this environment; treat Diamond results as weak unless the legacy setup is fixed.
+Legacy notes:
+- Converted legacy bots are retained for parity, historical comparison, and porting work.
+- `basic-gf-surfer` may map to the fixed converted variant when configured, but the Python port is the normal repeatable surfer benchmark.
+- `diamond` can be contaminated by legacy-side file-write/NPE issues in this environment; treat Diamond results as weak unless the legacy setup is fixed or ported.

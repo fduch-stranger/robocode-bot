@@ -119,6 +119,502 @@ supporting both.
    - enemy-gun danger belongs in shared movement scoring
    - bot-local config should express personality, not duplicate core logic
 
+## Implementation Subplan: Shared Combat Regime Key
+
+Before changing any one gun, add a shared regime vocabulary that all guns,
+movement, and fire economics can use. The BasicGFSurfer port is strong because
+its gun and movement are aligned around a small set of meaningful state
+features. Adaptive should stop letting every subsystem describe the fight in a
+different feature language.
+
+### Purpose
+
+Create one compact shared representation for "what kind of combat state is
+this?" It should be useful for:
+
+- gun candidate matching
+- gun profile segmentation
+- displacement replay scoring
+- enemy-hit danger learning
+- EV fire decisions
+- anti-repetition movement
+
+This is not a new tactical brain. It is a shared feature adapter.
+
+### Simplicity Lesson From BasicGFSurfer
+
+BasicGFSurfer is not strong because it has no features. It is strong because
+its gun and movement use a small, consistent feature language. Its gun cares
+about distance, velocity, last velocity, and lateral direction; its movement
+learns guess-factor danger from our waves.
+
+The shared regime key should copy that alignment property, not the exact bot.
+It must be a common vocabulary with per-system adapters:
+
+- Dynamic Cluster uses it as soft neighbor weighting.
+- Traditional GF uses a compact subset as one profile source.
+- Displacement uses it as replay candidate bonuses.
+- Movement uses own-risk regimes for enemy-hit danger.
+- Fire EV uses regime profitability/danger, not full hard buckets.
+- Linear and head-on mostly ignore it.
+
+Do not create one giant universal hard segment key. That would recreate
+sparsity and make the system harder to reason about. The value is consistency
+across systems, with each gun using only the subset that matches its model.
+
+### New Shared Module
+
+Add:
+
+```text
+bots/bot_core/combat/regime.py
+```
+
+Core structures:
+
+```text
+CombatRegime
+  distance_bucket
+  flight_time_bucket
+  target_speed_bucket
+  target_last_speed_bucket
+  target_lateral_bucket
+  target_advancing_bucket
+  target_accel_bucket
+  target_wall_bucket
+  own_speed_bucket
+  own_last_speed_bucket
+  own_lateral_bucket
+  enemy_power_bucket
+
+CombatRegimeConfig
+  distance_edges
+  flight_time_edges
+  speed_edges
+  lateral_edges
+  advancing_edges
+  wall_edges
+  power_edges
+
+build_target_regime(...)
+build_own_risk_regime(...)
+```
+
+Keep values coarse and stable. Start with buckets that can be inspected in
+telemetry, not continuous weights hidden in each gun.
+
+Initial bucket shape:
+
+```text
+distance: close / mid / far / very_far
+flight_time: short / medium / long
+speed: stopped / slow / medium / fast
+last_speed: stopped / slow / medium / fast
+lateral: reverse / low / medium / high
+advancing: retreating / flat / advancing
+wall: near / mid / open
+power: low / medium / high
+```
+
+### Integration Rules
+
+Do not force every system to hard-segment on the full regime. Each system should
+use the same regime differently:
+
+| System | First use |
+| --- | --- |
+| Dynamic Cluster | Soft neighbor bonus for same distance/speed/last-speed/lateral/flight-time regime. |
+| Traditional GF | Experimental profile source keyed by a compact regime subset. |
+| Displacement | Replay candidate bonus for same speed/last-speed/lateral/wall/flight-time regime. |
+| Anti-surfer | Detect repeated post-fire movement responses by regime. |
+| Movement | Record enemy-hit danger by own-risk regime. |
+| EV fire gate | Ask whether current regime is profitable or dangerous. |
+| Telemetry | Emit sampled regime fields for calibration and audit. |
+
+Start with telemetry-only regime emission, then enable one consumer at a time.
+The first behavior consumer should probably be Displacement or Dynamic Cluster
+because they already score candidate similarity. Traditional GF should consume
+the same regime object later rather than inventing a private surfer-shaped key.
+
+### Telemetry
+
+Add sampled regime diagnostics to existing events before using the regime for
+decisions:
+
+```text
+track:
+  combat_regime
+  combat_regime_distance
+  combat_regime_target_speed
+  combat_regime_target_last_speed
+  combat_regime_lateral
+  combat_regime_wall
+
+gun.wave_visit / gun.eval_wave_visit:
+  fire_context_regime
+
+hit.bullet or combat.profile:
+  own_risk_regime
+```
+
+Use readable bucket labels in telemetry. If integer buckets are needed for
+speed, emit labels and ints together only after the analyzer needs both.
+
+### Tests
+
+Unit tests should pin bucket boundaries and symmetry:
+
+- distance and flight-time bucket boundaries
+- velocity and last-velocity buckets
+- lateral/advancing sign handling
+- wall bucket from wall margin
+- own-risk regime includes enemy bullet-power bucket
+- regime keys are hashable and stable
+- missing target-motion data falls back predictably
+
+Integration tests should verify:
+
+- Adaptive can build a regime during aim/fire ticks.
+- `gun.wave_visit` carries the regime from the fired wave.
+- A forced Dynamic Cluster or Displacement run can report regime diagnostics
+  without changing decisions.
+
+### Validation
+
+Telemetry-only run:
+
+```sh
+PYTHONPATH=bots .venv/bin/python -m pytest tests/test_combat_regime.py
+scripts/run-battle.sh --telemetry --rounds 12 \
+  bots/adaptive-prime bots/ports/basic-gf-surfer-port
+tools/telemetry_audit.py battle-results/runs/<run>/telemetry \
+  --require-bot adaptive-prime
+```
+
+Analyzer follow-up:
+
+```sh
+tools/gun_eval_summary.py battle-results/runs/<run>/telemetry --bot adaptive-prime
+tools/combat_economics_summary.py battle-results/runs/<run>
+```
+
+Success criteria:
+
+- Regime labels are stable and interpretable.
+- The port matchup shows repeated regimes before enemy damage spikes.
+- No behavior changes happen in the first telemetry-only patch.
+- Later gun/movement experiments reuse this shared regime instead of adding
+  gun-local one-off segmentation.
+
+## Implementation Subplan: Profile And EV Fire Slice
+
+Start with a small shared telemetry-first slice. The first useful change is not
+another gun threshold; it is a reliable live view of the damage exchange and a
+single guarded place where fire decisions can use it.
+
+### Evidence To Encode
+
+The Python BasicGFSurfer port is intentionally focused:
+
+- fixed bullet power `1.9`
+- gun segmentation by distance, enemy velocity, and enemy last velocity
+- one shared lateral direction
+- battle-persistent GF gun stats
+- surfing waves inferred from our energy drops
+- hit danger learned into one surf-stat buffer
+
+That means Adaptive should assume the port gets value from two things:
+
+1. Adaptive repeatedly exposing similar distance/velocity/last-velocity states.
+2. Adaptive firing enough weak waves to let the port surf while the port returns
+   higher-value bullets.
+
+The first implementation slice should measure those facts directly. Do not
+hard-code BasicGFSurfer or add anti-surfer aiming yet.
+
+### New Shared Runtime Object
+
+Add a shared profile module, tentatively:
+
+```text
+bots/bot_core/combat/profile.py
+```
+
+Core structures:
+
+```text
+CombatProfileStore
+  profile_for(target_id)
+  record_our_fire(target_id, turn, power, aim_mode, gun_score, gun_visits)
+  record_our_hit(target_id, turn, power, damage, aim_mode)
+  record_enemy_fire(target_id, turn, power, confidence)
+  record_enemy_hit(target_id, turn, power, damage, movement_mode, gf_bin)
+  snapshot(target_id, turn)
+  clear_round_state()
+  clear_battle_state()
+
+CombatProfileSnapshot
+  our_shots, our_hits, our_hit_rate
+  our_avg_power, our_avg_hit_power, our_damage_per_shot
+  enemy_shots, enemy_hits, enemy_hit_rate
+  enemy_avg_power, enemy_damage_per_shot, enemy_damage_per_hit
+  rolling_damage_delta
+  recent_our_hit_rate
+  recent_enemy_hit_rate
+  tags
+```
+
+Use small rolling windows first. A fixed-size deque per target is enough:
+
+```text
+recent our fire events: 40
+recent enemy fire events: 40
+recent damage events: 40
+```
+
+Keep total counters beside rolling counters so telemetry can show both lifetime
+and recent signals. Do not add decay curves until simple windows fail.
+
+Tags should be deterministic and explainable:
+
+```text
+damage_deficit:
+  enemy bullet damage - our bullet damage >= configured margin
+
+survival_lead_damage_loss:
+  our energy/score shape is okay but bullet damage delta is negative
+
+evasive_target:
+  our recent hit rate below threshold after enough shots
+
+high_pressure_enemy:
+  enemy recent damage per shot or damage per hit above threshold
+
+surfer_like_pressure:
+  high_pressure_enemy and evasive_target and enemy_avg_power >= 1.5
+
+low_energy_endgame:
+  our energy below existing low-energy policy band
+```
+
+Use config defaults in shared code, then expose only a small Adaptive rollout
+flag in `bots/adaptive-prime/adaptive_config.py`:
+
+```text
+ROBOCODE_ADAPTIVE_COMBAT_PROFILE=1
+ROBOCODE_ADAPTIVE_EV_FIRE_GATE=0
+```
+
+The profile flag can default on once telemetry-only tests pass. The EV gate
+must default off until battle validation passes.
+
+### Adaptive Integration Points
+
+Wire the store into Adaptive first:
+
+| Source | Current location | Profile update |
+| --- | --- | --- |
+| Our requested fire | `AdaptivePrime._track_or_search()` before `set_fire()` | keep proposed shot context for the pending bullet. |
+| Actual bullet fired | `AdaptivePrime.on_bullet_fired()` | `record_our_fire(...)` using actual bullet id/power and selected gun. |
+| Our bullet hit | `AdaptivePrime.on_bullet_hit()` | `record_our_hit(...)` with damage, power, and stored aim mode. |
+| Enemy fire detected | `AdaptivePrime._detect_enemy_fire()` after accepted drop | `record_enemy_fire(...)` with inferred power and confidence `energy_drop`. |
+| Enemy bullet hit us | `AdaptivePrime.on_hit_by_bullet()` | `record_enemy_hit(...)` with bullet power, damage, movement mode if known, and movement GF/bin when wave matched. |
+| Round/game reset | existing reset handlers | clear round waves, preserve battle profile only if target ids are stable for the battle; clear on game start. |
+
+Prefer adding a small `CombatProfileStore` member to Adaptive rather than
+threading profile data through unrelated classes. Once proven, move construction
+into shared bot wiring for Chase/Circle/Sweep.
+
+### Telemetry Shape
+
+Add a sampled event instead of overloading every `track` field:
+
+```text
+combat.profile
+  target
+  our_shots
+  our_hits
+  our_hit_rate
+  our_avg_power
+  our_damage_per_shot
+  enemy_shots
+  enemy_hits
+  enemy_hit_rate
+  enemy_avg_power
+  enemy_damage_per_shot
+  rolling_damage_delta
+  tags
+```
+
+Also add a compact subset to `track` only after it proves useful in the viewer:
+
+```text
+combat_tags
+combat_damage_delta
+combat_enemy_pressure
+```
+
+Update:
+
+- `bots/bot_core/telemetry/schema.py`
+- `bots/bot_core/telemetry/fire.py` or a new `telemetry/combat.py`
+- `tools/telemetry_audit.py` tests if required fields are introduced
+- `tools/combat_economics_summary.py` only if the new event enables a useful
+  run-level table; do not block Phase 1 on analyzer changes
+
+### EV Fire Gate Prototype
+
+After telemetry-only profile data is correct, add a guarded function in shared
+energy/fire code, tentatively:
+
+```text
+bots/bot_core/energy/shot_value.py
+```
+
+Inputs:
+
+```text
+base FireDecision
+proposed firepower
+selected aim mode
+selected gun confidence and visits
+dynamic shot quality diagnostics when present
+CombatProfileSnapshot
+distance
+target energy
+own energy
+```
+
+Computation:
+
+```text
+damage_value = bullet_damage_for_power(firepower)
+hit_estimate = blend(selected virtual score, recent real hit rate, shot quality)
+shot_ev = hit_estimate * damage_value
+enemy_wave_cost = pressure multiplier when tags include surfer_like_pressure
+net_shot_value = shot_ev - enemy_wave_cost
+```
+
+Decision rules for the first prototype:
+
+- Never override stale target, gun alignment, critical energy, or impossible
+  energy decisions.
+- Do not block finishers inside existing finisher distance.
+- Do not block high-confidence shots with `firepower >= 1.3`.
+- Under `surfer_like_pressure`, block weak Dynamic Cluster shots when:
+
+```text
+firepower < 1.3
+net_shot_value < configured minimum
+target is not a finisher
+```
+
+- Emit a reason even when allowing:
+
+```text
+ev_ready
+ev_hold_low_value
+ev_allow_finisher
+ev_allow_good_shot
+ev_disabled
+```
+
+Do not change `AimModeSelector` in this slice. If the selected gun is bad, the
+profile and EV telemetry should expose it first.
+
+### Firepower Floor Prototype
+
+Only after the EV gate produces expected holds, add a tiny firepower floor
+wrapper around Adaptive's current `_select_firepower()` result:
+
+```text
+if surfer_like_pressure and good_shot:
+    firepower = max(firepower, 1.6)
+elif evasive_target and good_shot:
+    firepower = max(firepower, 1.3)
+elif weak_shot:
+    leave firepower unchanged and let EV gate hold it
+```
+
+`good_shot` should initially mean:
+
+```text
+selected gun visits >= threshold
+selected gun score >= threshold
+or dynamic_cluster_shot_quality >= threshold
+```
+
+This keeps the first behavior change readable: weak shots are held, good shots
+are paid.
+
+### Tests To Write First
+
+Unit tests:
+
+- profile records our shots, hits, damage per shot, and average power
+- profile records enemy inferred fire and enemy bullet hits
+- rolling metrics differ from lifetime metrics after old events fall out
+- tags activate only after minimum sample counts
+- short low-sample profiles do not mark `surfer_like_pressure`
+- EV gate never bypasses stale/alignment/critical-energy holds
+- EV gate holds weak low-power shots only under pressure tags
+- EV gate allows finishers and good high-power shots
+- firepower floor raises only good shots and leaves weak shots to the gate
+
+Integration-style tests:
+
+- Adaptive `on_bullet_fired()` and `on_bullet_hit()` update the profile through
+  actual bullet ids/powers.
+- `hit.bullet` with a movement wave match records enemy hit pressure and GF/bin
+  context.
+- `combat.profile` passes telemetry schema/audit checks.
+
+### Validation Commands
+
+First patch, telemetry-only:
+
+```sh
+PYTHONPATH=bots .venv/bin/python -m pytest \
+  tests/test_combat_profile.py \
+  tests/test_telemetry_audit.py
+
+scripts/run-battle.sh --telemetry --rounds 12 \
+  bots/adaptive-prime bots/ports/basic-gf-surfer-port
+
+tools/telemetry_audit.py battle-results/runs/<run>/telemetry \
+  --require-bot adaptive-prime
+tools/combat_economics_summary.py battle-results/runs/<run>
+```
+
+Behavior patch, EV gate enabled for candidate:
+
+```sh
+scripts/run-ab.sh \
+  --name adaptive-ev-fire-gate \
+  --preset adaptive-1v1-basic-gf-surfer-port \
+  --baseline <baseline-worktree> \
+  --candidate <candidate-worktree> \
+  --candidate-env ROBOCODE_ADAPTIVE_EV_FIRE_GATE=1 \
+  --rounds 24 \
+  --repeats 3 \
+  --telemetry
+
+tools/combat_economics_summary.py battle-results/ab/<experiment>
+for telemetry in battle-results/ab/<experiment>/candidate/adaptive-vs-basic-gf-surfer-port/run-*/telemetry; do
+  tools/gun_eval_summary.py "$telemetry" --bot adaptive-prime
+done
+```
+
+Promotion requires better raw port economics, not filtered legacy economics:
+
+- Adaptive score and firsts do not collapse.
+- Adaptive bullet damage rises or port bullet damage falls materially.
+- Adaptive average hit power rises.
+- Low-power Dynamic Cluster shot count falls under pressure.
+- Per-gun real conversion does not hide a broken gun behind fewer shots.
+- `combat.profile` tags activate before the late-round damage deficit, not only
+  after the battle is already lost.
+
 ## Phase 1: Opponent Combat Profile
 
 Add a shared per-target combat profile that is updated from existing telemetry
@@ -235,7 +731,7 @@ if candidate lands in a historically dangerous GF region:
     add danger
 ```
 
-This directly attacks the BasicGFSurfer port's simple gun shape, but it also
+This directly attacks the BasicGFSurfer port's focused gun shape, but it also
 helps against other GF-style enemies.
 
 Acceptance:
