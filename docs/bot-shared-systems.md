@@ -74,8 +74,8 @@ Typical aim modes:
   assuming current velocity. The force-testable `linear_wall_aware` variant
   uses the same component package to compare wall-hit-aware prediction.
 - [`head_on`](../bots/bot_core/gun/guns/head_on/README.md): direct bearing.
-- [`displacement`](../bots/bot_core/gun/guns/displacement/README.md): average
-  historical displacement.
+- [`displacement`](../bots/bot_core/gun/guns/displacement/README.md):
+  rotation-normalized historical replay.
 - [`traditional_gf`](../bots/bot_core/gun/guns/traditional_gf/README.md):
   guess-factor profile.
 - [`anti_surfer`](../bots/bot_core/gun/guns/anti_surfer/README.md):

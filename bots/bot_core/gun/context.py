@@ -52,14 +52,50 @@ class TargetHistoryStore:
         self.max_history = max_history
         self._history: dict[int, list[TargetPosition]] = {}
 
-    def observe_target(self, target: TargetSnapshot) -> None:
+    def observe_target(self, target: TargetSnapshot, bot: Bot | None = None) -> None:
         history = self._history.setdefault(target.bot_id, [])
+        position = self._position_from_target(target, bot)
         if history and history[-1].turn == target.seen_turn:
-            history[-1] = TargetPosition(target.seen_turn, target.x, target.y, target.speed)
+            history[-1] = position
         else:
-            history.append(TargetPosition(target.seen_turn, target.x, target.y, target.speed))
+            history.append(position)
         if len(history) > self.max_history:
             del history[: len(history) - self.max_history]
+
+    @staticmethod
+    def _position_from_target(target: TargetSnapshot, bot: Bot | None) -> TargetPosition:
+        if bot is None:
+            return TargetPosition(
+                target.seen_turn,
+                target.x,
+                target.y,
+                target.speed,
+                target.direction,
+            )
+        bot_x = float(bot.x)
+        bot_y = float(bot.y)
+        arena_width = float(bot.arena_width)
+        arena_height = float(bot.arena_height)
+        absolute_bearing = math.radians(absolute_bearing_between(bot_x, bot_y, target.x, target.y))
+        lateral_speed, advancing_speed = _target_velocity_components(target, absolute_bearing)
+        arena_scale = max(arena_width, arena_height)
+        wall_margin = min(
+            target.x,
+            arena_width - target.x,
+            target.y,
+            arena_height - target.y,
+        ) / arena_scale
+        return TargetPosition(
+            target.seen_turn,
+            target.x,
+            target.y,
+            target.speed,
+            target.direction,
+            math.degrees(absolute_bearing),
+            lateral_speed,
+            advancing_speed,
+            wall_margin,
+        )
 
     def history_for(self, target_id: int) -> list[TargetPosition]:
         return self._history.get(target_id, [])

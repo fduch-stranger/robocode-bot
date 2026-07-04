@@ -83,8 +83,8 @@ class VirtualGunSystem:
     def eval_wave_count(self) -> int:
         return len(self._eval_waves)
 
-    def observe_target(self, target: TargetSnapshot) -> None:
-        self._target_history_store.observe_target(target)
+    def observe_target(self, target: TargetSnapshot, bot: Bot | None = None) -> None:
+        self._target_history_store.observe_target(target, bot)
 
     def aim(
         self,

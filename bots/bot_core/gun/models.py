@@ -65,6 +65,11 @@ class TargetPosition:
     x: float
     y: float
     speed: float
+    direction: float = 0.0
+    absolute_bearing: float | None = None
+    lateral_speed: float | None = None
+    advancing_speed: float | None = None
+    wall_margin: float | None = None
 
 
 @dataclass

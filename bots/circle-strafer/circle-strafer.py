@@ -229,7 +229,7 @@ class CircleStrafer(Bot):
             self._consume_enemy_energy_correction(event.scanned_bot_id, self.turn_number, -1)
         self._targets[event.scanned_bot_id] = target_from_scan(event, self.turn_number)
         target = self._targets[event.scanned_bot_id]
-        self._gun.observe_target(target)
+        self._gun.observe_target(target, self)
         self._log_wave_visits(target)
         if previous is None:
             self._targeting_telemetry.record_scan_new(event.scanned_bot_id, event.energy, event.x, event.y)

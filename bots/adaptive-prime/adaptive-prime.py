@@ -211,7 +211,7 @@ class AdaptivePrime(Bot):
         if len(self._targets) > 1:
             self._melee_round = True
         target = self._targets[event.scanned_bot_id]
-        self._gun.observe_target(target)
+        self._gun.observe_target(target, self)
         self._log_wave_visits(target)
         if not fire_detected:
             self._record_gun_heat_wave(target)

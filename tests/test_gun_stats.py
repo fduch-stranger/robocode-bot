@@ -1,6 +1,9 @@
 import math
 import unittest
 from types import SimpleNamespace
+from typing import cast
+
+from robocode_tank_royale.bot_api import Bot
 
 from bot_core.gun import (
     AimContext,
@@ -36,14 +39,18 @@ from bot_core.gun.policy import selector_config_from_policy
 from bot_core.gun.guns.anti_surfer.config import AntiSurferGunConfig
 from bot_core.gun.guns.anti_surfer.gun import AntiSurferGun
 from bot_core.gun.guns.displacement.config import DisplacementGunConfig
+from bot_core.gun.guns.displacement.gun import DisplacementGun
 from bot_core.gun.guns.dynamic_cluster.config import DynamicClusterGunConfig
 from bot_core.gun.guns.dynamic_cluster.gun import DynamicClusterGun
 from bot_core.gun.guns.dynamic_cluster.memory import RollingKnnBuffer
-from bot_core.gun.guns.traditional_gf.diagnostics import TraditionalGfDiagnostics
 from bot_core.gun.guns.traditional_gf.gun import TraditionalGfGun
 from bot_core.gun.guns.traditional_gf.profile import GuessFactorProfile
 from bot_core.gun.guns.traditional_gf.config import TraditionalGfGunConfig
 from bot_core.target_snapshot import TargetSnapshot
+
+
+def fake_bot(**attributes: object) -> Bot:
+    return cast(Bot, cast(object, SimpleNamespace(**attributes)))
 
 
 def make_wave(target_id: int = 1, fire_turn: int = 0, aim_mode: str = "linear") -> GunWave:
@@ -1790,6 +1797,134 @@ class GunStatsTest(unittest.TestCase):
         self.assertIsNotNone(prediction)
         assert prediction is not None
         self.assertGreater(prediction.diagnostics["aim_confidence"], 0.5)
+
+    def test_target_history_store_preserves_target_direction(self) -> None:
+        history = TargetHistoryStore(max_history=10)
+        history.observe_target(
+            TargetSnapshot(1, 100.0, 300.0, 100.0, 135.0, 6.0, 12)
+        )
+
+        self.assertEqual(135.0, history.history_for(1)[0].direction)
+
+    def test_target_history_store_records_observation_time_velocity_context(self) -> None:
+        history = TargetHistoryStore(max_history=10)
+        bot = fake_bot(x=100.0, y=100.0, arena_width=800.0, arena_height=600.0)
+
+        history.observe_target(
+            TargetSnapshot(1, 100.0, 300.0, 100.0, 90.0, 8.0, 12),
+            bot,
+        )
+
+        position = history.history_for(1)[0]
+        self.assertEqual(0.0, position.absolute_bearing)
+        self.assertAlmostEqual(8.0, position.lateral_speed)
+        self.assertAlmostEqual(0.0, position.advancing_speed)
+        self.assertAlmostEqual(0.125, position.wall_margin)
+
+    def test_displacement_candidate_scoring_prefers_stored_velocity_context(self) -> None:
+        bot = fake_bot(x=100.0, y=100.0, arena_width=800.0, arena_height=600.0)
+        target = TargetSnapshot(1, 100.0, 200.0, 100.0, 90.0, 8.0, 20)
+        context = AimContext(
+            bot=bot,
+            target=target,
+            distance=100.0,
+            firepower=2.0,
+            motion=TargetMotion(),
+            field_margin=18.0,
+            features=(0.125, 2.0 / 3.0, 1.0, 0.0, 0.0, 1.0, 0.125),
+            segment_key=(0,) * 6,
+            fire_context=FireContext(lateral_speed_signed=8.0, wall_margin=0.125),
+        )
+        current = TargetPosition(20, 200.0, 100.0, 8.0, 90.0)
+        stored_match = TargetPosition(
+            10,
+            300.0,
+            100.0,
+            8.0,
+            90.0,
+            lateral_speed=8.0,
+            advancing_speed=0.0,
+            wall_margin=0.125,
+        )
+        fallback_only = TargetPosition(10, 300.0, 100.0, 8.0, 90.0)
+        gun = DisplacementGun(DisplacementGunConfig(min_samples=1), TargetHistoryStore(max_history=10))
+
+        stored_score = gun._candidate_score(context, current, stored_match)
+        fallback_score = gun._candidate_score(context, current, fallback_only)
+
+        self.assertLess(stored_score, fallback_score)
+
+    def test_displacement_rotated_step_preserves_relative_forward_left_motion(self) -> None:
+        start = TargetPosition(1, 300.0, 100.0, 8.0, 0.0)
+        previous = TargetPosition(1, 300.0, 100.0, 8.0, 0.0)
+        next_position = TargetPosition(2, 310.0, 110.0, 8.0, 0.0)
+
+        dx, dy = DisplacementGun._rotated_step(start, previous, next_position, 90.0)
+
+        self.assertAlmostEqual(-10.0, dx)
+        self.assertAlmostEqual(10.0, dy)
+
+    def test_displacement_intersect_segment_returns_first_bullet_contact_point(self) -> None:
+        context = AimContext(
+            bot=fake_bot(x=0.0, y=0.0),
+            target=TargetSnapshot(1, 100.0, 100.0, 0.0, 0.0, 0.0, 1),
+            distance=100.0,
+            firepower=2.0,
+            motion=TargetMotion(),
+            field_margin=18.0,
+            features=(0.0,) * 7,
+            segment_key=(0,) * 6,
+        )
+
+        x, y = DisplacementGun._intersect_segment(
+            context,
+            100.0,
+            0.0,
+            0.0,
+            200.0,
+            0.0,
+            30.0,
+            10.0,
+        )
+
+        self.assertAlmostEqual(150.0, x, places=1)
+        self.assertAlmostEqual(0.0, y)
+
+    def test_displacement_gun_replays_history_relative_to_current_heading(self) -> None:
+        history = TargetHistoryStore(max_history=32)
+        for turn in range(11):
+            history.observe_target(
+                TargetSnapshot(
+                    1,
+                    100.0,
+                    300.0 + 10.0 * turn,
+                    100.0 + 10.0 * turn,
+                    0.0,
+                    8.0,
+                    turn,
+                )
+            )
+        gun = DisplacementGun(DisplacementGunConfig(min_samples=1), history)
+        bot = fake_bot(x=100.0, y=100.0, arena_width=800.0, arena_height=600.0)
+        target = TargetSnapshot(1, 100.0, 200.0, 100.0, 90.0, 8.0, 100)
+        context = AimContext(
+            bot=bot,
+            target=target,
+            distance=100.0,
+            firepower=2.0,
+            motion=TargetMotion(),
+            field_margin=18.0,
+            features=(0.125, 2.0 / 3.0, 1.0, 0.0, 0.0, 1.0, 0.125),
+            segment_key=(0,) * 6,
+            fire_context=FireContext(lateral_speed_signed=8.0, wall_margin=0.125),
+        )
+
+        bearing = gun.aim_bearing(context, 100.0, 2.0, 18.0)
+
+        self.assertIsNotNone(bearing)
+        assert bearing is not None
+        self.assertGreater(bearing, 35.0)
+        self.assertLess(bearing, 60.0)
 
     def test_movement_context_tags_classify_stable_and_curving_history(self) -> None:
         bot = SimpleNamespace(x=100.0, y=100.0)
