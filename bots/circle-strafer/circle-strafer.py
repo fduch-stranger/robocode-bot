@@ -269,26 +269,45 @@ class CircleStrafer(Bot):
 
     def _wall_escape_destination(self) -> tuple[float, float]:
         margin = MOVEMENT_POLICY.wall_escape_destination_margin
-        return (
-            clamp(self.x, margin, self.arena_width - margin),
-            clamp(self.y, margin, self.arena_height - margin),
-        )
+        center_x = self.arena_width / 2
+        center_y = self.arena_height / 2
+        projected_x, projected_y = self._projected_wall_position()
+        guard = MOVEMENT_POLICY.wall_clear_margin
+        x = clamp(self.x, margin, self.arena_width - margin)
+        y = clamp(self.y, margin, self.arena_height - margin)
+
+        if self.x < guard or projected_x < guard:
+            x = max(x, center_x)
+        elif self.x > self.arena_width - guard or projected_x > self.arena_width - guard:
+            x = min(x, center_x)
+
+        if self.y < guard or projected_y < guard:
+            y = max(y, center_y)
+        elif self.y > self.arena_height - guard or projected_y > self.arena_height - guard:
+            y = min(y, center_y)
+
+        return x, y
 
     def _wall_risk(self, margin: float | None = None) -> bool:
         margin = MOVEMENT_POLICY.wall_margin if margin is None else margin
+        projected_x, projected_y = self._projected_wall_position()
+        return (
+            projected_x < margin
+            or projected_x > self.arena_width - margin
+            or projected_y < margin
+            or projected_y > self.arena_height - margin
+        )
+
+    def _projected_wall_position(self) -> tuple[float, float]:
         heading = math.radians(self.direction)
         projection = (
             MOVEMENT_POLICY.orbit_speed
             * self._move_direction
             * MOVEMENT_POLICY.wall_lookahead_ticks
         )
-        projected_x = self.x + math.cos(heading) * projection
-        projected_y = self.y + math.sin(heading) * projection
         return (
-            projected_x < margin
-            or projected_x > self.arena_width - margin
-            or projected_y < margin
-            or projected_y > self.arena_height - margin
+            self.x + math.cos(heading) * projection,
+            self.y + math.sin(heading) * projection,
         )
 
     def on_game_started(self, event: GameStartedEvent) -> None:

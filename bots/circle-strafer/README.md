@@ -65,7 +65,7 @@ current target becomes stale.
 
 Priority order:
 
-1. Wall escape: drive to a clamped interior point.
+1. Wall escape: drive inward from current or projected wall risk.
 2. Separation: move away from close enemy or recent collision.
 3. Melee minimum-risk destination.
 4. Normal orbit.
@@ -73,9 +73,9 @@ Priority order:
 
 Wall escape and separation both use clear margins so the bot does not chatter
 between states near the threshold. Wall escape starts on current or projected
-wall risk and uses the shared destination driver toward a clamped interior
-point, so it can reverse out when that is a cleaner exit than pushing forward
-along the edge. Normal 1v1 orbit uses a wider flattener strafe offset and a
+wall risk and uses the shared destination driver toward an interior point on
+the threatened axis, so it does not target its current position while trying to
+leave the edge. Normal 1v1 orbit uses a wider flattener strafe offset and a
 longer direction-switch cooldown so the bot commits to a visible strafe before
 changing direction. On detected enemy fire, Circle can briefly tighten or widen
 its orbit instead of permanently flipping direction; the feint is disabled near

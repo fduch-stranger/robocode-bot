@@ -60,6 +60,12 @@ class FakeMovementTelemetry:
         )
 
 
+def _bind_circle_wall_methods(module: ModuleType, bot: SimpleNamespace) -> None:
+    bot._near_wall = MethodType(module.CircleStrafer._near_wall, bot)
+    bot._projected_wall_position = MethodType(module.CircleStrafer._projected_wall_position, bot)
+    bot._wall_risk = MethodType(module.CircleStrafer._wall_risk, bot)
+
+
 class BotMovementHysteresisTest(unittest.TestCase):
     def test_circle_wall_escape_holds_until_clear_margin(self) -> None:
         module = _load_bot_module("circle-strafer", "circle-strafer.py")
@@ -73,8 +79,7 @@ class BotMovementHysteresisTest(unittest.TestCase):
             _move_direction=1,
             _wall_escape_until_turn=-1,
         )
-        bot._near_wall = MethodType(module.CircleStrafer._near_wall, bot)
-        bot._wall_risk = MethodType(module.CircleStrafer._wall_risk, bot)
+        _bind_circle_wall_methods(module, bot)
 
         self.assertTrue(module.CircleStrafer._wall_escape_active(bot))
         self.assertEqual(20 + module.MOVEMENT_POLICY.wall_escape_turns, bot._wall_escape_until_turn)
@@ -97,8 +102,7 @@ class BotMovementHysteresisTest(unittest.TestCase):
             _move_direction=1,
             _wall_escape_until_turn=-1,
         )
-        bot._near_wall = MethodType(module.CircleStrafer._near_wall, bot)
-        bot._wall_risk = MethodType(module.CircleStrafer._wall_risk, bot)
+        _bind_circle_wall_methods(module, bot)
 
         self.assertTrue(module.CircleStrafer._wall_escape_active(bot))
         self.assertEqual(24 + module.MOVEMENT_POLICY.wall_escape_turns, bot._wall_escape_until_turn)
@@ -110,17 +114,37 @@ class BotMovementHysteresisTest(unittest.TestCase):
             y=580.0,
             arena_width=800.0,
             arena_height=600.0,
+            direction=0.0,
+            _move_direction=1,
         )
+        _bind_circle_wall_methods(module, bot)
 
         destination = module.CircleStrafer._wall_escape_destination(bot)
 
         self.assertEqual(
             (
-                module.MOVEMENT_POLICY.wall_escape_destination_margin,
-                600.0 - module.MOVEMENT_POLICY.wall_escape_destination_margin,
+                400.0,
+                300.0,
             ),
             destination,
         )
+
+    def test_circle_wall_escape_destination_moves_inward_on_projected_risk(self) -> None:
+        module = _load_bot_module("circle-strafer", "circle-strafer.py")
+        bot = SimpleNamespace(
+            x=800.0 - module.MOVEMENT_POLICY.wall_escape_destination_margin,
+            y=300.0,
+            arena_width=800.0,
+            arena_height=600.0,
+            direction=0.0,
+            _move_direction=1,
+        )
+        _bind_circle_wall_methods(module, bot)
+
+        destination = module.CircleStrafer._wall_escape_destination(bot)
+
+        self.assertEqual((400.0, 300.0), destination)
+        self.assertNotEqual((bot.x, bot.y), destination)
 
     def test_circle_separation_holds_until_clear_distance(self) -> None:
         module = _load_bot_module("circle-strafer", "circle-strafer.py")
@@ -242,8 +266,7 @@ class BotMovementHysteresisTest(unittest.TestCase):
             _evade_until_turn=-1,
             _movement_telemetry=telemetry,
         )
-        bot._near_wall = MethodType(module.CircleStrafer._near_wall, bot)
-        bot._wall_risk = MethodType(module.CircleStrafer._wall_risk, bot)
+        _bind_circle_wall_methods(module, bot)
         bot._feint_allowed = MethodType(module.CircleStrafer._feint_allowed, bot)
 
         self.assertTrue(
@@ -281,8 +304,7 @@ class BotMovementHysteresisTest(unittest.TestCase):
             turn_number=60,
             enemy_count=1,
         )
-        bot._near_wall = MethodType(module.CircleStrafer._near_wall, bot)
-        bot._wall_risk = MethodType(module.CircleStrafer._wall_risk, bot)
+        _bind_circle_wall_methods(module, bot)
 
         self.assertFalse(
             module.CircleStrafer._feint_allowed(
@@ -303,8 +325,7 @@ class BotMovementHysteresisTest(unittest.TestCase):
             turn_number=60,
             enemy_count=1,
         )
-        bot._near_wall = MethodType(module.CircleStrafer._near_wall, bot)
-        bot._wall_risk = MethodType(module.CircleStrafer._wall_risk, bot)
+        _bind_circle_wall_methods(module, bot)
 
         self.assertFalse(
             module.CircleStrafer._feint_allowed(
@@ -325,8 +346,7 @@ class BotMovementHysteresisTest(unittest.TestCase):
             turn_number=60,
             enemy_count=1,
         )
-        bot._near_wall = MethodType(module.CircleStrafer._near_wall, bot)
-        bot._wall_risk = MethodType(module.CircleStrafer._wall_risk, bot)
+        _bind_circle_wall_methods(module, bot)
 
         self.assertFalse(
             module.CircleStrafer._feint_allowed(
