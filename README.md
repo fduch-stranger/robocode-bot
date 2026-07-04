@@ -5,9 +5,8 @@ A Robocode Tank Royale battle lab.
 Build bots. Run controlled fights. Inspect the evidence. Feed what you learn
 back into targeting, movement, and benchmark opponents.
 
-Robocode Tank Royale docs:
-[robocode-dev/tank-royale](https://github.com/robocode-dev/tank-royale) and
-[robocode.dev](https://robocode.dev/).
+Upstream: [robocode-dev/tank-royale](https://github.com/robocode-dev/tank-royale)
+and [robocode.dev](https://robocode.dev/).
 
 ![Telemetry viewer showing an all-bot run](docs/assets/telemetry-viewer.png)
 
