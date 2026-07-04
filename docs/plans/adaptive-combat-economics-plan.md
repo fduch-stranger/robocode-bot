@@ -119,11 +119,157 @@ supporting both.
    - enemy-gun danger belongs in shared movement scoring
    - bot-local config should express personality, not duplicate core logic
 
+## Implementation Subplan: Wave Evidence Semantics
+
+Before changing firepower or selector behavior, split the meaning of wave
+evidence. The BasicGFSurfer port is not strong because its wave physics are
+more advanced. It is strong because each wave observation has a clear purpose:
+its gun learns from accepted-shot virtual visits, and its surfing danger is
+anchored in real bullet hits.
+
+Adaptive's current movement profile can mix ordinary enemy-wave pass visits
+with real bullet-hit visits. That makes the danger surface partly describe
+where Adaptive happened to be when waves arrived, not where the enemy gun
+actually hit. This should be fixed first because later EV and movement decisions
+should consume clean evidence, not compensate for polluted profiles.
+
+### Evidence Kinds
+
+Define explicit evidence kinds and keep their consumers separate:
+
+| Evidence | Source | Primary consumer |
+| --- | --- | --- |
+| `gun_virtual_visit` | our accepted-shot gun wave reaches enemy position | gun learning and virtual-gun scoring |
+| `movement_wave_pass` | confirmed enemy wave reaches our current position | flattening and anti-repetition pressure |
+| `movement_bullet_hit` | real enemy bullet hit matched to a movement wave | enemy-gun danger |
+| `expected_enemy_wave` | gun-heat or power prediction without confirmed drop | immediate movement planning with confidence penalty |
+
+Do not write all four into the same long-term danger meaning. A wave pass says
+"we occupied this GF region." A bullet hit says "the enemy gun punished this GF
+region." Those are related, but they are not the same signal.
+
+### Movement Profile Split
+
+Replace the single movement-danger interpretation with separate stores:
+
+```text
+enemy_hit_profile
+  updated only from matched real bullet hits
+  high weight
+  segmented by own-risk regime
+
+visit_flattening_profile
+  updated from ordinary confirmed wave passes
+  low or medium weight
+  used to avoid repeated occupancy, not to claim enemy aim danger
+
+expected_wave_pressure
+  optional telemetry-only or very low weight
+  expires quickly unless confirmed
+```
+
+Candidate scoring should combine them explicitly:
+
+```text
+danger =
+  enemy_hit_danger
+  + small_flattening_penalty
+  + immediate_expected_wave_pressure
+  + wall/position risk
+```
+
+`movement_bullet_hit` should no longer be just "wave pass weight x3" in the
+same table. It should update enemy-hit danger directly, while wave pass evidence
+remains useful for flattening and anti-repetition.
+
+### Own-Risk Regime
+
+Bullet-hit danger should be keyed by the state the enemy gun saw when firing,
+not only by final GF bin. Start with coarse buckets:
+
+- distance bucket
+- enemy bullet-power bucket
+- our lateral bucket
+- our advancing bucket
+- wall bucket
+- flight-time bucket
+- recent direction-change bucket
+- recent decel bucket
+
+This is the movement-side counterpart to the surfer gun's simple
+distance/velocity/last-velocity segmentation. The exact fields can share the
+`CombatRegime` vocabulary below, but the first objective is semantic
+separation: hit danger, occupancy, and expected pressure must be distinct.
+
+### Telemetry
+
+Add movement evidence diagnostics before behavior changes:
+
+```text
+movement.wave_pass
+  evidence_kind=movement_wave_pass
+  target_id
+  wave_kind
+  gf
+  bin
+  own_risk_regime
+
+movement.hit_danger
+  evidence_kind=movement_bullet_hit
+  target_id
+  power
+  damage
+  gf
+  bin
+  own_risk_regime
+  hit_wave_error
+
+movement.danger_breakdown
+  enemy_hit_component
+  flattening_component
+  expected_wave_component
+  total_danger
+```
+
+Existing `hit.bullet` should keep reporting whether a movement wave matched,
+but add enough fields to diagnose match error and resulting danger update.
+
+### Tests
+
+Unit tests should verify:
+
+- wave-pass visits update only the flattening profile
+- real bullet hits update only the enemy-hit danger profile
+- expected waves do not create permanent hit danger without confirmation
+- candidate danger reports separate hit, flattening, and expected components
+- unmatched bullet hits are visible in telemetry and do not silently corrupt
+  danger tables
+
+### Validation
+
+Use the Python BasicGFSurfer port as the focused evidence target:
+
+```sh
+PYTHONPATH=bots .venv/bin/python -m pytest tests/test_movement_wave_evidence.py
+scripts/run-battle.sh --telemetry --rounds 24 \
+  bots/adaptive-prime bots/ports/basic-gf-surfer-port
+tools/telemetry_audit.py battle-results/runs/<run>/telemetry \
+  --require-bot adaptive-prime
+tools/combat_economics_summary.py battle-results/runs/<run>
+```
+
+Success criteria:
+
+- movement wave-match rate is reported and stable enough to trust
+- surfer bullet-damage pressure can be explained by hit-danger bins/regimes
+- wave-pass occupancy and real hit danger are visibly different in telemetry
+- no EV/firepower behavior changes are mixed into the first patch
+
 ## Implementation Subplan: Shared Combat Regime Key
 
-Before changing any one gun, add a shared regime vocabulary that all guns,
-movement, and fire economics can use. The BasicGFSurfer port is strong because
-its gun and movement are aligned around a small set of meaningful state
+After wave evidence semantics are clean, add a shared regime vocabulary that
+all guns, movement, and fire economics can use. The BasicGFSurfer port is strong
+because its gun and movement are aligned around a small set of meaningful state
 features. Adaptive should stop letting every subsystem describe the fight in a
 different feature language.
 
@@ -232,9 +378,11 @@ use the same regime differently:
 | Telemetry | Emit sampled regime fields for calibration and audit. |
 
 Start with telemetry-only regime emission, then enable one consumer at a time.
-The first behavior consumer should probably be Displacement or Dynamic Cluster
-because they already score candidate similarity. Traditional GF should consume
-the same regime object later rather than inventing a private surfer-shaped key.
+The first behavior consumer should be movement hit-danger lookup, because the
+wave-evidence split depends on own-risk regimes and directly addresses the
+surfer damage leak. Displacement or Dynamic Cluster can consume the same regime
+next as soft candidate-similarity bonuses. Traditional GF should consume the
+same regime object later rather than inventing a private surfer-shaped key.
 
 ### Telemetry
 
@@ -308,9 +456,10 @@ Success criteria:
 
 ## Implementation Subplan: Profile And EV Fire Slice
 
-Start with a small shared telemetry-first slice. The first useful change is not
-another gun threshold; it is a reliable live view of the damage exchange and a
-single guarded place where fire decisions can use it.
+After wave evidence and regime labels are clean, add a small shared
+telemetry-first profile slice. The useful fire-side change is not another gun
+threshold; it is a reliable live view of the damage exchange and a single
+guarded place where fire decisions can use it.
 
 ### Evidence To Encode
 
@@ -460,7 +609,7 @@ Update:
 - `bots/bot_core/telemetry/fire.py` or a new `telemetry/combat.py`
 - `tools/telemetry_audit.py` tests if required fields are introduced
 - `tools/combat_economics_summary.py` only if the new event enables a useful
-  run-level table; do not block Phase 1 on analyzer changes
+  run-level table; do not block the profile phase on analyzer changes
 
 ### EV Fire Gate Prototype
 
@@ -615,7 +764,47 @@ Promotion requires better raw port economics, not filtered legacy economics:
 - `combat.profile` tags activate before the late-round damage deficit, not only
   after the battle is already lost.
 
-## Phase 1: Opponent Combat Profile
+## Phase 0: Wave Evidence Semantics
+
+Separate wave-pass occupancy from real enemy-hit danger before adding new
+economics. This is the first behavior-adjacent change because later combat
+profile, EV, and movement decisions should consume clean evidence.
+
+Implement:
+
+- `enemy_hit_profile` for matched real bullet hits.
+- `visit_flattening_profile` for ordinary enemy-wave pass visits.
+- explicit evidence-kind telemetry for wave passes, hit-danger updates, and
+  expected waves.
+- danger breakdown fields that show hit danger separately from flattening
+  pressure.
+
+Initial implementation should preserve current movement decisions or use the
+new stores only behind a guarded flag. First prove that the evidence separation
+is correct and visible.
+
+Acceptance:
+
+- Unit tests prove each evidence kind updates only its intended store.
+- `hit.bullet` and movement telemetry report wave-match status, match error,
+  GF/bin, and own-risk regime.
+- A 24-round port run can explain surfer bullet hits through hit-danger
+  evidence without relying on wave-pass counts as the main danger signal.
+
+## Phase 1: Shared Combat Regime Key
+
+Add the shared regime vocabulary after evidence kinds are separated. The regime
+does not need to control behavior immediately; first it should label gun visits,
+movement hit danger, and future EV/profile records in the same coarse language.
+
+Acceptance:
+
+- Regime bucket unit tests pass.
+- `track`, `gun.wave_visit`, and movement hit-danger telemetry carry readable
+  regime labels.
+- No gun or firepower behavior changes happen in the first regime patch.
+
+## Phase 2: Opponent Combat Profile
 
 Add a shared per-target combat profile that is updated from existing telemetry
 events and runtime observations.
@@ -652,7 +841,40 @@ Acceptance:
 - A 12-round port run shows the profile identifies high enemy pressure and
   damage deficit before the final rounds.
 
-## Phase 2: Expected-Value Fire Gate
+## Phase 3: Enemy-Hit Danger Movement
+
+Use the clean `enemy_hit_profile` from Phase 0 in movement scoring. This should
+be generic, not surfer-only.
+
+When we are hit, record the hit guess factor and own-risk regime:
+
+- distance bucket
+- our lateral velocity bucket
+- our acceleration or last-velocity bucket
+- wall margin bucket
+- enemy bullet-power bucket
+- enemy gun-heat/wave timing confidence
+
+Movement candidate scoring then asks:
+
+```text
+if candidate lands in a historically dangerous GF region:
+    add enemy_hit_danger
+if candidate repeats heavily visited wave-pass regions:
+    add smaller flattening penalty
+```
+
+This directly attacks the BasicGFSurfer port's focused gun shape, but it also
+helps against other GF-style enemies.
+
+Acceptance:
+
+- Unit tests cover hit-danger update and lookup separately from flattening.
+- Telemetry shows top danger bins and whether movement avoided them.
+- Against the Python port, enemy bullet damage falls without relying only on
+  reduced firing.
+
+## Phase 4: Expected-Value Fire Gate
 
 Replace "aligned enough, fire" with "shot is worth firing." This does not mean
 the bot becomes passive. It means low-value shots stop training strong enemies
@@ -683,7 +905,7 @@ Acceptance:
 - Score and bullet damage are both reported; hit rate alone is not accepted as
   success.
 
-## Phase 3: Dynamic Firepower Floors
+## Phase 5: Dynamic Firepower Floors
 
 Once the EV gate exists, add firepower floors from opponent profile instead of
 hard-coded surfer rules.
@@ -711,37 +933,7 @@ Acceptance:
 - Telemetry explains each floor: `easy`, `evasive_good_shot`,
   `high_pressure_good_shot`, `weak_hold`, etc.
 
-## Phase 4: Enemy Gun Danger For Movement
-
-Add movement learning from enemy hits. This should be generic, not surfer-only.
-
-When we are hit, record the hit guess factor and coarse state:
-
-- distance bucket
-- our lateral velocity bucket
-- our acceleration or last-velocity bucket
-- wall margin bucket
-- enemy bullet-power bucket
-- enemy gun-heat/wave timing confidence
-
-Movement candidate scoring then asks:
-
-```text
-if candidate lands in a historically dangerous GF region:
-    add danger
-```
-
-This directly attacks the BasicGFSurfer port's focused gun shape, but it also
-helps against other GF-style enemies.
-
-Acceptance:
-
-- Unit tests cover danger update and lookup.
-- Telemetry shows top danger bins and whether movement avoided them.
-- Against the Python port, enemy bullet damage falls without relying only on
-  reduced firing.
-
-## Phase 5: Anti-Repetition Movement Mode
+## Phase 6: Anti-Repetition Movement Mode
 
 When the opponent profile says the enemy is learning us, make Adaptive less
 stationary in simple feature space.
@@ -770,7 +962,7 @@ Acceptance:
   needlessly noisy.
 - BasicGFSurfer port's bullet damage drops relative to baseline.
 
-## Phase 6: Damage-Aware Gun Selection
+## Phase 7: Damage-Aware Gun Selection
 
 The virtual gun selector should eventually rank by expected value, not only hit
 score.
@@ -798,7 +990,7 @@ Acceptance:
 - Selector changes are explainable from telemetry.
 - A forced-gun matrix still runs, so selector changes are not masking bad guns.
 
-## Phase 7: Surfer-Algorithm Exploitation
+## Phase 8: Surfer-Algorithm Exploitation
 
 Only after generic economics and movement danger exist, add a specialized but
 still generic anti-surfer aim path.
@@ -870,20 +1062,23 @@ Judge using:
 
 ## Suggested Implementation Order
 
-1. Shared `CombatProfile` in `bot_core`: telemetry-only opponent profile.
-2. Fire telemetry additions: record proposed firepower, selected gun, confidence,
+1. Split movement wave evidence into hit danger, wave-pass flattening, and
+   expected-wave pressure.
+2. Add shared `CombatRegime` / own-risk regime telemetry.
+3. Shared `CombatProfile` in `bot_core`: telemetry-only opponent profile.
+4. Fire telemetry additions: record proposed firepower, selected gun, confidence,
    shot EV inputs, and final decision reason.
-3. Shared EV fire gate in the core fire-decision path, guarded by env flag.
+5. Shared enemy-hit GF danger table for movement using the clean hit profile.
+6. Shared EV fire gate in the core fire-decision path, guarded by env flag.
    Validate with Adaptive against the Python BasicGFSurfer port, then let other
    repo bots inherit the shared behavior unless a bot-specific personality
    conflict appears.
-4. Shared dynamic firepower floors in the core firepower policy, with bot-local
+7. Shared dynamic firepower floors in the core firepower policy, with bot-local
    personality knobs only for aggression/conservation bias.
-5. Shared enemy-hit GF danger table for movement.
-6. Anti-repetition movement mode using that danger table.
-7. Damage-aware virtual gun selector.
-8. Rebuild anti-surfer gun using reachable surf-choice prediction.
-9. Delete or collapse old selector/fire/movement branches that are beaten by the
+8. Anti-repetition movement mode using that danger table.
+9. Damage-aware virtual gun selector.
+10. Rebuild anti-surfer gun using reachable surf-choice prediction.
+11. Delete or collapse old selector/fire/movement branches that are beaten by the
    shared replacement and no longer serve force testing or diagnostics.
 
 ## Success Definition
