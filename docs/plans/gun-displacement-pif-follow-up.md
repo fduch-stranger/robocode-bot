@@ -53,6 +53,8 @@ longer range.
 3. Avoid selector-threshold tuning until the gun exposes better prediction
    behavior and quality diagnostics.
 4. Preserve forced-gun testability.
+5. Treat Markov movement prediction as a replay-ranking and replay-weighting
+   refinement, not as a separate live gun or selector policy change.
 
 ## Non-Goals
 
@@ -85,6 +87,8 @@ Expected effect:
 - Avoid aiming between split replay clusters.
 - Prefer the strongest historical movement mode.
 - Keep behavior deterministic and package-local.
+- Give later Markov weighting a useful aggregation point instead of letting a
+  better candidate set still collapse to an between-mode median.
 
 ### 2. Improve Candidate Similarity
 
@@ -110,7 +114,52 @@ Expected effect:
 - Better matching against surfers that repeat movement shape from different
   board headings.
 
-### 3. Add Replay Quality Diagnostics
+### 3. Add Markov-Assisted Replay Ranking
+
+Markov prediction fits this follow-up as an extension of candidate similarity.
+It should not replace density-best selection, create a new public gun mode, or
+change selector thresholds in this plan.
+
+Start with a small symbolic movement model built from the same target history
+used by displacement:
+
+```text
+order: 2, optionally 3 after evidence
+symbols: fast-left, slow-left, stop, slow-right, fast-right, wall, reverse
+state: recent symbols before a candidate replay start
+transition: recent state -> next symbol counts
+```
+
+At aim time:
+
+```text
+encode the target's recent movement symbols
+score historical replay starts by recent-symbol sequence similarity
+estimate likely next-symbol probability when the state has enough observations
+combine this with the existing candidate score as a soft weight
+```
+
+Use Markov as a soft signal only:
+
+```text
+candidate_weight =
+  replay_similarity_weight *
+  markov_sequence_match_weight *
+  markov_next_symbol_probability
+```
+
+If the Markov state is sparse or high-entropy, fall back to the non-Markov
+candidate score. Do not hard-filter candidates based on Markov state in the
+first version.
+
+Expected effect:
+
+- Prefer historical replays with the same recent movement rhythm.
+- Capture reversal, stop/go, and wall-turn timing that scalar features compress
+  away.
+- Keep the gun usable when symbolic history is sparse.
+
+### 4. Add Replay Quality Diagnostics
 
 Before adding a hard confidence gate, emit or expose quality signals from the
 gun so filtered telemetry can tell whether weak shots come from diffuse replay
@@ -125,6 +174,11 @@ displacement_peak_density
 displacement_peak_share
 displacement_bearing_spread
 displacement_distance_bucket
+displacement_markov_order
+displacement_markov_match_count
+displacement_markov_confidence
+displacement_markov_entropy
+displacement_markov_best_next_symbol
 ```
 
 These can live in `GunBearing.metadata` and `GunDecisionContext` first. Add
@@ -135,8 +189,10 @@ Expected effect:
 
 - Make confidence gating evidence-driven.
 - Let forced-gun runs separate "bad model" from "good model, bad context".
+- Show whether Markov is adding useful replay concentration or just increasing
+  sparsity.
 
-### 4. Re-Evaluate On Filtered Surfer Rounds
+### 5. Re-Evaluate On Filtered Surfer Rounds
 
 Use forced displacement again:
 
@@ -162,6 +218,22 @@ filtered excluded-round count
 
 Raw score is secondary because stuck-surfer rounds can dominate it.
 
+Markov-specific judgment should compare the same density-best displacement
+baseline with and without Markov weighting:
+
+```text
+filtered displacement hit rate
+filtered displacement virtual wave average
+long-range displacement virtual wave average
+average replay peak share
+average bearing spread
+markov confidence vs hit-rate buckets
+excluded-round count
+```
+
+Do not promote Markov if gains only appear in low-confidence states, high
+excluded-round runs, or raw stuck-surfer score.
+
 ## Confidence Gate Criteria
 
 Only add a displacement availability/confidence gate after density selection and
@@ -175,11 +247,17 @@ bearing_spread too high
 replay_count too low
 best candidate score too weak
 long-range and weak density
+markov confidence too low after it proves predictive
+markov entropy too high after it proves predictive
 ```
 
 The first implementation of a gate should be component-level: return `None`
 from `DisplacementGun.aim()` when replay quality is poor. Selector-level
 penalties can come later if normal live selection needs more nuance.
+
+Markov should not be part of the first gate unless forced-run telemetry shows a
+clear monotonic relationship between Markov confidence and real hit quality.
+Until then, it is a ranking/weighting input and diagnostic only.
 
 ## Promotion Bar
 
@@ -195,3 +273,15 @@ local forced-displacement smoke against repo bots
 
 Do not promote if gains only appear in raw score and disappear after filtered
 surfer analysis.
+
+For Markov-assisted displacement, compare against the strongest non-Markov
+follow-up version, not against the original median replay baseline. The expected
+sequence is:
+
+```text
+1. density-best replay bearing
+2. improved candidate similarity
+3. replay quality diagnostics
+4. Markov-assisted candidate ranking and replay weighting
+5. confidence gate only after diagnostics justify it
+```

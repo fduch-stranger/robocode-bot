@@ -443,6 +443,39 @@ scripts/run-ab.sh \
 scripts/run-ab.sh --name smoke --preset adaptive-1v1-core --rounds 1 --repeats 1
 ```
 
+### Historical Commit A/B With Current Analysis
+
+When comparing the current bot against an older gun implementation, prefer
+re-running both sides instead of analyzing old telemetry. This avoids telemetry
+schema drift while still using the current analysis scripts.
+
+For the dynamic-cluster KNN refinement, `168ef33` introduced the density,
+context-sensitive weighting, and extended diagnostics work; use its parent
+`02d571e` as the simple-KNN baseline:
+
+```sh
+git worktree add --detach /tmp/robocode-bot-simple-knn 02d571e
+
+scripts/run-ab.sh \
+  --name simple-knn-vs-current-basic-gf-surfer \
+  --preset adaptive-1v1-basic-gf-surfer \
+  --baseline /tmp/robocode-bot-simple-knn \
+  --candidate . \
+  --rounds 24 \
+  --repeats 3 \
+  --telemetry
+
+tools/surfer_glitch_analysis.py \
+  battle-results/ab/<timestamp>-simple-knn-vs-current-basic-gf-surfer \
+  --json-output battle-results/ab/<timestamp>-simple-knn-vs-current-basic-gf-surfer/surfer-filtered-summary.json
+```
+
+Use `pairedFiltered` from `surfer_glitch_analysis.py` as the BasicGFSurfer
+decision metric. The baseline worktree uses its historical bot code and
+launcher, but the analyzer reads the newly generated telemetry from both sides,
+so old JSONL compatibility is not required. Start with `--rounds 1 --repeats 1`
+as a smoke check before spending the full `24 x 3` validation run.
+
 Options:
 
 | Option | Purpose |

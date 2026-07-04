@@ -30,6 +30,7 @@ Battle/tool commands:
 - Gun/eval summary: `tools/gun_eval_summary.py battle-results/runs/<run>/telemetry --bot adaptive-prime`.
 - BasicGFSurfer glitch filtering: `tools/surfer_glitch_analysis.py battle-results/ab/<experiment>` filters rounds where Adaptive hit accuracy is greater than the default `0.30` cutoff and warns/fails on incomplete telemetry or short runs. Prefer `pairedFiltered` for A/B judging: it keeps only baseline/candidate round numbers that are valid on both sides, reports excluded glitch rounds separately from unpaired/missing rounds, and prints round-by-round score/first-place/accuracy deltas.
 - Focused BasicGFSurfer A/B: `scripts/run-ab.sh --preset adaptive-1v1-basic-gf-surfer --rounds 24 --repeats 3 --telemetry`, with repeatable `--baseline-env KEY=VALUE` / `--candidate-env KEY=VALUE` for forced-gun and tuning sweeps.
+- Historical simple-KNN vs current BasicGFSurfer workflow: create a detached worktree at `02d571e` (parent of density/context-sensitive dynamic-cluster commit `168ef33`), run current `scripts/run-ab.sh --baseline <old-worktree> --candidate . --preset adaptive-1v1-basic-gf-surfer --telemetry`, then run current `tools/surfer_glitch_analysis.py` on the newly generated A/B directory. This avoids old telemetry schema compatibility issues.
 
 A/B round guidance:
 - `1-8` rounds are smoke checks only: crashes, packaging, telemetry shape, and obvious churn/regression signals.
