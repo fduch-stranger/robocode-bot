@@ -1,7 +1,10 @@
 # Robocode Bot Workspace
 
-Python bots, shared combat logic, battle automation, telemetry tooling, and
-algorithm notes for Robocode Tank Royale.
+A Robocode Tank Royale battle lab for adaptive guns, wave surfing, telemetry,
+legacy opponent ports, and repeatable bot fights.
+
+Build bots, run controlled battles, inspect what happened, and feed the evidence
+back into targeting and movement systems.
 
 Robocode Tank Royale docs:
 [robocode-dev/tank-royale](https://github.com/robocode-dev/tank-royale) and
@@ -9,27 +12,27 @@ Robocode Tank Royale docs:
 
 ![Telemetry viewer showing an all-bot run](docs/assets/telemetry-viewer.png)
 
-## What Is Here
+## The Arena
 
 | Area | Purpose |
 | --- | --- |
 | `bots/` | Local bots, ported opponents, and shared `bot_core` code. |
-| `scripts/` | Setup, packaging, battle, telemetry, and A/B entry points. |
-| `tools/` | Battle runner, telemetry viewer, summaries, audits, and utilities. |
+| `scripts/` | Setup, packaging, battle, battle-series, telemetry, and A/B entry points. |
+| `tools/` | Battle runner, telemetry viewer, summaries, motion sanity, audits, and utilities. |
 | `docs/` | Workflow, architecture, telemetry, and tuning documentation. |
 | `tests/` | Unit tests for shared bot logic and tooling. |
 
-Current local bots:
+Current local roster:
 
 | Bot | Role |
 | --- | --- |
-| [Adaptive Prime](bots/adaptive-prime/README.md) | 1v1 champion candidate with surfing, potential fields, and adaptive firepower. |
-| [Chase Lock](bots/chase-lock/README.md) | Target-lock pressure bot with range-band movement. |
-| [Circle Strafer](bots/circle-strafer/README.md) | Defensive orbital bot with conservative wall and separation policy. |
-| [Sweep Pressure](bots/sweep-pressure/README.md) | Direct pressure bot with sweeping movement. |
-| [BasicGFSurfer Port](bots/ports/basic-gf-surfer-port/README.md) | Native Python reference opponent for surfer experiments. |
+| [Adaptive Prime](bots/adaptive-prime/README.md) | Champion candidate with surfing, potential fields, and adaptive firepower. |
+| [Chase Lock](bots/chase-lock/README.md) | Pressure fighter that keeps targets pinned by range and lock discipline. |
+| [Circle Strafer](bots/circle-strafer/README.md) | Defensive orbit bot built around survival, spacing, and wall recovery. |
+| [Sweep Pressure](bots/sweep-pressure/README.md) | Direct-fire pressure bot with sweeping movement and projected wall avoidance. |
+| [BasicGFSurfer Port](bots/ports/basic-gf-surfer-port/README.md) | Ported legacy benchmark and surfer-style sparring partner. |
 
-## First Run
+## Fastest Fight
 
 Requirements: Python 3.x compatible with the project virtualenv, Java, and a
 Bash-compatible shell.
@@ -38,20 +41,27 @@ Bash-compatible shell.
 cp .env.example .env
 scripts/setup.sh
 scripts/package.sh
-scripts/run-battle.sh
+scripts/run-battle.sh --rounds 1 bots/adaptive-prime bots/chase-lock
 ```
 
-Quick checks:
+Watch the instruments:
 
 ```sh
-PYTHONPATH=bots .venv/bin/python -m pytest
-scripts/run-battle.sh --rounds 1 bots/adaptive-prime bots/chase-lock
-scripts/run-battle.sh --telemetry --rounds 1 bots/adaptive-prime bots/chase-lock
+scripts/run-battle.sh --telemetry --telemetry-open --rounds 1 bots/adaptive-prime bots/chase-lock
 ```
 
 CLI battle artifacts are written under `battle-results/runs/<timestamp>/`.
 Important files are `results.json`, `runner.log`, `process.log`, optional
 `debug/`, optional `telemetry/`, and optional recordings.
+
+Quick health checks:
+
+```sh
+PYTHONPATH=bots .venv/bin/python -m pytest
+scripts/run-battle.sh --rounds 1 bots/adaptive-prime bots/chase-lock
+```
+
+Core loop: build -> fight -> inspect telemetry -> compare A/B -> tune -> repeat.
 
 ## Documentation
 
@@ -62,6 +72,7 @@ Important files are `results.json`, `runner.log`, `process.log`, optional
 | Shared implementation structures: targets, waves, KNN, GF profiles, telemetry records | [Bot Core Data Structures](docs/bot-core-data-structures.md) |
 | Concrete gun package behavior | [Gun Component Docs](docs/README.md#gun-component-docs) |
 | Generated telemetry event contract | [Telemetry Event Schema](docs/telemetry-schema.md) |
+| Port converted legacy bots to native Python | [Legacy Bot Porting Guideline](docs/legacy-bot-porting-guideline.md) |
 | Specific bot behavior | [Bot Docs](docs/README.md#bot-docs) |
 | Local championship snapshot | [Championship Results](docs/championship-results.md) |
 
@@ -74,12 +85,15 @@ Common workflow anchors:
 | Use telemetry viewer or schema generation | [Tooling: Telemetry](docs/tooling.md#telemetry) |
 | Audit telemetry and summarize gun/combat results | [Tooling: Experiment Analysis](docs/tooling.md#experiment-analysis) |
 | Compare baseline and candidate bots | [Tooling: A/B Runs](docs/tooling.md#ab-runs) |
+| Repeat battles without A/B worktrees | [Tooling: Battle Series](docs/tooling.md#battle-series) |
 | Use converted legacy bots for reference or porting | [Tooling: Converted Legacy Bots](docs/tooling.md#converted-legacy-bots) |
+| Port a useful legacy opponent | [Legacy Bot Porting Guideline](docs/legacy-bot-porting-guideline.md) |
 
 ## Local Configuration
 
 Copy `.env.example` to `.env` and keep machine-specific paths there. `.env`,
-`battle-results/`, `dist/`, `.venv/`, and `legacy-bots/` are ignored.
+`.env.guns`, `battle-results/`, `dist/`, `.venv/`, and `legacy-bots/` are
+ignored.
 
 Common settings:
 
@@ -89,6 +103,7 @@ ROBOCODE_PYTHON_BIN
 ROBOCODE_TELEMETRY_DIR
 ROBOCODE_TELEMETRY_HOST
 ROBOCODE_TELEMETRY_PORT
+ROBOCODE_TELEMETRY_OPEN
 ROBOCODE_GUN_MODE
 ROBOCODE_GUN_SET
 ROBOCODE_LEGACY_BOTS_ROOT
