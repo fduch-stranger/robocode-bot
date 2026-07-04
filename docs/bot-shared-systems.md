@@ -75,7 +75,8 @@ Typical aim modes:
   uses the same component package to compare wall-hit-aware prediction.
 - [`head_on`](../bots/bot_core/gun/guns/head_on/README.md): direct bearing.
 - [`displacement`](../bots/bot_core/gun/guns/displacement/README.md):
-  rotation-normalized historical replay.
+  rotation-normalized historical replay with density-supported bearing
+  selection.
 - [`traditional_gf`](../bots/bot_core/gun/guns/traditional_gf/README.md):
   guess-factor profile.
 - [`anti_surfer`](../bots/bot_core/gun/guns/anti_surfer/README.md):
@@ -137,8 +138,8 @@ selector policy surface, and telemetry notes.
 Fire context is shared infrastructure, not a dynamic-cluster-only feature.
 `dynamic_cluster` uses it for neighbor diagnostics and soft weighting,
 `traditional_gf` reports context alongside profile-source diagnostics,
-`anti_surfer` reports surfer-relevance context, `displacement` exposes it as
-the matching-key foundation for replay work, and `linear` contributes
+`anti_surfer` reports surfer-relevance context, `displacement` exposes replay
+quality and Markov/coarse-regime context for forced-gun analysis, and `linear` contributes
 stable/low-lateral/short-flight context tags to selector diagnostics. Broad
 selector threshold retuning should be tested separately from fire-context
 collection.

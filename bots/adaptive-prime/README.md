@@ -185,6 +185,14 @@ falls back to an available mode. `displacement` and `anti_surfer` are included
 here for isolated experiments even though they are outside Adaptive's normal
 selectable-mode set.
 
+For displacement density-only validation, Adaptive also accepts:
+
+```sh
+ROBOCODE_ADAPTIVE_GUN_MODE=displacement \
+ROBOCODE_ADAPTIVE_DISPLACEMENT_MARKOV=0 \
+scripts/run-battle.sh --telemetry --rounds 24 bots/adaptive-prime --legacy basic-gf-surfer
+```
+
 For `traditional_gf` modeling experiments, Adaptive also accepts:
 
 ```sh

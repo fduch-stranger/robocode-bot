@@ -69,6 +69,7 @@ class TargetPosition:
     observed_lateral_speed: float | None = None
     observed_advancing_speed: float | None = None
     observed_wall_margin: float | None = None
+    observed_distance: float | None = None
 
 
 @dataclass

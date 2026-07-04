@@ -78,6 +78,7 @@ class TargetHistoryStore:
         arena_height = float(bot.arena_height)
         absolute_bearing = math.radians(absolute_bearing_between(bot_x, bot_y, target.x, target.y))
         lateral_speed, advancing_speed = _target_velocity_components(target, absolute_bearing)
+        observed_distance = math.hypot(target.x - bot_x, target.y - bot_y)
         arena_scale = max(arena_width, arena_height)
         wall_margin = min(
             target.x,
@@ -94,6 +95,7 @@ class TargetHistoryStore:
             observed_lateral_speed=lateral_speed,
             observed_advancing_speed=advancing_speed,
             observed_wall_margin=wall_margin,
+            observed_distance=observed_distance,
         )
 
     def history_for(self, target_id: int) -> list[TargetPosition]:

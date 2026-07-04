@@ -116,6 +116,7 @@ class AdaptivePrime(Bot):
                 min_visits=GUN_POLICY.min_visits,
                 min_switch_score=GUN_POLICY.min_switch_score,
                 displacement=DisplacementGunConfig(
+                    markov_enabled=GUN_POLICY.displacement_markov_enabled,
                     min_switch_visits=GUN_POLICY.displacement_min_switch_visits,
                     min_switch_score=GUN_POLICY.displacement_min_switch_score,
                 ),
@@ -417,10 +418,10 @@ class AdaptivePrime(Bot):
                 disabled_modes=frozenset() if use_segmented_gun_stats else frozenset({"traditional_gf"}),
                 allow_segmented_stats=use_segmented_gun_stats,
             )
-            override_alignment_limit = min(
+            override_alignment_limit = float(min(
                 FIRE_GATE.alignment_limit(distance),
                 FIRE_POLICY.low_energy_endgame_alignment_degrees,
-            )
+            ))
             override_quality = self._dynamic_shot_quality_value(override_aim, "shot_quality", default=-1.0)
             final_reject_reason = None
             if override_aim.mode != "dynamic_cluster":
@@ -532,10 +533,10 @@ class AdaptivePrime(Bot):
             return None
         if fire_decision.reason != "energy_margin":
             return None
-        alignment_limit = min(
+        alignment_limit = float(min(
             FIRE_GATE.alignment_limit(distance),
             FIRE_POLICY.low_energy_endgame_alignment_degrees,
-        )
+        ))
         shot_quality = self._dynamic_shot_quality_value(aim, "shot_quality", default=-1.0)
 
         def reject(reason: str) -> None:
@@ -571,11 +572,11 @@ class AdaptivePrime(Bot):
         if shot_quality < FIRE_POLICY.low_energy_endgame_min_shot_quality:
             reject("shot_quality")
             return None
-        max_firepower = self.energy - FIRE_POLICY.low_energy_endgame_energy_reserve
+        max_firepower = float(self.energy) - FIRE_POLICY.low_energy_endgame_energy_reserve
         if max_firepower < 0.1:
             reject("energy_reserve")
             return None
-        proposed_firepower = max(0.1, min(firepower, max_firepower))
+        proposed_firepower = float(max(0.1, min(firepower, max_firepower)))
         self._record_low_energy_endgame(
             target,
             distance,

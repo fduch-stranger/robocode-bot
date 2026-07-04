@@ -1,5 +1,6 @@
 import math
 import unittest
+from collections import Counter
 from types import SimpleNamespace
 from typing import cast
 
@@ -40,7 +41,7 @@ from bot_core.gun.policy import selector_config_from_policy
 from bot_core.gun.guns.anti_surfer.config import AntiSurferGunConfig
 from bot_core.gun.guns.anti_surfer.gun import AntiSurferGun
 from bot_core.gun.guns.displacement.config import DisplacementGunConfig
-from bot_core.gun.guns.displacement.gun import DisplacementGun
+from bot_core.gun.guns.displacement.gun import DisplacementGun, _MarkovSignal, _ReplayBearing
 from bot_core.gun.guns.dynamic_cluster.config import DynamicClusterGunConfig
 from bot_core.gun.guns.dynamic_cluster.gun import DynamicClusterGun
 from bot_core.gun.guns.dynamic_cluster.memory import RollingKnnBuffer
@@ -1850,6 +1851,7 @@ class GunStatsTest(unittest.TestCase):
         self.assertAlmostEqual(8.0, position.observed_lateral_speed)
         self.assertAlmostEqual(0.0, position.observed_advancing_speed)
         self.assertAlmostEqual(0.125, position.observed_wall_margin)
+        self.assertAlmostEqual(200.0, position.observed_distance)
 
     def test_displacement_candidate_scoring_prefers_stored_velocity_context(self) -> None:
         bot = fake_bot(x=100.0, y=100.0, arena_width=800.0, arena_height=600.0)
@@ -1883,6 +1885,84 @@ class GunStatsTest(unittest.TestCase):
         fallback_score = gun._candidate_score(context, current, fallback_only)
 
         self.assertLess(stored_score, fallback_score)
+
+    def test_displacement_coarse_match_bonus_rewards_matching_regimes(self) -> None:
+        bot = fake_bot(x=100.0, y=100.0, arena_width=800.0, arena_height=600.0)
+        target = TargetSnapshot(1, 100.0, 200.0, 100.0, 90.0, 8.0, 20)
+        context = AimContext(
+            bot=bot,
+            target=target,
+            distance=100.0,
+            firepower=2.0,
+            motion=TargetMotion(),
+            field_margin=18.0,
+            features=(0.125, 2.0 / 3.0, 1.0, 0.0, 0.0, 1.0, 0.125),
+            segment_key=(0,) * 6,
+            fire_context=FireContext(lateral_speed_signed=8.0, wall_margin=0.125),
+        )
+        current = TargetPosition(
+            20,
+            200.0,
+            100.0,
+            8.0,
+            90.0,
+            observed_lateral_speed=8.0,
+            observed_advancing_speed=0.0,
+            observed_wall_margin=0.125,
+            observed_distance=100.0,
+        )
+        history = [
+            TargetPosition(9, 292.0, 100.0, 8.0, 90.0),
+            TargetPosition(
+                10,
+                300.0,
+                100.0,
+                8.0,
+                90.0,
+                observed_lateral_speed=8.0,
+                observed_advancing_speed=0.0,
+                observed_wall_margin=0.125,
+                observed_distance=110.0,
+            ),
+            current,
+        ]
+        gun = DisplacementGun(DisplacementGunConfig(min_samples=1), TargetHistoryStore(max_history=10))
+
+        bonus = gun._coarse_match_bonus(context, current, history, 1)
+
+        self.assertGreaterEqual(bonus, 0.40)
+
+    def test_displacement_density_best_selects_cluster_instead_of_between_mode_median(self) -> None:
+        gun = DisplacementGun(DisplacementGunConfig(min_samples=1), TargetHistoryStore(max_history=10))
+        replays = [
+            _ReplayBearing(-30.0, -30.0, 0.1, 1.0, _MarkovSignal()),
+            _ReplayBearing(-29.0, -29.0, 0.1, 1.0, _MarkovSignal()),
+            _ReplayBearing(-28.0, -28.0, 0.1, 1.0, _MarkovSignal()),
+            _ReplayBearing(10.0, 10.0, 0.1, 1.3, _MarkovSignal()),
+            _ReplayBearing(11.0, 11.0, 0.1, 1.3, _MarkovSignal()),
+            _ReplayBearing(12.0, 12.0, 0.1, 1.3, _MarkovSignal()),
+        ]
+
+        selection = gun._density_best_bearing(0.0, replays)
+
+        self.assertGreater(selection.bearing, 5.0)
+        self.assertGreater(selection.peak_share, 0.20)
+
+    def test_displacement_markov_signal_boosts_matching_low_entropy_transition(self) -> None:
+        gun = DisplacementGun(DisplacementGunConfig(min_samples=1), TargetHistoryStore(max_history=10))
+        symbols = ["fast_left", "fast_right", "fast_left", "fast_right", "fast_left", "fast_right"]
+        transitions = {("fast_left", "fast_right"): Counter({"fast_left": 4})}
+
+        signal = gun._markov_signal(
+            symbols,
+            transitions,
+            ("fast_left", "fast_right"),
+            3,
+        )
+
+        self.assertEqual(2, signal.match_count)
+        self.assertGreater(signal.confidence, 0.0)
+        self.assertGreater(signal.weight, 1.36)
 
     def test_displacement_rotated_step_preserves_relative_forward_left_motion(self) -> None:
         start = TargetPosition(1, 300.0, 100.0, 8.0, 0.0)
@@ -1955,6 +2035,51 @@ class GunStatsTest(unittest.TestCase):
         assert bearing is not None
         self.assertGreater(bearing, 35.0)
         self.assertLess(bearing, 60.0)
+
+    def test_displacement_aim_exposes_replay_quality_diagnostics(self) -> None:
+        history = TargetHistoryStore(max_history=32)
+        bot = fake_bot(x=100.0, y=100.0, arena_width=800.0, arena_height=600.0)
+        for turn in range(11):
+            history.observe_target(
+                TargetSnapshot(
+                    1,
+                    100.0,
+                    300.0 + 10.0 * turn,
+                    100.0 + 10.0 * turn,
+                    0.0,
+                    8.0,
+                    turn,
+                ),
+                bot,
+            )
+        gun = DisplacementGun(DisplacementGunConfig(min_samples=1), history)
+        context = AimContext(
+            bot=bot,
+            target=TargetSnapshot(1, 100.0, 200.0, 100.0, 90.0, 8.0, 100),
+            distance=100.0,
+            firepower=2.0,
+            motion=TargetMotion(),
+            field_margin=18.0,
+            features=(0.125, 2.0 / 3.0, 1.0, 0.0, 0.0, 1.0, 0.125),
+            segment_key=(0,) * 6,
+            fire_context=FireContext(
+                lateral_speed_signed=8.0,
+                wall_margin=0.125,
+                bullet_flight_time=8.0,
+                distance_bucket=1,
+            ),
+        )
+
+        bearing = gun.aim(context)
+
+        self.assertIsNotNone(bearing)
+        assert bearing is not None
+        metadata = bearing.metadata["displacement"]
+        self.assertGreater(metadata["displacement_replay_count"], 0)
+        self.assertIn("displacement_peak_share", metadata)
+        self.assertIn("displacement_bearing_spread", metadata)
+        self.assertEqual(2, metadata["displacement_markov_order"])
+        self.assertEqual(1, metadata["displacement_distance_bucket"])
 
     def test_movement_context_tags_classify_stable_and_curving_history(self) -> None:
         bot = SimpleNamespace(x=100.0, y=100.0)

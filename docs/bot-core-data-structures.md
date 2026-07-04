@@ -81,15 +81,17 @@ TargetPosition(
   direction,
   observed_lateral_speed,
   observed_advancing_speed,
-  observed_wall_margin
+  observed_wall_margin,
+  observed_distance
 )
 ```
 
 The first five fields mirror the scanned target state. When the observing bot
 context is available, the store also records observation-time firing geometry:
-signed lateral speed, advancing speed, and normalized wall margin. The
-displacement gun uses these stored values to match historical replay starts
-without recomputing old lateral movement from the bot's current position.
+signed lateral speed, advancing speed, normalized wall margin, and distance.
+The displacement gun uses these stored values to match historical replay starts
+without recomputing old lateral movement or range from the bot's current
+position.
 
 ### `TargetMemory` and `TargetSelector`
 
@@ -154,7 +156,7 @@ learning state. The package docs include behavior diagrams and ownership notes:
 | --- | --- |
 | [`HeadOnGun`](../bots/bot_core/gun/guns/head_on/README.md) | Stateless direct bearing. |
 | [`LinearGun`](../bots/bot_core/gun/guns/linear/README.md) | Stateless linear prediction variants using `bot_core.gun.prediction.LinearPrediction` diagnostics. |
-| [`DisplacementGun`](../bots/bot_core/gun/guns/displacement/README.md) | Reads shared `TargetHistoryStore` to replay similar historical movement relative to the current target heading. |
+| [`DisplacementGun`](../bots/bot_core/gun/guns/displacement/README.md) | Reads shared `TargetHistoryStore` to replay similar historical movement relative to the current target heading, then chooses a density-supported replay-bearing cluster. |
 | [`DynamicClusterGun`](../bots/bot_core/gun/guns/dynamic_cluster/README.md) | Owns `RollingKnnBuffer`, sample sequencing, neighbor selection, decayed weighting, bandwidth scoring, and warmup blending. |
 | [`TraditionalGfGun`](../bots/bot_core/gun/guns/traditional_gf/README.md) | Owns global, exact-segment, and coarse-segment GF profiles, peak selection, source centering, source-aware selector context, and diagnostics. |
 | [`AntiSurferGun`](../bots/bot_core/gun/guns/anti_surfer/README.md) | Owns anti-surfer profile bins and valley selection. |
