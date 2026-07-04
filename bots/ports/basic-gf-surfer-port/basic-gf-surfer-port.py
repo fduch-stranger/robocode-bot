@@ -1,7 +1,85 @@
 from __future__ import annotations
 
 import math
+import os
+import sys
 from dataclasses import dataclass, field
+from pathlib import Path
+
+
+_DIRECT_BOOTSTRAP_REEXEC_ENV = "ROBOCODE_BASIC_GF_SURFER_PORT_REEXECED"
+_MIN_DIRECT_PYTHON_VERSION = (3, 10)
+
+
+def _bootstrap_direct_gui_launch() -> None:
+    bot_dir = Path(__file__).resolve().parent
+    for candidate in (bot_dir, *bot_dir.parents):
+        if (candidate / "bots" / "bot_core").is_dir():
+            _reexec_venv_python_if_needed(candidate)
+            _add_import_path(candidate / "bots")
+            _add_venv_site_packages(candidate)
+            return
+        if (candidate / "bot_core").is_dir():
+            _reexec_venv_python_if_needed(candidate.parent)
+            _add_import_path(candidate)
+            _add_venv_site_packages(candidate)
+            _add_venv_site_packages(candidate.parent)
+            return
+
+
+def _add_import_path(path: Path) -> None:
+    value = str(path)
+    if value not in sys.path:
+        sys.path.insert(0, value)
+
+
+def _add_venv_site_packages(root: Path) -> None:
+    venv = root / ".venv"
+    if not venv.is_dir():
+        return
+    site_packages_root = venv / "lib"
+    if not site_packages_root.is_dir():
+        return
+    current = site_packages_root / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
+    if current.is_dir():
+        _add_import_path(current)
+    for site_packages in site_packages_root.glob("python*/site-packages"):
+        if site_packages.is_dir():
+            _add_import_path(site_packages)
+
+
+def _reexec_venv_python_if_needed(root: Path) -> None:
+    venv_python = root / ".venv" / "bin" / "python"
+    if not _should_reexec_venv_python(venv_python):
+        return
+
+    env = os.environ.copy()
+    env[_DIRECT_BOOTSTRAP_REEXEC_ENV] = "1"
+    os.execve(str(venv_python), [str(venv_python), str(Path(__file__).resolve()), *sys.argv[1:]], env)
+
+
+def _should_reexec_venv_python(
+    venv_python: Path,
+    *,
+    executable: str | None = None,
+    version_info: tuple[int, int] | None = None,
+) -> bool:
+    if os.environ.get(_DIRECT_BOOTSTRAP_REEXEC_ENV):
+        return False
+    version = version_info or sys.version_info[:2]
+    if version >= _MIN_DIRECT_PYTHON_VERSION:
+        return False
+    if not venv_python.is_file():
+        return False
+
+    current_executable = Path(executable or sys.executable)
+    try:
+        return current_executable.resolve() != venv_python.resolve()
+    except OSError:
+        return True
+
+
+_bootstrap_direct_gui_launch()
 
 from robocode_tank_royale.bot_api import Bot, BotInfo, Color
 from robocode_tank_royale.bot_api.events import (
@@ -24,6 +102,7 @@ WALL_SMOOTHING_MAX_ITERATIONS = 160
 WALL_ESCAPE_MARGIN = 90.0
 WALL_STUCK_DISTANCE = 0.25
 WALL_ESCAPE_TICKS = 12
+RADAR_LOCK_GRACE_TICKS = 2
 MAX_DISTANCE = 900.0
 DISTANCE_INDEXES = 5
 VELOCITY_INDEXES = 5
@@ -163,6 +242,7 @@ class BasicGFSurferPort(Bot):
         self._last_movement_check_location: Point | None = None
         self._last_turn_number = -1
         self._last_gun_wave_update_turn = -1
+        self._last_scan_turn = -1
 
     def run(self) -> None:
         self.body_color = Color.from_rgb(40, 75, 210)
@@ -178,7 +258,7 @@ class BasicGFSurferPort(Bot):
         while self.running:
             self._reset_if_new_round()
             self._update_gun_waves()
-            self.radar_turn_rate = self.max_radar_turn_rate
+            self._maintain_radar()
             self.go()
 
     def on_game_started(self, event: GameStartedEvent) -> None:
@@ -202,6 +282,7 @@ class BasicGFSurferPort(Bot):
         my_heading = tank_degrees_to_java_radians(self.direction)
         enemy_heading = tank_degrees_to_java_radians(event.direction)
 
+        self._last_scan_turn = self.turn_number
         self._lock_radar(abs_bearing)
 
         lateral_velocity = own_lateral_velocity(self.speed, my_heading, abs_bearing)
@@ -272,6 +353,12 @@ class BasicGFSurferPort(Bot):
         self._stationary_ticks = 0
         self._last_movement_check_location = None
         self._last_gun_wave_update_turn = -1
+        self._last_scan_turn = -1
+
+    def _maintain_radar(self) -> None:
+        if self._last_scan_turn >= 0 and self.turn_number - self._last_scan_turn <= RADAR_LOCK_GRACE_TICKS:
+            return
+        self.set_turn_radar_left(float("inf"))
 
     def _reset_if_new_round(self) -> None:
         if self._last_turn_number >= 0 and self.turn_number < self._last_turn_number:

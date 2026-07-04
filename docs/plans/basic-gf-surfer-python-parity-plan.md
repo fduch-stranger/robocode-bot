@@ -66,11 +66,14 @@ Implemented:
   generated wrapper behavior, not Robowiki source alone.
 - `_set_back_as_front` now emits distance-style `set_forward(100)` /
   `set_back(100)` commands instead of writing `target_speed` directly.
+- The radar loop now uses staged radar turns for both search and lock, and only
+  resumes search after scans go stale. This avoids the native port overwriting
+  scan-lock radar commands with continuous search every tick.
 - The port uses a single `_lateral_direction` for movement fallback and gun
   guess-factor sign, matching the fixed Java bot's shared direction state.
-- Gun waves remain manually advanced because the installed Python API does not
-  expose the same classic custom-event lifecycle used by the Java bridge; the
-  manual path now guards wave advancement to once per turn.
+- Gun waves remain manually advanced; later inspection showed the Python API
+  does expose custom events, so a closer `GFTWave` condition port is still open
+  Phase 4 work.
 - Explicit round-started and round-ended handlers reset per-round state while
   preserving battle-persistent surf and gun stats.
 
@@ -78,22 +81,27 @@ Validation so far:
 
 | Check | Result |
 | --- | --- |
-| Focused port unit tests | `16 passed, 6 subtests passed` |
-| Full unit suite | `296 passed` |
+| Focused port unit tests | `21 passed, 6 subtests passed` |
+| Full unit suite | `304 passed` |
 | Direct 12-round Java fixed vs Python port | Python `968`, Java fixed `942` |
 | Direct 24-round Java fixed vs Python port | Java fixed `2397`, Python `1643` |
+| Direct 12-round after radar fix | Java fixed `1141`, Python `1015` |
+| Direct 24-round after radar fix | Python `2045`, Java fixed `1897` |
 | Adaptive vs Java fixed, 24 rounds | Adaptive `2270`, Java fixed `1636` |
 | Adaptive vs Python port, 24 rounds | Adaptive `2023`, Python `1367` |
 
 Interpretation:
 
 - The movement-command fix materially improved the short direct matchup.
-- The 24-round direct matchup still shows a survival and first-place gap, so the
-  Python port should remain a useful local opponent, not the default replacement
-  for the fixed Java legacy reference.
-- The Python port deals competitive bullet damage in some runs but loses too
-  many rounds outright, which keeps the remaining work focused on movement,
-  lifecycle timing, and bridge-command semantics.
+- The radar-command fix removed a native-port radar conflict where search spin
+  could overwrite scan-lock commands. The latest 24-round direct match is the
+  first run showing rough direct parity with the fixed Java bot.
+- Short samples are still noisy; treat the Python port as a useful local
+  opponent, but do not replace the fixed Java reference until the promotion gate
+  passes.
+- Remaining parity work is focused on custom-event gun-wave timing, longer
+  validation, and any GUI-observed stuck or round-reset behavior that repeats
+  after the radar fix.
 - The `24 x 3` promotion gate below is still required before treating the port
   as strength-equivalent tooling.
 

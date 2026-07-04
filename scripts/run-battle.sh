@@ -63,7 +63,11 @@ prepare_legacy_bot_shim() {
   cat > "$shim_script" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
-export JAVA_TOOL_OPTIONS="-Djava.awt.headless=true\${JAVA_TOOL_OPTIONS:+ \$JAVA_TOOL_OPTIONS}"
+java_tool_options="-Djava.awt.headless=true"
+if /usr/bin/env java --enable-final-field-mutation=ALL-UNNAMED -version >/dev/null 2>&1; then
+  java_tool_options="--enable-final-field-mutation=ALL-UNNAMED \$java_tool_options"
+fi
+export JAVA_TOOL_OPTIONS="\$java_tool_options\${JAVA_TOOL_OPTIONS:+ \$JAVA_TOOL_OPTIONS}"
 cd "$source_dir"
 exec /usr/bin/env bash "$script_file"
 EOF
