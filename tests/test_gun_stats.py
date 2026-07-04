@@ -34,6 +34,7 @@ from bot_core.gun import (
     movement_context_tags,
     should_log_switch_decision,
 )
+from bot_core.gun.context import build_gun_features
 from bot_core.gun.factory import standard_runtime_config
 from bot_core.gun.policy import selector_config_from_policy
 from bot_core.gun.guns.anti_surfer.config import AntiSurferGunConfig
@@ -46,6 +47,12 @@ from bot_core.gun.guns.dynamic_cluster.memory import RollingKnnBuffer
 from bot_core.gun.guns.traditional_gf.gun import TraditionalGfGun
 from bot_core.gun.guns.traditional_gf.profile import GuessFactorProfile
 from bot_core.gun.guns.traditional_gf.config import TraditionalGfGunConfig
+from bot_core.gun.utils import (
+    GUN_FEATURE_COUNT,
+    GUN_FEATURE_WEIGHTS,
+    feature_distance,
+    segment_features,
+)
 from bot_core.target_snapshot import TargetSnapshot
 
 
@@ -248,6 +255,30 @@ class GunStatsTest(unittest.TestCase):
         self.assertAlmostEqual(0.06, traditional_gf.global_source_penalty)
         self.assertAlmostEqual(0.035, traditional_gf.blend_source_penalty)
         self.assertAlmostEqual(0.02, traditional_gf.coarse_blend_source_penalty)
+
+    def test_gun_feature_tuple_contract_stays_seven_values(self) -> None:
+        bot = fake_bot(x=100.0, y=100.0, arena_width=800.0, arena_height=600.0)
+        target = TargetSnapshot(1, 100.0, 300.0, 100.0, 90.0, 8.0, 12)
+
+        features = build_gun_features(bot, target, 200.0, 2.0, TargetMotion())
+
+        self.assertEqual(GUN_FEATURE_COUNT, len(features))
+        self.assertEqual(GUN_FEATURE_COUNT, len(GUN_FEATURE_WEIGHTS))
+
+    def test_segment_features_rejects_feature_count_drift(self) -> None:
+        self.assertEqual(6, len(segment_features((0.0,) * GUN_FEATURE_COUNT)))
+
+        with self.assertRaises(AssertionError):
+            segment_features((0.0,) * (GUN_FEATURE_COUNT + 1))
+
+    def test_feature_distance_rejects_feature_count_drift(self) -> None:
+        self.assertEqual(
+            0.0,
+            feature_distance((0.0,) * GUN_FEATURE_COUNT, (0.0,) * GUN_FEATURE_COUNT),
+        )
+
+        with self.assertRaises(AssertionError):
+            feature_distance((0.0,) * GUN_FEATURE_COUNT, (0.0,) * (GUN_FEATURE_COUNT + 1))
 
     def test_direct_runtime_config_bypasses_legacy_gun_config(self) -> None:
         runtime = standard_runtime_config(
@@ -1816,10 +1847,9 @@ class GunStatsTest(unittest.TestCase):
         )
 
         position = history.history_for(1)[0]
-        self.assertEqual(0.0, position.absolute_bearing)
-        self.assertAlmostEqual(8.0, position.lateral_speed)
-        self.assertAlmostEqual(0.0, position.advancing_speed)
-        self.assertAlmostEqual(0.125, position.wall_margin)
+        self.assertAlmostEqual(8.0, position.observed_lateral_speed)
+        self.assertAlmostEqual(0.0, position.observed_advancing_speed)
+        self.assertAlmostEqual(0.125, position.observed_wall_margin)
 
     def test_displacement_candidate_scoring_prefers_stored_velocity_context(self) -> None:
         bot = fake_bot(x=100.0, y=100.0, arena_width=800.0, arena_height=600.0)
@@ -1842,9 +1872,9 @@ class GunStatsTest(unittest.TestCase):
             100.0,
             8.0,
             90.0,
-            lateral_speed=8.0,
-            advancing_speed=0.0,
-            wall_margin=0.125,
+            observed_lateral_speed=8.0,
+            observed_advancing_speed=0.0,
+            observed_wall_margin=0.125,
         )
         fallback_only = TargetPosition(10, 300.0, 100.0, 8.0, 90.0)
         gun = DisplacementGun(DisplacementGunConfig(min_samples=1), TargetHistoryStore(max_history=10))

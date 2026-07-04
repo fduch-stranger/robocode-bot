@@ -19,12 +19,13 @@ rather than owning a private learner.
 
 `DisplacementGun` reads `TargetHistoryStore` from the runtime context. For a
 target, it ranks historical start snapshots by similarity to the current enemy
-state: heading, speed, lateral speed, advancing speed, and wall margin. For each
-usable candidate, it replays subsequent historical movement from the current
-enemy position until bullet travel catches the replayed position. Movement is
-normalized by heading, so an old forward-left step is replayed as forward-left
-relative to the current enemy heading instead of copied as raw world-space
-`dx/dy`. The final aim uses the median relative bearing from usable replays.
+state: heading, speed, observed lateral speed, observed advancing speed, and
+observed wall margin. For each usable candidate, it replays subsequent
+historical movement from the current enemy position until bullet travel catches
+the replayed position. Movement is normalized by heading, so an old forward-left
+step is replayed as forward-left relative to the current enemy heading instead
+of copied as raw world-space `dx/dy`. The final aim uses the median relative
+bearing from usable replays.
 
 The gun returns `None` until enough usable history exists. That unavailable
 state is expected and should be represented through normal switch diagnostics,

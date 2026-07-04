@@ -231,15 +231,15 @@ class DisplacementGun:
 
     @staticmethod
     def _candidate_velocity_components(context: AimContext, position: TargetPosition) -> tuple[float, float]:
-        if position.lateral_speed is not None and position.advancing_speed is not None:
-            return position.lateral_speed, position.advancing_speed
+        if position.observed_lateral_speed is not None and position.observed_advancing_speed is not None:
+            return position.observed_lateral_speed, position.observed_advancing_speed
         approximate_bearing = math.radians(absolute_bearing_between(context.bot.x, context.bot.y, position.x, position.y))
         return DisplacementGun._velocity_components(position, approximate_bearing)
 
     @staticmethod
     def _candidate_wall_margin(context: AimContext, position: TargetPosition) -> float:
-        if position.wall_margin is not None:
-            return position.wall_margin
+        if position.observed_wall_margin is not None:
+            return position.observed_wall_margin
         arena_width = float(context.bot.arena_width)
         arena_height = float(context.bot.arena_height)
         arena_scale = max(arena_width, arena_height)

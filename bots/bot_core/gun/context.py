@@ -8,7 +8,7 @@ from bot_core.geometry.numeric import clamp
 from bot_core.geometry.waves import escape_angle_for_guess_factor, wall_limited_escape_angle
 from bot_core.gun.config import GunDecisionContext
 from bot_core.gun.models import FireContext, GunWave, TargetMotion, TargetPosition
-from bot_core.gun.utils import bucket, lateral_direction
+from bot_core.gun.utils import GUN_FEATURE_COUNT, bucket, lateral_direction
 from bot_core.physics import bullet_speed_for_power
 from bot_core.target_snapshot import TargetSnapshot
 
@@ -91,10 +91,9 @@ class TargetHistoryStore:
             target.y,
             target.speed,
             target.direction,
-            math.degrees(absolute_bearing),
-            lateral_speed,
-            advancing_speed,
-            wall_margin,
+            observed_lateral_speed=lateral_speed,
+            observed_advancing_speed=advancing_speed,
+            observed_wall_margin=wall_margin,
         )
 
     def history_for(self, target_id: int) -> list[TargetPosition]:
@@ -234,7 +233,7 @@ def build_gun_features(
         bot.arena_height - target.y,
     )
     arena_scale = max(bot.arena_width, bot.arena_height)
-    return (
+    features = (
         distance / arena_scale,
         firepower / 3.0,
         abs(lateral_velocity) / 8.0,
@@ -243,6 +242,8 @@ def build_gun_features(
         min(60, motion.velocity_change_age) / 60.0,
         wall_margin / arena_scale,
     )
+    assert len(features) == GUN_FEATURE_COUNT
+    return features
 
 
 def build_fire_context(

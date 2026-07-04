@@ -6,12 +6,25 @@ from bot_core.geometry.numeric import clamp
 from bot_core.target_snapshot import TargetSnapshot
 
 
+GUN_FEATURE_COUNT = 7
+GUN_FEATURE_WEIGHTS = (2.0, 1.2, 1.8, 1.3, 0.8, 0.7, 0.9)
+
+
+def _require_gun_feature_count(features: tuple[float, ...], name: str) -> None:
+    assert len(features) == GUN_FEATURE_COUNT, (
+        f"{name} must contain {GUN_FEATURE_COUNT} values, got {len(features)}"
+    )
+
+
 def feature_distance(left: tuple[float, ...], right: tuple[float, ...]) -> float:
-    weights = (2.0, 1.2, 1.8, 1.3, 0.8, 0.7, 0.9)
-    return math.sqrt(sum(weight * (a - b) ** 2 for weight, a, b in zip(weights, left, right)))
+    assert len(GUN_FEATURE_WEIGHTS) == GUN_FEATURE_COUNT
+    _require_gun_feature_count(left, "left")
+    _require_gun_feature_count(right, "right")
+    return math.sqrt(sum(weight * (a - b) ** 2 for weight, a, b in zip(GUN_FEATURE_WEIGHTS, left, right)))
 
 
 def segment_features(features: tuple[float, ...]) -> tuple[int, ...]:
+    _require_gun_feature_count(features, "features")
     distance, firepower, lateral_speed, advancing_speed, acceleration, velocity_change_age, wall_margin = features
     return (
         bucket(distance, 0.30, 0.55),

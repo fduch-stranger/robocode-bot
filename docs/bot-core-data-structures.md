@@ -79,19 +79,17 @@ TargetPosition(
   y,
   speed,
   direction,
-  absolute_bearing,
-  lateral_speed,
-  advancing_speed,
-  wall_margin
+  observed_lateral_speed,
+  observed_advancing_speed,
+  observed_wall_margin
 )
 ```
 
 The first five fields mirror the scanned target state. When the observing bot
 context is available, the store also records observation-time firing geometry:
-absolute bearing, signed lateral speed, advancing speed, and normalized wall
-margin. The displacement gun uses these stored values to match historical
-replay starts without recomputing old lateral movement from the bot's current
-position.
+signed lateral speed, advancing speed, and normalized wall margin. The
+displacement gun uses these stored values to match historical replay starts
+without recomputing old lateral movement from the bot's current position.
 
 ### `TargetMemory` and `TargetSelector`
 
