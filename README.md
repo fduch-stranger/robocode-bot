@@ -1,10 +1,9 @@
 # Robocode Bot Workspace
 
-A Robocode Tank Royale battle lab for adaptive guns, wave surfing, telemetry,
-legacy opponent ports, and repeatable bot fights.
+A Robocode Tank Royale battle lab.
 
-Build bots, run controlled battles, inspect what happened, and feed the evidence
-back into targeting and movement systems.
+Build bots. Run controlled fights. Inspect the evidence. Feed what you learn
+back into targeting, movement, and benchmark opponents.
 
 Robocode Tank Royale docs:
 [robocode-dev/tank-royale](https://github.com/robocode-dev/tank-royale) and
