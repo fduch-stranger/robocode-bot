@@ -31,6 +31,10 @@ class MovementFlattener:
     def shadow_bullet_count(self) -> int:
         return len(self._shadow_bullets)
 
+    @property
+    def wave_count(self) -> int:
+        return len(self._waves)
+
     def record_shadow_bullet(
         self,
         bot: Bot,

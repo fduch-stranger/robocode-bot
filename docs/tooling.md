@@ -111,6 +111,9 @@ tools/combat_economics_summary.py battle-results/runs/<run> \
 tools/gun_eval_summary.py battle-results/runs/<run>/telemetry \
   --bot adaptive-prime \
   --json-output battle-results/runs/<run>/gun-eval-summary.json
+
+tools/intent_gap_summary.py battle-results/runs/<run> \
+  --json-output battle-results/runs/<run>/intent-gap-summary.json
 ```
 
 Tool roles:
@@ -122,6 +125,9 @@ Tool roles:
   ported opponents.
 - `gun_eval_summary.py`: virtual-gun wave scores, selected-gun diagnostics,
   post-switch real conversion, and Traditional GF source diagnostics.
+- `intent_gap_summary.py`: missing or duplicate intent turns from
+  `--intent-diagnostics` runs. Use it with `bot.turn_timing` and
+  `bot.skipped_turn` telemetry when investigating skipped ticks or slow turns.
 
 Accuracy filtering is an optional diagnostic for historical noisy Java surfer
 runs. Do not use it as the default result view:
@@ -153,6 +159,8 @@ tools/bot_motion_sanity.py \
   battle-results/runs/surfer-parity-sampled/runner.log \
   --bot BasicGFSurferFixed \
   --json-output battle-results/runs/surfer-parity-sampled/motion-sanity.json
+
+tools/intent_gap_summary.py battle-results/runs/surfer-parity-sampled
 ```
 
 `bot_motion_sanity.py` reports suspect rounds and, when `runner.log` contains

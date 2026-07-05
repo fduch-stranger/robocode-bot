@@ -49,6 +49,8 @@ class TelemetrySchemaTest(unittest.TestCase):
             "track",
             "gun.switch",
             "gun.switch_decision",
+            "bot.turn_timing",
+            "bot.skipped_turn",
             "bullet.fired",
             "bullet.hit_bot",
             "enemy.fire_detected",

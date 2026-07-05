@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 from bot_core.energy import EnergyDropSignal, EnemyFirePowerPrediction, FireDecision, GunHeatState
 from bot_core.gun import AimSolution, FireContext, GunSwitchCandidate, WaveVisit
@@ -11,6 +12,7 @@ from bot_core.telemetry.energy import EnergyTelemetry
 from bot_core.telemetry.fire import FireTelemetry, FireTick, SimpleTrackTick
 from bot_core.telemetry.movement import MovementTelemetry
 from bot_core.telemetry.targeting import TargetingTelemetry
+from bot_core.telemetry.timing import TurnTimingTelemetry
 
 
 class RecordingSink:
@@ -27,6 +29,18 @@ class RecordingSink:
         if len(self.records) != 1:
             raise AssertionError(f"expected one record, got {self.records!r}")
         return self.records[0]
+
+
+class FakeTimingBot:
+    def __init__(self, turn_number: int, turn_timeout: int = 5000, time_left: int = 4500) -> None:
+        self.turn_number = turn_number
+        self.turn_timeout = turn_timeout
+        self.time_left = time_left
+
+
+class FakeSkippedTurnEvent:
+    def __init__(self, turn_number: int) -> None:
+        self.turn_number = turn_number
 
 
 class TelemetryEmitterTest(unittest.TestCase):
@@ -419,6 +433,62 @@ class TelemetryEmitterTest(unittest.TestCase):
         self.assertTrue(fields["linear_wall_aware_wall_hit"])
         self.assertEqual(12, fields["linear_wall_aware_ticks"])
         self.assertEqual(0.0, fields["linear_wall_aware_final_speed"])
+
+    def test_turn_timing_samples_normal_turns_on_interval(self) -> None:
+        sink = RecordingSink()
+        telemetry = TurnTimingTelemetry(sink, sample_interval=25)
+
+        with patch("bot_core.telemetry.timing.time.perf_counter_ns", return_value=1_001_000_000):
+            record = telemetry.record_turn(FakeTimingBot(25), 1_000_000_000, known_targets=1)
+
+        self.assertEqual("ok", record.severity)
+        self.assertEqual(1000, record.decision_elapsed_us)
+        self.assertEqual(("log", "bot.turn_timing"), sink.only_record()[:2])
+        self.assertEqual(4500, sink.records[0][2]["time_left_us_before_go"])
+        self.assertEqual(1, sink.records[0][2]["known_targets"])
+
+    def test_turn_timing_logs_unsampled_slow_or_low_time_left_turns(self) -> None:
+        sink = RecordingSink()
+        telemetry = TurnTimingTelemetry(sink, sample_interval=25)
+
+        with patch("bot_core.telemetry.timing.time.perf_counter_ns", return_value=1_004_200_000):
+            danger = telemetry.record_turn(FakeTimingBot(7), 1_000_000_000)
+        with patch("bot_core.telemetry.timing.time.perf_counter_ns", return_value=2_000_600_000):
+            critical = telemetry.record_turn(FakeTimingBot(8, time_left=400), 2_000_000_000)
+
+        self.assertEqual("danger", danger.severity)
+        self.assertEqual("critical", critical.severity)
+        self.assertEqual(
+            [("log", "bot.turn_timing"), ("log", "bot.turn_timing")],
+            [(kind, event) for kind, event, _ in sink.records],
+        )
+
+    def test_turn_timing_scales_warning_threshold_with_turn_timeout(self) -> None:
+        sink = RecordingSink()
+        telemetry = TurnTimingTelemetry(sink, sample_interval=25)
+
+        with patch("bot_core.telemetry.timing.time.perf_counter_ns", return_value=1_004_200_000):
+            record = telemetry.record_turn(FakeTimingBot(7, turn_timeout=30_000), 1_000_000_000)
+
+        self.assertEqual("ok", record.severity)
+        self.assertEqual([], sink.records)
+
+    def test_turn_timing_records_skipped_turn_with_last_decision_context(self) -> None:
+        sink = RecordingSink()
+        telemetry = TurnTimingTelemetry(sink)
+        bot = FakeTimingBot(10, time_left=2300)
+
+        with patch("bot_core.telemetry.timing.time.perf_counter_ns", return_value=1_002_500_000):
+            telemetry.record_turn(bot, 1_000_000_000)
+        telemetry.record_skipped_turn(bot, FakeSkippedTurnEvent(11), movement_waves=3)
+
+        fields = sink.records[-1][2]
+        self.assertEqual(("log", "bot.skipped_turn"), sink.records[-1][:2])
+        self.assertEqual(11, fields["skipped_turn"])
+        self.assertEqual(10, fields["current_turn"])
+        self.assertEqual(2500, fields["last_decision_elapsed_us"])
+        self.assertEqual(2300, fields["last_time_left_us_before_go"])
+        self.assertEqual(3, fields["movement_waves"])
 
     def test_fire_telemetry_records_shared_fire_context_diagnostics(self) -> None:
         sink = RecordingSink()

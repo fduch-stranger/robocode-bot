@@ -130,6 +130,8 @@ Primary telemetry:
 - `gun.eval_wave_visit`: optional neutral eval-wave scoring.
 - `gun.traditional_gf_profile`: Traditional GF source/profile diagnostics.
 - `gun.low_energy_endgame`: low-energy override decisions.
+- `bot.turn_timing` / `bot.skipped_turn`: decision-time budget and skipped tick
+  diagnostics.
 
 Preferred surfer check:
 

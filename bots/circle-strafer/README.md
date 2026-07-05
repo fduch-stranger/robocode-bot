@@ -97,6 +97,7 @@ Key telemetry:
 - `gun.switch_decision`
 - `gun.eval_wave_visit`
 - `track`
+- `bot.turn_timing` / `bot.skipped_turn`
 
 Useful checks:
 

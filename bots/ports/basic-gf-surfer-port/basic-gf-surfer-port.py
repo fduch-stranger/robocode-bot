@@ -89,7 +89,11 @@ from robocode_tank_royale.bot_api.events import (
     RoundEndedEvent,
     RoundStartedEvent,
     ScannedBotEvent,
+    SkippedTurnEvent,
 )
+
+from bot_core.debug import DebugLogger
+from bot_core.telemetry.timing import TurnTimingTelemetry
 
 
 BINS = 47
@@ -243,6 +247,8 @@ class BasicGFSurferPort(Bot):
         self._last_turn_number = -1
         self._last_gun_wave_update_turn = -1
         self._last_scan_turn = -1
+        self._debug = DebugLogger(self, "basic-gf-surfer-port")
+        self._timing_telemetry = TurnTimingTelemetry(self._debug)
 
     def run(self) -> None:
         self.body_color = Color.from_rgb(40, 75, 210)
@@ -256,9 +262,11 @@ class BasicGFSurferPort(Bot):
         self._reset_round_state()
 
         while self.running:
+            timing_start = self._timing_telemetry.begin()
             self._reset_if_new_round()
             self._update_gun_waves()
             self._maintain_radar()
+            self._record_turn_timing(timing_start)
             self.go()
 
     def on_game_started(self, event: GameStartedEvent) -> None:
@@ -338,6 +346,9 @@ class BasicGFSurferPort(Bot):
         self._wall_escape_until = self.turn_number + WALL_ESCAPE_TICKS
         self._escape_toward_center(self._my_location())
 
+    def on_skipped_turn(self, event: SkippedTurnEvent) -> None:
+        self._timing_telemetry.record_skipped_turn(self, event, **self._timing_fields())
+
     def _reset_round_state(self) -> None:
         self._enemy_waves = []
         self._gun_waves = []
@@ -364,6 +375,17 @@ class BasicGFSurferPort(Bot):
         if self._last_turn_number >= 0 and self.turn_number < self._last_turn_number:
             self._reset_round_state()
         self._last_turn_number = self.turn_number
+
+    def _record_turn_timing(self, start_ns: int) -> None:
+        self._timing_telemetry.record_turn(self, start_ns, **self._timing_fields())
+
+    def _timing_fields(self) -> dict[str, object]:
+        return {
+            "known_targets": 1 if self._enemy_location is not None else 0,
+            "gun_heat": round(self.gun_heat, 3),
+            "gun_waves": len(self._gun_waves),
+            "movement_waves": len(self._enemy_waves),
+        }
 
     def _my_location(self) -> Point:
         return Point(self.x, self.y)

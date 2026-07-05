@@ -10,6 +10,7 @@ from robocode_tank_royale.bot_api.events import (
     HitByBulletEvent,
     HitWallEvent,
     ScannedBotEvent,
+    SkippedTurnEvent,
 )
 
 from circle_config import (
@@ -58,6 +59,7 @@ from bot_core.telemetry.fire import (
 )
 from bot_core.telemetry.movement import MovementTelemetry
 from bot_core.telemetry.targeting import TargetingTelemetry
+from bot_core.telemetry.timing import TurnTimingTelemetry
 
 
 class CircleStrafer(Bot):
@@ -131,6 +133,7 @@ class CircleStrafer(Bot):
         self._fire_telemetry = FireTelemetry(self._debug)
         self._movement_telemetry = MovementTelemetry(self._debug)
         self._targeting_telemetry = TargetingTelemetry(self._debug)
+        self._timing_telemetry = TurnTimingTelemetry(self._debug)
         self._debug.log("bot.config", **gun_policy_status_fields(GUN_POLICY, CIRCLE_FORCE_GUN_MODES))
         self._fired_bullets = FiredBulletTracker()
         self._last_gun_decision_log_turn: dict[int, int] = {}
@@ -146,11 +149,13 @@ class CircleStrafer(Bot):
         self.max_speed = 8
 
         while self.running:
+            timing_start = self._timing_telemetry.begin()
             self._reset_if_new_round()
             self._own_motion.update(self)
             self._forget_stale_targets()
             self._move()
             self._track_target()
+            self._record_turn_timing(timing_start)
             self.go()
 
     def _move(self) -> None:
@@ -817,6 +822,24 @@ class CircleStrafer(Bot):
                 event.bullet.power,
                 event.bullet.speed,
             )
+
+    def on_skipped_turn(self, event: SkippedTurnEvent) -> None:
+        self._timing_telemetry.record_skipped_turn(self, event, **self._timing_fields())
+
+    def _record_turn_timing(self, start_ns: int) -> None:
+        self._timing_telemetry.record_turn(self, start_ns, **self._timing_fields())
+
+    def _timing_fields(self) -> dict[str, object]:
+        return {
+            "target": self._target_id,
+            "known_targets": len(self._targets),
+            "gun_heat": round(self.gun_heat, 3),
+            "gun_samples": self._gun.sample_count,
+            "gun_waves": self._gun.wave_count,
+            "eval_waves": self._gun.eval_wave_count,
+            "movement_waves": self._movement.wave_count,
+            "shadow_bullets": self._movement.shadow_bullet_count,
+        }
 
     def _log(self, event: str, **fields: object) -> None:
         self._debug.log(event, **fields)
