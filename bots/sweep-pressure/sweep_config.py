@@ -80,6 +80,11 @@ class FirePolicy:
     critical_energy_hold: float = 10
     energy_margin: float = 6
     low_energy_max_distance: float = 220
+    last_stand_energy: float = 7
+    last_stand_firepower: float = 0.6
+    last_stand_energy_reserve: float = 0.1
+    last_stand_max_distance: float = 320
+    last_stand_alignment_degrees: float = 3
     far_alignment_distance: float = 360
     far_alignment_degrees: float = 5
 
@@ -161,6 +166,10 @@ def build_fire_gate() -> FireGate:
             critical_energy_hold=FIRE_POLICY.critical_energy_hold,
             low_energy_hold=FIRE_POLICY.low_energy_hold,
             low_energy_max_distance=FIRE_POLICY.low_energy_max_distance,
+            last_stand_energy=FIRE_POLICY.last_stand_energy,
+            last_stand_energy_reserve=FIRE_POLICY.last_stand_energy_reserve,
+            last_stand_max_distance=FIRE_POLICY.last_stand_max_distance,
+            last_stand_alignment_degrees=FIRE_POLICY.last_stand_alignment_degrees,
             far_alignment_distance=FIRE_POLICY.far_alignment_distance,
             far_alignment_degrees=FIRE_POLICY.far_alignment_degrees,
         )

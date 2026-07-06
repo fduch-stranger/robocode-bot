@@ -29,6 +29,7 @@ from bot_core.energy import (
     EnemyEnergyCorrectionLedger,
     EnemyFireDetector,
     EnemyFirePowerPredictor,
+    last_stand_firepower,
 )
 from bot_core.gun import (
     AimSolution,
@@ -538,6 +539,13 @@ class CircleStrafer(Bot):
         self._movement_telemetry.record_flattening(target.bot_id, flattening, distance)
 
     def _firepower_for(self, distance: float) -> float:
+        if self.energy <= FIRE_POLICY.last_stand_energy:
+            power = last_stand_firepower(
+                self.energy,
+                FIRE_POLICY.last_stand_firepower,
+                FIRE_POLICY.last_stand_energy_reserve,
+            )
+            return power if power is not None else 0.1
         if self.energy <= FIRE_POLICY.low_energy_hold:
             return 0.8 if distance < 180 else 0.6
         if distance < 170:

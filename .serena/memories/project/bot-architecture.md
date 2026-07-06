@@ -21,6 +21,7 @@ Gun architecture:
 - `dynamic_cluster` is the primary KNN GF learner. `traditional_gf`, `displacement`, and `anti_surfer` are situational. `linear`/`head_on` are fallback/simple-motion modes.
 - `AimModeSelector` is sticky and role-aware through `GunModeTraits`, mode policy gates, confidence/source penalties, context bonuses, and optional eval-wave evidence. `gun.switch_decision` is the main selector diagnostic; `score` is adjusted, `raw_score` is unadjusted.
 - `gun.eval_wave_visit` is neutral diagnostics and selector-only evidence when enabled; it must stay out of production gun learning.
+- Fire gating keeps normal energy reserves, but bots use a shared `last_stand` path for fresh, close, tightly aligned low-energy shots that leave a tiny reserve. Avoid reviving the removed Adaptive-specific low-energy override; it was too brittle and could leave Adaptive passive.
 - `FireContext` carries distance/firepower buckets, flight time, lateral direction/confidence, wall escape balance, movement tags, and related diagnostics through waves and visits.
 - Traditional GF currently uses global, exact-segment, and coarse-segment profiles with source-aware penalties/centering. Treat it as under-modeled until forced-gun telemetry proves a better profile source.
 - Displacement uses rotation-normalized replay with speed/lateral/advancing/wall/flight-time similarity, Markov weighting, and density-supported replay clusters.

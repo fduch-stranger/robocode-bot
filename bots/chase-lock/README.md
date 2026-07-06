@@ -82,6 +82,7 @@ ROBOCODE_CHASE_GUN_EVAL_INTERVAL=1
 Firepower is close-range pressure with confidence gates in the mid bands:
 
 ```text
+last stand: up to 0.6 while leaving a small reserve
 low energy: 0.6-0.8
 finisher: target_energy / 3.5 + 0.2, clamped
 close: 1.6-2.2

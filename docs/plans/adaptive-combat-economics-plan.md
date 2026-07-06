@@ -631,7 +631,7 @@ high_pressure_enemy:
 surfer_like_pressure:
   high_pressure_enemy and evasive_target and enemy_avg_power >= 1.5
 
-low_energy_endgame:
+last_stand:
   our energy below existing low-energy policy band
 ```
 
@@ -917,7 +917,7 @@ high_pressure_enemy
 damage_deficit
 survival_lead_damage_loss
 surfer_like
-low_energy_endgame
+last_stand
 ```
 
 Initial implementation should only publish profile state and telemetry. Do not

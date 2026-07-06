@@ -154,33 +154,11 @@ class FirePolicy:
         "ROBOCODE_ADAPTIVE_DYNAMIC_SHOT_QUALITY_POWER_SCALING",
         default=True,
     )
-    low_energy_endgame_fire_enabled: bool = _env_flag("ROBOCODE_ADAPTIVE_LOW_ENERGY_ENDGAME_FIRE", default=True)
-    low_energy_endgame_max_energy: float = _env_float(
-        "ROBOCODE_ADAPTIVE_LOW_ENERGY_ENDGAME_MAX_ENERGY",
-        7.0,
-        minimum=0.1,
-    )
-    low_energy_endgame_max_distance: float = _env_float(
-        "ROBOCODE_ADAPTIVE_LOW_ENERGY_ENDGAME_MAX_DISTANCE",
-        320.0,
-        minimum=0.0,
-    )
-    low_energy_endgame_alignment_degrees: float = _env_float(
-        "ROBOCODE_ADAPTIVE_LOW_ENERGY_ENDGAME_ALIGNMENT_DEGREES",
-        3.0,
-        minimum=0.0,
-    )
-    low_energy_endgame_min_shot_quality: float = _env_float(
-        "ROBOCODE_ADAPTIVE_LOW_ENERGY_ENDGAME_MIN_SHOT_QUALITY",
-        0.35,
-        minimum=0.0,
-        maximum=1.0,
-    )
-    low_energy_endgame_energy_reserve: float = _env_float(
-        "ROBOCODE_ADAPTIVE_LOW_ENERGY_ENDGAME_ENERGY_RESERVE",
-        0.1,
-        minimum=0.0,
-    )
+    last_stand_energy: float = 7
+    last_stand_firepower: float = 0.6
+    last_stand_energy_reserve: float = 0.1
+    last_stand_max_distance: float = 320
+    last_stand_alignment_degrees: float = 3
     enemy_fire_min_drop: float = 0.1
     enemy_fire_max_drop: float = 3.0
     enemy_fire_scan_gap_turns: int = 4
@@ -287,5 +265,9 @@ FIRE_GATE = FireGate(
         fire_memory_turns=FIRE_POLICY.memory_turns,
         alignment_degrees=FIRE_POLICY.alignment_degrees,
         energy_margin=FIRE_POLICY.energy_margin,
+        last_stand_energy=FIRE_POLICY.last_stand_energy,
+        last_stand_energy_reserve=FIRE_POLICY.last_stand_energy_reserve,
+        last_stand_max_distance=FIRE_POLICY.last_stand_max_distance,
+        last_stand_alignment_degrees=FIRE_POLICY.last_stand_alignment_degrees,
     )
 )

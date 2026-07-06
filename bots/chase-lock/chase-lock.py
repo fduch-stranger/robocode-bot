@@ -31,6 +31,7 @@ from bot_core.energy import (
     EnemyFirePowerPredictor,
     GunHeatTracker,
     classify_energy_drop,
+    last_stand_firepower,
 )
 from bot_core.gun import (
     AimSolution,
@@ -532,6 +533,13 @@ class ChaseLock(Bot):
         if self._melee_round and self.enemy_count > 1:
             return self._select_melee_firepower(target, distance)
 
+        if self.energy <= FIRE_POLICY.last_stand_energy:
+            power = last_stand_firepower(
+                self.energy,
+                FIRE_POLICY.last_stand_firepower,
+                FIRE_POLICY.last_stand_energy_reserve,
+            )
+            return power if power is not None else 0.1
         if self.energy <= 18:
             return 0.8 if distance < 260 else 0.6
         if target.energy <= FIRE_POLICY.finish_target_energy and distance < 320:
@@ -549,6 +557,13 @@ class ChaseLock(Bot):
         return 0.8
 
     def _select_melee_firepower(self, target: TargetSnapshot, distance: float) -> float:
+        if self.energy <= FIRE_POLICY.last_stand_energy:
+            power = last_stand_firepower(
+                self.energy,
+                FIRE_POLICY.last_stand_firepower,
+                FIRE_POLICY.last_stand_energy_reserve,
+            )
+            return power if power is not None else 0.1
         if self.energy <= 16:
             return 0.8 if distance < 220 else 0.6
         if target.energy <= FIRE_POLICY.melee_finish_target_energy and distance < 260:

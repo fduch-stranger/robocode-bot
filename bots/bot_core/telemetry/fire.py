@@ -128,40 +128,6 @@ class FireTelemetry:
             ),
         )
 
-    def record_low_energy_endgame(
-        self,
-        *,
-        target_id: int,
-        stage: str,
-        decision: str,
-        reason: str,
-        energy: float,
-        target_energy: float,
-        distance: float,
-        firepower: float,
-        aim_mode: str,
-        gun_bearing: float,
-        alignment_limit: float,
-        shot_quality: float | None = None,
-        proposed_firepower: float | None = None,
-    ) -> None:
-        self._sink.log(
-            "gun.low_energy_endgame",
-            target=target_id,
-            stage=stage,
-            decision=decision,
-            reason=reason,
-            energy=rounded(energy, 3),
-            target_energy=rounded(target_energy, 3),
-            distance=round(distance, 1),
-            firepower=rounded(firepower, 3),
-            proposed_firepower=rounded(proposed_firepower, 3),
-            aim_mode=aim_mode,
-            gun_bearing=round(gun_bearing, 2),
-            alignment_limit=round(alignment_limit, 2),
-            shot_quality=rounded(shot_quality, 3),
-        )
-
     def record_fire_drift(
         self,
         bullet_id: int,

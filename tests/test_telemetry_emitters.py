@@ -286,45 +286,6 @@ class TelemetryEmitterTest(unittest.TestCase):
         self.assertEqual(0.1, sink.records[6][2]["power_error"])
         self.assertEqual(-0.3, sink.records[6][2]["speed_error"])
 
-    def test_fire_telemetry_records_low_energy_endgame_decision(self) -> None:
-        sink = RecordingSink()
-
-        FireTelemetry(sink).record_low_energy_endgame(
-            target_id=7,
-            stage="final",
-            decision="accepted",
-            reason="firing",
-            energy=5.4321,
-            target_energy=11.9876,
-            distance=245.67,
-            firepower=0.9,
-            proposed_firepower=0.8,
-            aim_mode="dynamic_cluster",
-            gun_bearing=1.234,
-            alignment_limit=3.0,
-            shot_quality=0.6789,
-        )
-
-        self.assertEqual(("log", "gun.low_energy_endgame"), sink.records[0][:2])
-        self.assertEqual(
-            {
-                "target": 7,
-                "stage": "final",
-                "decision": "accepted",
-                "reason": "firing",
-                "energy": 5.432,
-                "target_energy": 11.988,
-                "distance": 245.7,
-                "firepower": 0.9,
-                "proposed_firepower": 0.8,
-                "aim_mode": "dynamic_cluster",
-                "gun_bearing": 1.23,
-                "alignment_limit": 3.0,
-                "shot_quality": 0.679,
-            },
-            sink.records[0][2],
-        )
-
     def test_fire_telemetry_records_traditional_gf_diagnostics(self) -> None:
         sink = RecordingSink()
         target = self._target()

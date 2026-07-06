@@ -1,7 +1,7 @@
 from bot_core.energy.corrections import EnemyEnergyCorrectionLedger
 from bot_core.energy.drops import EnergyDropConfig, EnergyDropSignal, classify_energy_drop
 from bot_core.energy.fire_detection import EnemyFireDetection, EnemyFireDetector
-from bot_core.energy.fire_gate import FireDecision, FireGate, FireGateConfig
+from bot_core.energy.fire_gate import FireDecision, FireGate, FireGateConfig, last_stand_firepower
 from bot_core.energy.fire_power import (
     EnemyFirePowerPrediction,
     EnemyFirePowerPredictor,
@@ -27,4 +27,5 @@ __all__ = [
     "GunHeatState",
     "GunHeatTracker",
     "classify_energy_drop",
+    "last_stand_firepower",
 ]

@@ -79,8 +79,13 @@ class BotConfigTest(unittest.TestCase):
         self.assertEqual(default_policy.dynamic_cluster.ambiguous_peak_centering_factor, 0.8)
         self.assertTrue(default_policy.dynamic_cluster.shot_quality_enabled)
         self.assertTrue(default_config.FIRE_POLICY.dynamic_shot_quality_power_scaling_enabled)
-        self.assertTrue(default_config.FIRE_POLICY.low_energy_endgame_fire_enabled)
         self.assertEqual(default_config.FIRE_POLICY.energy_margin, 5)
+        self.assertEqual(default_config.FIRE_POLICY.last_stand_energy, 7)
+        self.assertEqual(default_config.FIRE_POLICY.last_stand_firepower, 0.6)
+        self.assertEqual(
+            default_config.FIRE_GATE.config.last_stand_alignment_degrees,
+            default_config.FIRE_POLICY.last_stand_alignment_degrees,
+        )
         self.assertEqual(default_traditional_gf.min_samples, default_gun_config.min_samples)
         self.assertEqual(default_traditional_gf.coarse_segment_min_samples, default_gun_config.coarse_segment_min_samples)
         self.assertEqual(default_traditional_gf.coarse_segment_full_weight_samples, default_gun_config.coarse_segment_full_weight_samples)
@@ -122,8 +127,6 @@ class BotConfigTest(unittest.TestCase):
                 "ROBOCODE_ADAPTIVE_DYNAMIC_SHOT_QUALITY_WEAK_THRESHOLD": "0.4",
                 "ROBOCODE_ADAPTIVE_DYNAMIC_SHOT_QUALITY_LOW_POWER_SCALE": "0.5",
                 "ROBOCODE_ADAPTIVE_DYNAMIC_SHOT_QUALITY_POWER_SCALING": "1",
-                "ROBOCODE_ADAPTIVE_LOW_ENERGY_ENDGAME_FIRE": "1",
-                "ROBOCODE_ADAPTIVE_LOW_ENERGY_ENDGAME_MAX_ENERGY": "6.5",
                 "ROBOCODE_ADAPTIVE_DISPLACEMENT_MARKOV": "0",
             },
         )
@@ -155,8 +158,7 @@ class BotConfigTest(unittest.TestCase):
         self.assertFalse(env_policy.displacement_markov_enabled)
         self.assertFalse(displacement_config_from_policy(env_policy).markov_enabled)
         self.assertTrue(env_config.FIRE_POLICY.dynamic_shot_quality_power_scaling_enabled)
-        self.assertTrue(env_config.FIRE_POLICY.low_energy_endgame_fire_enabled)
-        self.assertEqual(env_config.FIRE_POLICY.low_energy_endgame_max_energy, 6.5)
+        self.assertEqual(env_config.FIRE_GATE.config.last_stand_energy, env_config.FIRE_POLICY.last_stand_energy)
 
         inverted_dynamic_config = _load_config(
             path,
@@ -319,6 +321,12 @@ class BotConfigTest(unittest.TestCase):
         self.assertEqual(displacement_config_from_policy(default_config.GunPolicy()).min_switch_score, 0.08)
         self.assertEqual(default_config.GunPolicy().dynamic_cluster.ambiguous_peak_centering_factor, 0.8)
         self.assertEqual(default_config.FIRE_POLICY.finish_target_energy, 18)
+        self.assertEqual(default_config.FIRE_POLICY.last_stand_energy, 7)
+        self.assertEqual(default_config.FIRE_POLICY.last_stand_firepower, 0.6)
+        self.assertEqual(
+            default_config.build_fire_gate().config.last_stand_alignment_degrees,
+            default_config.FIRE_POLICY.last_stand_alignment_degrees,
+        )
         self.assertEqual(default_config.TARGET_POLICY.reacquire_turns, 4)
         self.assertEqual(default_config.RADAR_POLICY.gun_search_rate, 18)
         self.assertEqual(default_config.MOVEMENT_POLICY.preferred_min_distance, 320)
@@ -364,6 +372,11 @@ class BotConfigTest(unittest.TestCase):
         self.assertTrue(displacement_config_from_policy(default_config.GunPolicy()).markov_enabled)
         self.assertEqual(default_config.GunPolicy().dynamic_cluster.ambiguous_peak_centering_factor, 0.8)
         self.assertEqual(default_config.FIRE_POLICY.low_energy_max_distance, 180)
+        self.assertEqual(default_config.FIRE_POLICY.last_stand_firepower, 0.6)
+        self.assertEqual(
+            default_config.build_fire_gate().config.last_stand_energy,
+            default_config.FIRE_POLICY.last_stand_energy,
+        )
         self.assertEqual(default_config.TARGET_POLICY.switch_margin, 110)
         self.assertEqual(default_config.RADAR_POLICY.search_rate, -16)
         self.assertEqual(default_config.MOVEMENT_POLICY.orbit_speed, 8)
@@ -429,6 +442,11 @@ class BotConfigTest(unittest.TestCase):
         self.assertEqual(displacement_config_from_policy(default_config.GunPolicy()).min_switch_score, 0.08)
         self.assertEqual(default_config.GunPolicy().dynamic_cluster.ambiguous_peak_centering_factor, 0.8)
         self.assertEqual(default_config.FIRE_POLICY.low_energy_max_distance, 220)
+        self.assertEqual(default_config.FIRE_POLICY.last_stand_firepower, 0.6)
+        self.assertEqual(
+            default_config.build_fire_gate().config.last_stand_energy,
+            default_config.FIRE_POLICY.last_stand_energy,
+        )
         self.assertEqual(default_config.TARGET_POLICY.force_switch_target_age, 10)
         self.assertEqual(default_config.RADAR_POLICY.reacquire_overscan, 24)
         self.assertEqual(default_config.MOVEMENT_POLICY.sweep_turn_rate, 3.5)

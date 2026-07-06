@@ -92,8 +92,10 @@ valid firepower
 
 `gun_bearing` telemetry is an alignment error, not an absolute heading. `0`
 means the gun is aligned. Hold reasons are reported through `FireDecision`.
-Adaptive has an explicit low-energy endgame override and emits
-`gun.low_energy_endgame` diagnostics when it considers or uses that path.
+Bots can use a shared `last_stand` fire-gate path when energy is critically low:
+the target must be fresh, distance-limited, tightly aligned, and the shot must
+leave a small energy reserve. This path bypasses the normal reserve and
+critical-energy holds only for those controlled shots.
 
 ## Enemy Fire
 

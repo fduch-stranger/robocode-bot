@@ -162,21 +162,6 @@ EVENT_SPECS: dict[str, TelemetryEventSpec] = {
         required_fields=("selected",),
         optional_fields=("target", "previous", "changed", "candidates"),
     ),
-    "gun.low_energy_endgame": TelemetryEventSpec(
-        "fire",
-        required_fields=("target", "stage", "decision", "reason"),
-        optional_fields=(
-            "energy",
-            "target_energy",
-            "distance",
-            "firepower",
-            "proposed_firepower",
-            "aim_mode",
-            "gun_bearing",
-            "alignment_limit",
-            "shot_quality",
-        ),
-    ),
     "gun.traditional_gf_profile": TelemetryEventSpec(
         "fire",
         required_fields=("target",),

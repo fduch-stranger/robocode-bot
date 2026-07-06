@@ -9,6 +9,7 @@ from bot_core.energy import (
     FireGate,
     FireGateConfig,
     GunHeatTracker,
+    last_stand_firepower,
 )
 from bot_core.physics import gun_heat_for_power
 
@@ -154,6 +155,83 @@ class EnergyTest(unittest.TestCase):
         self.assertEqual("gun_alignment", alignment.reason)
         self.assertEqual(5, alignment.alignment_limit)
         self.assertEqual("energy_margin", gate.decide(1, 100.0, 0.0, 6.0, 11.0).reason)
+
+    def test_fire_gate_allows_last_stand_before_energy_holds(self) -> None:
+        gate = FireGate(
+            FireGateConfig(
+                fire_memory_turns=4,
+                alignment_degrees=8,
+                energy_margin=6,
+                critical_energy_hold=10,
+                low_energy_hold=18,
+                low_energy_max_distance=220,
+                last_stand_energy=7,
+                last_stand_energy_reserve=0.1,
+                last_stand_max_distance=320,
+                last_stand_alignment_degrees=3,
+            )
+        )
+
+        decision = gate.decide(age=1, distance=300.0, gun_bearing=2.5, firepower=0.6, energy=5.0)
+
+        self.assertTrue(decision.can_fire)
+        self.assertEqual("last_stand", decision.reason)
+        self.assertEqual(3, decision.alignment_limit)
+
+    def test_fire_gate_rejects_poor_last_stand_shots(self) -> None:
+        gate = FireGate(
+            FireGateConfig(
+                fire_memory_turns=4,
+                alignment_degrees=8,
+                energy_margin=6,
+                critical_energy_hold=10,
+                low_energy_hold=18,
+                low_energy_max_distance=220,
+                last_stand_energy=7,
+                last_stand_energy_reserve=0.1,
+                last_stand_max_distance=320,
+                last_stand_alignment_degrees=3,
+            )
+        )
+
+        self.assertEqual("critical_energy", gate.decide(1, 300.0, 3.5, 0.6, 5.0).reason)
+        self.assertEqual("critical_energy", gate.decide(1, 340.0, 2.5, 0.6, 5.0).reason)
+        self.assertEqual("critical_energy", gate.decide(1, 300.0, 2.5, 5.0, 5.0).reason)
+
+    def test_last_stand_firepower_preserves_reserve_at_low_energy_boundaries(self) -> None:
+        self.assertAlmostEqual(0.6, last_stand_firepower(0.7, 0.6, 0.1) or 0)
+        self.assertAlmostEqual(0.4, last_stand_firepower(0.5, 0.6, 0.1) or 0)
+        self.assertAlmostEqual(0.1, last_stand_firepower(0.2, 0.6, 0.1) or 0)
+        self.assertIsNone(last_stand_firepower(0.19, 0.6, 0.1))
+
+    def test_fire_gate_allows_computed_last_stand_firepower_at_reserve_boundary(self) -> None:
+        gate = FireGate(
+            FireGateConfig(
+                fire_memory_turns=4,
+                alignment_degrees=8,
+                energy_margin=6,
+                critical_energy_hold=10,
+                low_energy_hold=18,
+                low_energy_max_distance=220,
+                last_stand_energy=7,
+                last_stand_energy_reserve=0.1,
+                last_stand_max_distance=320,
+                last_stand_alignment_degrees=3,
+            )
+        )
+
+        for energy in (0.7, 0.5, 0.2):
+            with self.subTest(energy=energy):
+                firepower = last_stand_firepower(energy, 0.6, 0.1)
+                self.assertIsNotNone(firepower)
+                decision = gate.decide(1, 300.0, 2.5, firepower or 0.0, energy)
+                self.assertTrue(decision.can_fire)
+                self.assertEqual("last_stand", decision.reason)
+
+        firepower = last_stand_firepower(0.19, 0.6, 0.1) or 0.1
+        decision = gate.decide(1, 300.0, 2.5, firepower, 0.19)
+        self.assertFalse(decision.can_fire)
+        self.assertEqual("critical_energy", decision.reason)
 
     def test_enemy_fire_power_predictor_starts_with_low_confidence_heuristic(self) -> None:
         predictor = EnemyFirePowerPredictor()

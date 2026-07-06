@@ -107,6 +107,7 @@ Valid pinned guns are `head_on`, `linear`, `linear_wall_aware`,
 Adaptive is willing to spend power when close, ahead, or confident:
 
 ```text
+last stand: up to 0.6 while leaving a small reserve
 low energy: 0.6-0.8
 finisher: target_energy / 3.5 + 0.2, clamped
 close: 1.6-2.2
@@ -115,9 +116,9 @@ far: 0.8-1.0
 ```
 
 The shared fire gate still requires fresh target data, alignment, valid
-firepower, and enough energy after the shot. Adaptive can also allow a narrow
-low-energy endgame shot after an `energy_margin` hold when range, alignment,
-target energy, and KNN quality all pass explicit gates.
+firepower, and enough energy after the shot. Adaptive uses the shared
+`last_stand` path at critical energy instead of a separate KNN-gated low-energy
+override, so aligned close shots can still fire below the normal energy margin.
 
 ## Analysis
 
@@ -129,7 +130,6 @@ Primary telemetry:
 - `gun.wave_visit`: production virtual-gun scoring.
 - `gun.eval_wave_visit`: optional neutral eval-wave scoring.
 - `gun.traditional_gf_profile`: Traditional GF source/profile diagnostics.
-- `gun.low_energy_endgame`: low-energy override decisions.
 - `bot.turn_timing` / `bot.skipped_turn`: decision-time budget and skipped tick
   diagnostics.
 

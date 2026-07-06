@@ -79,6 +79,7 @@ ROBOCODE_CIRCLE_GUN_EVAL_INTERVAL=1
 Firepower is deliberately restrained:
 
 ```text
+last stand: up to 0.6 while leaving a small reserve
 low energy: 0.6-0.8
 close: 1.8
 mid: 1.0
