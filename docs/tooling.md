@@ -112,6 +112,10 @@ tools/gun_eval_summary.py battle-results/runs/<run>/telemetry \
   --bot adaptive-prime \
   --json-output battle-results/runs/<run>/gun-eval-summary.json
 
+tools/radar_efficiency_summary.py battle-results/runs/<run>/telemetry \
+  --bot adaptive-prime \
+  --json-output battle-results/runs/<run>/radar-efficiency-summary.json
+
 tools/intent_gap_summary.py battle-results/runs/<run> \
   --json-output battle-results/runs/<run>/intent-gap-summary.json
 ```
@@ -125,6 +129,9 @@ Tool roles:
   ported opponents.
 - `gun_eval_summary.py`: virtual-gun wave scores, selected-gun diagnostics,
   post-switch real conversion, and Traditional GF source diagnostics.
+- `radar_efficiency_summary.py`: target freshness, radar mode distribution,
+  stale/lost shots, hit rate by target age, reacquire/drop counts, and
+  enemy-fire scan-gap diagnostics.
 - `intent_gap_summary.py`: missing or duplicate intent turns from
   `--intent-diagnostics` runs. Use it with `bot.turn_timing` and
   `bot.skipped_turn` telemetry when investigating skipped ticks or slow turns.
