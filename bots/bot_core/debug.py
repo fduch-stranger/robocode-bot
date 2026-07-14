@@ -4,7 +4,7 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import TextIO
 
-from robocode_tank_royale.bot_api import Bot
+from robocode_tank_royale.bot_api import Bot, BotException
 
 from bot_core.async_writer import AsyncItemWriter, SyncItemWriter
 from bot_core.telemetry import TelemetryRecorder
@@ -17,12 +17,14 @@ class DebugLogger:
         self._log_writer = self._build_log_writer(self._stream)
         self._telemetry = TelemetryRecorder.open(bot, log_name)
         self._sample_interval = sample_interval
-        self._last_sample_turn = -1
+        self._last_sample_turns: dict[str, int] = {}
+        self._last_observed_turn: int | None = None
         self._closed = False
         self._atexit_callback = self.close
         atexit.register(self._atexit_callback)
 
     def log(self, event: str, **fields: object) -> None:
+        self._observe_turn()
         if self._log_writer is not None:
             payload = " ".join(f"{key}={value}" for key, value in fields.items())
             self._log_writer.submit(f"turn={self._bot.turn_number} event={event} {payload}\n")
@@ -30,10 +32,24 @@ class DebugLogger:
             self._telemetry.write(event, fields)
 
     def sample(self, event: str, **fields: object) -> None:
-        if self._bot.turn_number - self._last_sample_turn < self._sample_interval:
+        turn = self._observe_turn()
+        if turn is None:
+            return
+        last_turn = self._last_sample_turns.get(event)
+        if last_turn is not None and turn - last_turn < self._sample_interval:
             return
         self.log(event, **fields)
-        self._last_sample_turn = self._bot.turn_number
+        self._last_sample_turns[event] = turn
+
+    def _observe_turn(self) -> int | None:
+        try:
+            turn = self._bot.turn_number
+        except BotException:
+            return None
+        if self._last_observed_turn is not None and turn < self._last_observed_turn:
+            self._last_sample_turns.clear()
+        self._last_observed_turn = turn
+        return turn
 
     def close(self) -> None:
         if self._closed:

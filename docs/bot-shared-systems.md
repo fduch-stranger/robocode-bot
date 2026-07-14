@@ -161,3 +161,7 @@ Telemetry is JSONL. Common events:
 Shared schema and analyzer semantics live in `bot_core.telemetry.schema` and
 [Telemetry Event Schema](telemetry-schema.md). Use [Tooling](tooling.md) for
 viewer, audit, and experiment-analysis commands.
+
+Sampled events are throttled independently by event name and restart their
+sampling window when the engine resets the turn number for a new round. One
+high-frequency event therefore cannot suppress another event such as `track`.

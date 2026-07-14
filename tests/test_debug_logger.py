@@ -74,6 +74,69 @@ class DebugLoggerTest(unittest.TestCase):
 
         self.assertEqual(8192, DebugLogger._int_env("ROBOCODE_DEBUG_QUEUE_SIZE", 8192))
 
+    def test_sampling_throttles_each_event_independently_at_interval_boundary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            os.environ["ROBOCODE_DEBUG"] = "1"
+            os.environ["ROBOCODE_DEBUG_SYNC"] = "1"
+            os.environ["ROBOCODE_LOG_DIR"] = tmpdir
+            os.environ.pop("ROBOCODE_TELEMETRY", None)
+            bot = _DummyBot()
+            logger = DebugLogger(bot, "test-bot", sample_interval=25)
+
+            bot.turn_number = 0
+            logger.sample("movement.goto_surf", target=7)
+            logger.sample("track", target=7)
+            bot.turn_number = 24
+            logger.sample("movement.goto_surf", target=7)
+            logger.sample("track", target=7)
+            bot.turn_number = 25
+            logger.sample("movement.goto_surf", target=7)
+            logger.sample("track", target=7)
+            logger.close()
+
+            log_file = list(Path(tmpdir).glob("test-bot-*.log"))[0]
+            self.assertEqual(
+                [
+                    "turn=0 event=movement.goto_surf target=7",
+                    "turn=0 event=track target=7",
+                    "turn=25 event=movement.goto_surf target=7",
+                    "turn=25 event=track target=7",
+                ],
+                log_file.read_text(encoding="utf-8").splitlines(),
+            )
+
+    def test_sampling_windows_restart_when_any_event_observes_new_round(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            os.environ["ROBOCODE_DEBUG"] = "1"
+            os.environ["ROBOCODE_DEBUG_SYNC"] = "1"
+            os.environ["ROBOCODE_LOG_DIR"] = tmpdir
+            os.environ.pop("ROBOCODE_TELEMETRY", None)
+            bot = _DummyBot()
+            logger = DebugLogger(bot, "test-bot", sample_interval=25)
+
+            bot.turn_number = 0
+            logger.sample("track", target=7)
+            bot.turn_number = 10
+            logger.sample("conditional", target=7)
+            bot.turn_number = 0
+            logger.log("round.reset")
+            logger.sample("track", target=7)
+            bot.turn_number = 5
+            logger.sample("conditional", target=7)
+            logger.close()
+
+            log_file = list(Path(tmpdir).glob("test-bot-*.log"))[0]
+            self.assertEqual(
+                [
+                    "turn=0 event=track target=7",
+                    "turn=10 event=conditional target=7",
+                    "turn=0 event=round.reset ",
+                    "turn=0 event=track target=7",
+                    "turn=5 event=conditional target=7",
+                ],
+                log_file.read_text(encoding="utf-8").splitlines(),
+            )
+
     def test_fired_bullet_tracker_clear_removes_round_local_attribution(self) -> None:
         tracker = FiredBulletTracker()
         tracker.record(17, aim_mode="linear")
