@@ -315,8 +315,8 @@ class VirtualGunSystem:
         self._last_eval_wave_turn.clear()
         self.__post_init__()
 
-    def remove_target(self, target_id: int) -> None:
-        self._wave_tracker.remove_target(target_id)
+    def remove_target(self, target_id: int, *, preserve_pending: bool = False) -> None:
+        self._wave_tracker.remove_target(target_id, preserve_pending=preserve_pending)
         self._eval_waves = [wave for wave in self._eval_waves if wave.target_id != target_id]
         self._last_eval_wave_turn.pop(target_id, None)
         self._active_modes.pop(target_id, None)

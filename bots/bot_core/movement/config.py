@@ -42,3 +42,9 @@ class MovementFlatteningConfig:
     stats_buffer_decay: float = 0.99
     stats_buffer_min_samples: float = 6.0
     stats_buffer_max_effective_samples: float = 48.0
+    evidence_shadow_hit_min_samples: float = 6.0
+    evidence_shadow_occupancy_weight: float = 0.65
+    evidence_shadow_hit_weight: float = 1.5
+    evidence_shadow_hit_component_cap: float = 2.0
+    evidence_shadow_expected_weight: float = 0.35
+    evidence_shadow_expected_component_cap: float = 1.5

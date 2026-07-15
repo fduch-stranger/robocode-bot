@@ -27,8 +27,15 @@ The browser viewer and telemetry audit normalize bot-specific fields into a comm
 
 | Event | Required Fields | Optional Fields | Aliases |
 | --- | --- | --- | --- |
+| `bullet.resolution_corrected` | `bullet_id`, `power`, `outcome`, `previous_outcome` | `target`, `fired_turn`, `resolved_turn`, `damage`, `aim_mode`, `source` | - |
+| `bullet.resolved` | `bullet_id`, `power`, `outcome` | `target`, `fired_turn`, `resolved_turn`, `damage`, `aim_mode`, `source` | - |
+| `combat.profile` | `version`, `recent_window_start`, `recent_window_end` | `target`, `tags`, `recent_own_accepted_shots`, `recent_own_resolved_shots`, `recent_own_hits`, `recent_own_misses`, `recent_own_fired_energy`, `recent_own_hit_damage`, `recent_own_hit_rate`, `recent_own_damage_per_accepted_shot`, `recent_own_damage_per_fired_energy`, `recent_own_resolution_coverage`, `recent_enemy_inferred_shots`, `recent_enemy_weighted_shots`, `recent_enemy_average_fire_confidence`, `recent_enemy_inferred_fired_energy`, `recent_enemy_weighted_fired_energy`, `recent_enemy_hits`, `recent_enemy_hit_damage`, `recent_enemy_hits_matched`, `recent_enemy_hit_match_coverage`, `recent_damage_delta`, `lifetime_own_accepted_shots`, `lifetime_own_resolved_shots`, `lifetime_own_hits`, `lifetime_own_misses`, `lifetime_own_fired_energy`, `lifetime_own_hit_damage`, `lifetime_own_hit_rate`, `lifetime_own_damage_per_accepted_shot`, `lifetime_own_damage_per_fired_energy`, `lifetime_own_resolution_coverage`, `lifetime_enemy_inferred_shots`, `lifetime_enemy_weighted_shots`, `lifetime_enemy_average_fire_confidence`, `lifetime_enemy_inferred_fired_energy`, `lifetime_enemy_weighted_fired_energy`, `lifetime_enemy_hits`, `lifetime_enemy_hit_damage`, `lifetime_enemy_hits_matched`, `lifetime_enemy_hit_match_coverage`, `lifetime_damage_delta` | - |
+| `fire.utility_accepted` | `bullet_id`, `action`, `reason`, `aim_mode`, `distance`, `range_band`, `power_band`, `quality_band`, `q`, `calibration_support`, `calibration_hits`, `fallback_level`, `power`, `bullet_damage`, `hit_bonus`, `gun_heat`, `cooling_rate`, `cooldown_turns`, `score_utility`, `energy_swing_utility` | `target`, `fired_turn`, `solution_quality`, `model_support` | - |
+| `fire.utility_opportunity` | `action`, `reason`, `aim_mode`, `distance`, `range_band`, `power_band`, `quality_band`, `q`, `calibration_support`, `calibration_hits`, `fallback_level`, `power`, `bullet_damage`, `hit_bonus`, `gun_heat`, `cooling_rate`, `cooldown_turns`, `score_utility`, `energy_swing_utility` | `target`, `solution_quality`, `model_support` | - |
+| `fire.utility_outcome` | `bullet_id`, `outcome`, `hit`, `damage`, `q`, `calibration_support`, `calibration_hits`, `fallback_level`, `power` | `target`, `action`, `reason`, `fired_turn`, `resolved_turn`, `aim_mode`, `distance`, `range_band`, `power_band`, `quality_band`, `solution_quality`, `model_support`, `bullet_damage`, `hit_bonus`, `gun_heat`, `cooling_rate`, `cooldown_turns`, `score_utility`, `energy_swing_utility` | - |
+| `fire.utility_outcome_corrected` | `bullet_id`, `outcome`, `previous_outcome`, `hit`, `damage`, `q`, `calibration_support`, `calibration_hits`, `fallback_level`, `power` | `target`, `action`, `reason`, `fired_turn`, `resolved_turn`, `aim_mode`, `distance`, `range_band`, `power_band`, `quality_band`, `solution_quality`, `model_support`, `bullet_damage`, `hit_bonus`, `gun_heat`, `cooling_rate`, `cooldown_turns`, `score_utility`, `energy_swing_utility` | - |
 | `hit.bot` | - | `target`, `energy`, `rammed`, `distance`, `near_wall`, `wall_risk` | - |
-| `hit.bullet` | `owner`, `power`, `damage`, `energy` | `bullet_direction`, `wall_risk`, `near_wall`, `evade_direction`, `move_direction` | - |
+| `hit.bullet` | `owner`, `power`, `damage`, `energy` | `bullet_direction`, `wall_risk`, `near_wall`, `evade_direction`, `move_direction`, `evade_until`, `movement_wave_match`, `movement_guess_factor`, `movement_bin`, `movement_wave_kind`, `movement_wave_match_error`, `movement_hit_profile_support` | - |
 | `hit.wall` | - | `evade_direction`, `move_direction`, `center_bearing`, `wall_escape_until` | - |
 
 ### Energy
@@ -36,7 +43,7 @@ The browser viewer and telemetry audit normalize bot-specific fields into a comm
 | Event | Required Fields | Optional Fields | Aliases |
 | --- | --- | --- | --- |
 | `enemy.energy_drop_ignored` | `reason` | `bot_id`, `raw_drop`, `corrected_drop`, `correction`, `scan_gap`, `distance` | `target` from `bot_id` |
-| `enemy.fire_detected` | `power`, `distance`, `evasion` | `bot_id`, `raw_drop`, `corrected_drop`, `correction`, `scan_gap`, `bullet_travel_ticks`, `evading`, `evade_direction`, `move_direction`, `evade_until`, `movement_wave`, `predicted_power`, `prediction_confidence`, `prediction_reason`, `prediction_error`, `power_samples`, `power_mae`, `inferred_fire_turn`, `fire_source_x`, `fire_source_y`, `fire_source_offset` | `target` from `bot_id` |
+| `enemy.fire_detected` | `power`, `distance`, `evasion` | `bot_id`, `raw_drop`, `corrected_drop`, `correction`, `scan_gap`, `bullet_travel_ticks`, `evading`, `evade_direction`, `move_direction`, `evade_until`, `movement_wave`, `predicted_power`, `prediction_confidence`, `prediction_reason`, `prediction_error`, `detection_confidence`, `power_samples`, `power_mae`, `inferred_fire_turn`, `fire_source_x`, `fire_source_y`, `fire_source_offset` | `target` from `bot_id` |
 | `enemy.gun_heat_wave` | `power`, `distance`, `reason` | `bot_id`, `confidence`, `samples`, `power_mae`, `target_age`, `movement_wave` | `target` from `bot_id` |
 
 ### Fire
@@ -58,7 +65,7 @@ The browser viewer and telemetry audit normalize bot-specific fields into a comm
 | Event | Required Fields | Optional Fields | Aliases |
 | --- | --- | --- | --- |
 | `battle.reset` | - | `rounds`, `game_type` | - |
-| `bot.config` | - | `selectable_guns`, `force_guns`, `forced_gun`, `eval_waves` | - |
+| `bot.config` | - | `selectable_guns`, `force_guns`, `forced_gun`, `eval_waves`, `fire_utility_shadow` | - |
 | `bot.skipped_turn` | `skipped_turn` | `current_turn`, `last_decision_elapsed_us`, `last_time_left_us_before_go`, `turn_timeout_us`, `time_left_us`, `target`, `known_targets`, `gun_heat`, `gun_samples`, `gun_waves`, `eval_waves`, `movement_waves`, `shadow_bullets`, `movement_mode`, `aim_mode` | - |
 | `bot.turn_timing` | `decision_elapsed_us`, `severity` | `turn_timeout_us`, `time_left_us_before_go`, `target`, `known_targets`, `gun_heat`, `gun_samples`, `gun_waves`, `eval_waves`, `movement_waves`, `shadow_bullets`, `movement_mode`, `aim_mode` | - |
 | `round.reset` | - | `previous_turn`, `current_turn` | - |
@@ -71,12 +78,13 @@ The browser viewer and telemetry audit normalize bot-specific fields into a comm
 | --- | --- | --- | --- |
 | `movement.duel_flatten` | - | `target`, `suggested_direction`, `distance` | - |
 | `movement.duel_potential` | - | `target`, `destination_x`, `destination_y`, `force_x`, `force_y`, `distance`, `mode`, `evading`, `turn`, `speed` | `movement_mode` from `mode` |
+| `movement.evidence_shadow` | `live_direction`, `shadow_direction`, `hit_fallback_level`, `score_source` | `target`, `distance`, `current_direction`, `shadow_differs`, `current_live_danger`, `alternative_live_danger`, `current_occupancy`, `alternative_occupancy`, `current_hit_danger`, `alternative_hit_danger`, `current_expected_pressure`, `alternative_expected_pressure`, `current_shadow_danger`, `alternative_shadow_danger`, `hit_profile_support`, `selected_direction` | - |
 | `movement.feint` | - | `target`, `mode`, `reason`, `duration`, `move_direction`, `near_wall`, `variant`, `turn_scale` | - |
-| `movement.flatten` | - | `target`, `current_direction`, `suggested_direction`, `bucket`, `current_count`, `alternative_count`, `distance`, `reason` | - |
+| `movement.flatten` | - | `target`, `current_direction`, `suggested_direction`, `bucket`, `current_count`, `alternative_count`, `distance`, `reason`, `score_source`, `legacy_direction`, `selected_current_danger`, `selected_alternative_danger` | - |
 | `movement.flatten_shadow` | - | `target`, `current_direction`, `suggested_direction`, `bucket`, `current_count`, `alternative_count`, `distance`, `reason` | - |
-| `movement.goto_surf` | - | `target`, `destination_x`, `destination_y`, `danger`, `wave_kind`, `turn`, `speed` | `movement_mode` from `mode` |
+| `movement.goto_surf` | - | `target`, `destination_x`, `destination_y`, `danger`, `wave_kind`, `turn`, `speed`, `occupancy_danger`, `hit_danger`, `hit_profile_support`, `hit_fallback_level`, `expected_pressure`, `shadow_danger`, `shadow_destination_x`, `shadow_destination_y`, `shadow_direction`, `shadow_selected_danger`, `shadow_differs`, `live_destination_x`, `live_destination_y`, `live_direction`, `live_selected_danger`, `score_source` | `movement_mode` from `mode` |
 | `movement.minimum_risk` | - | `target`, `destination_x`, `destination_y`, `risk`, `candidates`, `nearest_enemy`, `nearest_enemy_distance`, `reused_destination`, `destination_age`, `turn`, `speed`, `known_targets`, `fire_threat` | `movement_mode` from `mode` |
-| `movement.profile_visit` | - | `target`, `guess_factor`, `bin`, `bucket`, `visits`, `wave_age`, `ensemble_danger`, `ensemble_samples` | - |
+| `movement.profile_visit` | - | `target`, `guess_factor`, `bin`, `bucket`, `visits`, `wave_age`, `ensemble_danger`, `ensemble_samples`, `evidence_kind`, `wave_kind`, `occupancy_visits`, `hit_profile_support`, `match_error` | - |
 | `search.wall_avoid` | - | `x`, `y`, `center_bearing`, `evade_direction`, `near_wall` | - |
 | `separate` | - | `target`, `distance`, `away_bearing`, `target_speed`, `turn_limit`, `move_direction` | - |
 | `wall.avoid` | - | `x`, `y`, `center_bearing`, `move_direction`, `evade_direction`, `target` | - |

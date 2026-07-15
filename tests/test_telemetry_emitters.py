@@ -1,6 +1,12 @@
 import unittest
 from unittest.mock import patch
 
+from bot_core.combat import (
+    CombatProfileStore,
+    FireUtilityCalibrator,
+    FireUtilityOpportunity,
+    build_fire_utility_context,
+)
 from bot_core.energy import EnergyDropSignal, EnemyFirePowerPrediction, FireDecision, GunHeatState
 from bot_core.gun import AimSolution, FireContext, GunSwitchCandidate, WaveVisit
 from bot_core.gun.guns.traditional_gf.diagnostics import TraditionalGfDiagnostics
@@ -8,8 +14,10 @@ from bot_core.movement import FlatteningDecision, GoToSurfDecision, MinimumRiskD
 from bot_core.radar import RadarCommand
 from bot_core.target_snapshot import TargetSnapshot
 from bot_core.targeting import TargetSelection
+from bot_core.telemetry.combat import CombatTelemetry
 from bot_core.telemetry.energy import EnergyTelemetry
 from bot_core.telemetry.fire import FireTelemetry, FireTick, SimpleTrackTick
+from bot_core.telemetry.fire_utility import FireUtilityTelemetry
 from bot_core.telemetry.movement import MovementTelemetry
 from bot_core.telemetry.targeting import TargetingTelemetry
 from bot_core.telemetry.timing import TurnTimingTelemetry
@@ -572,6 +580,7 @@ class TelemetryEmitterTest(unittest.TestCase):
             evade_direction=-1,
             known_targets=2,
             heat_state=GunHeatState(heat=1.386),
+            detection_confidence=0.85,
             inferred_fire_turn=15,
             fire_source_x=120.04,
             fire_source_y=180.05,
@@ -612,6 +621,7 @@ class TelemetryEmitterTest(unittest.TestCase):
                 "known_targets",
                 "movement_wave",
                 "gun_heat",
+                "detection_confidence",
                 "predicted_power",
                 "prediction_error",
                 "power_samples",
@@ -626,12 +636,123 @@ class TelemetryEmitterTest(unittest.TestCase):
         self.assertEqual(1.93, sink.records[1][2]["power"])
         self.assertEqual(0.43, sink.records[1][2]["prediction_error"])
         self.assertEqual(0.457, sink.records[1][2]["power_mae"])
+        self.assertEqual(0.85, sink.records[1][2]["detection_confidence"])
         self.assertEqual(15, sink.records[1][2]["inferred_fire_turn"])
         self.assertEqual(120.0, sink.records[1][2]["fire_source_x"])
         self.assertEqual(180.1, sink.records[1][2]["fire_source_y"])
         self.assertEqual(12.35, sink.records[1][2]["fire_source_offset"])
         self.assertEqual(1.66, sink.records[2][2]["power"])
         self.assertIsNone(sink.records[2][2]["power_mae"])
+
+    def test_combat_telemetry_records_profile_and_resolution(self) -> None:
+        sink = RecordingSink()
+        store = CombatProfileStore()
+        store.record_own_fire(10, 7, 99, 1.5, gun_mode="linear", source="fallback")
+        resolution = store.resolve_own_bullet(20, 99, "hit_bot", damage=7.0)
+        store.record_enemy_fire(12, 7, 1.9, 0.85)
+        store.record_enemy_hit(22, 7, 1.9, 9.4, matched_wave=True)
+        telemetry = CombatTelemetry(sink)
+
+        telemetry.sample_profile(store.snapshot(7, 22))
+        assert resolution is not None
+        telemetry.record_own_bullet_resolution(resolution)
+
+        self.assertEqual(["combat.profile", "bullet.resolved"], [event for _, event, _ in sink.records])
+        profile = sink.records[0][2]
+        self.assertEqual(1, profile["version"])
+        self.assertEqual(7, profile["target"])
+        self.assertEqual(1, profile["lifetime_own_accepted_shots"])
+        self.assertEqual(1, profile["lifetime_enemy_hits_matched"])
+        self.assertAlmostEqual(-2.4, profile["lifetime_damage_delta"])
+        resolved = sink.records[1][2]
+        self.assertEqual("99", resolved["bullet_id"])
+        self.assertEqual("hit_bot", resolved["outcome"])
+        self.assertEqual("linear", resolved["aim_mode"])
+        self.assertEqual("fallback", resolved["source"])
+
+    def test_combat_telemetry_labels_resolution_correction(self) -> None:
+        sink = RecordingSink()
+        store = CombatProfileStore()
+        store.record_own_fire(10, 7, 99, 0.7, gun_mode="dynamic_cluster")
+        store.resolve_own_bullet(20, 99, "round_end")
+        corrected = store.resolve_own_bullet(20, 99, "hit_bot", damage=2.8)
+
+        assert corrected is not None
+        CombatTelemetry(sink).record_own_bullet_resolution(corrected)
+
+        self.assertEqual("bullet.resolution_corrected", sink.records[0][1])
+        self.assertEqual("round_end", sink.records[0][2]["previous_outcome"])
+        self.assertEqual("hit_bot", sink.records[0][2]["outcome"])
+
+    def test_fire_utility_telemetry_records_opportunity_shot_and_outcome(self) -> None:
+        sink = RecordingSink()
+        calibrator = FireUtilityCalibrator()
+        telemetry = FireUtilityTelemetry(sink)
+        context = build_fire_utility_context(
+            "dynamic_cluster",
+            410.125,
+            0.7,
+            solution_quality=0.44444,
+            model_support=17,
+        )
+        estimate = calibrator.estimate(context, 0.7, cooling_rate=0.1)
+        opportunity = FireUtilityOpportunity(7, 10, "fire", "ready", estimate)
+        telemetry.record_opportunity(opportunity)
+        shot = calibrator.record_accepted_shot(
+            10,
+            99,
+            7,
+            context,
+            0.7,
+            cooling_rate=0.1,
+            behavior_reason="ready",
+            estimate=estimate,
+        )
+        assert shot is not None
+        telemetry.record_accepted(shot)
+        outcome = calibrator.resolve_shot(25, 99, "hit_bot", damage=2.8)
+        assert outcome is not None
+        telemetry.record_outcome(outcome)
+
+        self.assertEqual(
+            ["fire.utility_opportunity", "fire.utility_accepted", "fire.utility_outcome"],
+            [event for _, event, _ in sink.records],
+        )
+        opportunity_fields = sink.records[0][2]
+        self.assertEqual("fire", opportunity_fields["action"])
+        self.assertEqual("dynamic_cluster", opportunity_fields["aim_mode"])
+        self.assertEqual("mid", opportunity_fields["range_band"])
+        self.assertEqual("low", opportunity_fields["power_band"])
+        self.assertEqual("high", opportunity_fields["quality_band"])
+        self.assertEqual(0, opportunity_fields["calibration_support"])
+        self.assertEqual("dynamic_quality_prior", opportunity_fields["fallback_level"])
+        self.assertAlmostEqual(2.8, opportunity_fields["bullet_damage"])
+        self.assertEqual("99", sink.records[1][2]["bullet_id"])
+        self.assertTrue(sink.records[2][2]["hit"])
+        self.assertEqual("hit_bot", sink.records[2][2]["outcome"])
+
+    def test_fire_utility_telemetry_labels_late_hit_correction(self) -> None:
+        sink = RecordingSink()
+        calibrator = FireUtilityCalibrator()
+        context = build_fire_utility_context("linear", 600.0, 1.0, model_support=40)
+        calibrator.record_accepted_shot(
+            10,
+            99,
+            7,
+            context,
+            1.0,
+            cooling_rate=0.1,
+            behavior_reason="last_stand",
+        )
+        calibrator.resolve_shot(20, 99, "round_end")
+        corrected = calibrator.resolve_shot(20, 99, "hit_bot", damage=4.0)
+
+        assert corrected is not None
+        FireUtilityTelemetry(sink).record_outcome(corrected)
+
+        self.assertEqual("fire.utility_outcome_corrected", sink.records[0][1])
+        self.assertEqual("round_end", sink.records[0][2]["previous_outcome"])
+        self.assertEqual("last_stand", sink.records[0][2]["reason"])
 
     def test_movement_telemetry_records_simple_bot_events(self) -> None:
         sink = RecordingSink()
@@ -717,7 +838,20 @@ class TelemetryEmitterTest(unittest.TestCase):
             sink.records[5][2],
         )
         self.assertEqual(
-            {"target", "guess_factor", "bin", "bucket", "visits", "wave_age", "ensemble_danger", "ensemble_samples"},
+            {
+                "target",
+                "guess_factor",
+                "bin",
+                "bucket",
+                "visits",
+                "wave_age",
+                "ensemble_danger",
+                "ensemble_samples",
+                "evidence_kind",
+                "wave_kind",
+                "occupancy_visits",
+                "hit_profile_support",
+            },
             set(sink.records[6][2]),
         )
         self.assertEqual(0.457, sink.records[6][2]["ensemble_danger"])
@@ -750,11 +884,19 @@ class TelemetryEmitterTest(unittest.TestCase):
         telemetry.sample_minimum_risk(8, risk, command, 3, fire_threat_id=None, include_fire_threat=True)
         telemetry.sample_goto_surf(8, surf, command, evade_direction=1)
         telemetry.record_duel_flattening(3, flattening, 250.09, current_direction=1)
+        telemetry.sample_evidence_shadow(3, flattening, 250.09, current_direction=1)
         telemetry.record_flattening_shadow(3, flattening, 250.09, current_direction=-1)
         telemetry.sample_duel_potential(3, 10.04, 20.05, 0.1234, -0.4567, 300.09, "orbit", True, -1, MovementCommand("orbit", 1.234, 7))
 
         self.assertEqual(
-            ["movement.minimum_risk", "movement.goto_surf", "movement.duel_flatten", "movement.flatten_shadow", "movement.duel_potential"],
+            [
+                "movement.minimum_risk",
+                "movement.goto_surf",
+                "movement.duel_flatten",
+                "movement.evidence_shadow",
+                "movement.flatten_shadow",
+                "movement.duel_potential",
+            ],
             [event for _, event, _ in sink.records],
         )
         self.assertIsNone(sink.records[0][2]["fire_threat"])
@@ -762,8 +904,9 @@ class TelemetryEmitterTest(unittest.TestCase):
         self.assertEqual(-0.457, sink.records[1][2]["hit_guess_factor"])
         self.assertEqual(4.4, sink.records[1][2]["ensemble_samples"])
         self.assertEqual("lower_danger", sink.records[2][2]["reason"])
-        self.assertNotIn("reason", sink.records[3][2])
-        self.assertEqual(-0.457, sink.records[4][2]["force_y"])
+        self.assertEqual("occupancy", sink.records[3][2]["hit_fallback_level"])
+        self.assertNotIn("reason", sink.records[4][2])
+        self.assertEqual(-0.457, sink.records[5][2]["force_y"])
 
     def test_targeting_telemetry_records_targeting_events(self) -> None:
         sink = RecordingSink()

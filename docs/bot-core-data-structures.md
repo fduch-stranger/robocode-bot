@@ -131,6 +131,94 @@ turn limit, wall clip, and zero speed after wall hit.
 | `GunHeatTracker` | Expected enemy fire readiness. |
 | `FireDecision` | Shared fire-gate result and hold reason. |
 
+## Combat Economics
+
+| Structure | Purpose |
+| --- | --- |
+| `CombatProfileStore` | Per-target accepted-shot, resolution, inferred-enemy-fire, and real-enemy-hit ledger, with an unattributed bucket so every engine-accepted bullet is counted. |
+| `CombatProfileSnapshot` | Lifetime and common-turn-window totals plus observable pressure tags. |
+| `CombatTotals` | Raw economics counters and derived conversion, damage, confidence, and attribution ratios. |
+| `OwnBulletResolution` | Accepted own bullet attribution and its final hit, wall, bullet-collision, or round-end outcome. |
+| `FireUtilityCalibrator` | Causal hit-probability calibration and accepted-shot lifecycle for shadow utility. |
+| `FireUtilityContext` | Gun mode plus compact range, power, and quality/maturity bands. |
+| `FireUtilityEstimate` | Calibrated probability, support/fallback, physics values, cooldown, and two utility views. |
+| `AcceptedFireUtilityShot` / `FireUtilityOutcome` | Immutable prediction bound to an accepted bullet and its real outcome or correction. |
+
+Movement evidence uses separate `MovementProfile` instances for confirmed-wave
+occupancy and matched real hits. The existing composite profile remains the
+live compatibility input during the shadow phase. Expected-wave pressure is
+computed from active waves and confidence at query time, so it has no permanent
+profile store. Hit-profile support is counted within the wave's distance bucket
+and maps to `occupancy`, `blended`, or `hit_profile` fallback levels.
+
+Enemy energy-drop detections retain their raw count and also contribute
+confidence-weighted shot and fired-energy totals. Confidence starts at `1.0`
+for a one-turn scan gap and falls by `0.15` per additional turn, with a `0.55`
+floor. This confidence is descriptive only; it does not change live enemy-wave
+creation.
+
+The recent combat profile uses one turn interval for every event kind. A
+resolution close to the window boundary can therefore appear without its older
+fire event; lifetime attribution remains the authoritative accepted-to-resolved
+coverage measure.
+
+Round closure remains marked until the next round reset so a same-turn accepted
+shot delivered after a win callback is immediately finalized. Because
+`BotDeathEvent` runs before `BulletFiredEvent`, target cleanup preserves the
+pending gun wave until that lower-priority acceptance callback or round reset.
+If attribution is still unavailable, the ledger records the accepted bullet in
+an unattributed bucket. A later winning hit can retract that provisional miss.
+Offline summaries use every durable accepted-fire and hit event as the terminal
+authority because the battle runner may end a defeated process before its close
+callback finishes.
+
+Shadow fire utility reuses the canonical Tank Royale power formulas, with
+power clamped to `[0.1, 3.0]`:
+
+```text
+D(p) = 4p + 2 * max(p - 1, 0)
+B(p) = 3p
+H(p) = 1 + p / 5
+cooldown_turns = ceil(H(p) / gun_cooling_rate)
+
+score_utility        = q * D(p)
+energy_swing_utility = q * (D(p) + B(p)) - p
+```
+
+The causal probability model uses a global `Beta(1, 5)` posterior over resolved
+accepted shots:
+
+```text
+q_base = (global_hits + 1) / (global_resolved + 6)
+
+if gun_mode == dynamic_cluster and solution_quality >= 0.10:
+    adjusted_odds = 1.75 * q_base / (1 - q_base)
+    q = adjusted_odds / (1 + adjusted_odds)
+else:
+    q = q_base
+```
+
+Range bands are `near < 300`, `mid < 550`, then `far`. Accepted-power bands
+are `low < 0.75`, `medium < 1.5`, then `high`. Before eight model visits the
+quality/maturity band is `cold`. Dynamic Cluster then reports `low < 0.10` or
+`high`; other guns use `warming < 36` visits and `mature` afterward. Range,
+accepted-power, generic maturity, and gun-mode cross-products remain diagnostic
+only. The Dynamic Cluster high-quality flag is the sole shot-level adjustment:
+across the two 2026-07-15 runs it observed 27/93 hits versus 174/1365 for all
+other shots. The pooled odds ratio was about `2.80`; `1.75` is a conservative
+rounded lower-bound multiplier rather than the fitted central estimate.
+
+Each ready-gun opportunity freezes calibration snapshots for all three
+accepted-power bands. A later hold opportunity does not discard a pending fire
+snapshot while the engine-delayed accepted-fire callback is outstanding. That
+callback therefore uses only information available at the accepted command even
+when another higher-priority bullet callback updates live calibration first or
+accepted power drifts bands. A non-hit terminal result increments resolved
+support once; only a later real hit that replaces a provisional `round_end` miss
+changes its hit count, so durable wall/bullet misses cannot be rewritten and
+correction never double-counts the shot. No live decision reads these values
+during the shadow phase.
+
 Accepted enemy fire normally satisfies:
 
 ```text
@@ -164,6 +252,8 @@ Use:
   per-gun real conversion.
 - `tools/gun_eval_summary.py` for virtual-gun calibration and selector
   diagnostics.
+- `tools/fire_utility_summary.py` for accepted-shot probability reliability,
+  range/power calibration, fallback use, and current fire/hold reasons.
 
 ## Extension Rules
 

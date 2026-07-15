@@ -1,1193 +1,874 @@
 # Core Combat Economics Plan
 
-This plan turns the recent BasicGFSurfer findings into a coherent direction for
-Adaptive Prime and the shared bot core. Adaptive is the evidence case because
-it is the 1v1 champion candidate, but the implementation should be shared
-wherever the behavior is generally better.
+Status: executed through the first Phase 5 behavior gate in July 2026 after the
+Traditional GF, KNN, selector, and PIF cleanup work. The telemetry foundations
+remain; the tested live movement and fire candidates were rejected.
 
-The goal is not to add more clever formulas. The goal is to make every repo bot
-choose better fights: when to shoot, how hard to shoot, which gun to trust, and
-how to move when the enemy is learning us.
+The original combat-economics direction remains useful, but its July 4 battle
+evidence is historical. The current gun stack and Python Basic GF Surfer port
+are materially different. The current `main` baseline and variance were
+remeasured before the behavior experiments recorded below.
 
-## Problem
+## Decision
 
-Adaptive can win rounds while losing the damage exchange. In the 2026-07-04
-Adaptive-vs-`basic-gf-surfer-port` telemetry run, Adaptive won score and first
-places but lost bullet damage badly:
+Proceed in this order:
 
-| Bot | Score | Firsts | Bullet Damage |
-| --- | ---: | ---: | ---: |
-| Adaptive Prime | 895 | 9 | 304 |
-| BasicGFSurfer Port | 774 | 3 | 548 |
+1. Establish a fresh current-main baseline.
+2. Build a time-aligned combat ledger without changing behavior.
+3. Split movement occupancy, real-hit danger, and expected-wave pressure.
+4. Test real-hit danger as an isolated movement change.
+5. Calibrate fire utility in shadow mode.
+6. Test fire/hold and power choice separately.
 
-Adaptive fired many low-power Dynamic Cluster shots. The port fired fixed
-`1.9` bullets. Adaptive hit more often, but the port's hits were worth much
-more. That means the core weakness is combat economics, not only aim.
+Do not introduce one universal hard-bucket `CombatRegime`. Use canonical
+continuous context and small subsystem-specific adapters. Do not restore the
+PIF replay bonuses removed during false-optimization cleanup. Selector
+calibration and anti-surfer reconstruction remain separate follow-up plans.
 
-The port also shows that a simple gun can work if its assumptions are aligned:
-distance, velocity, last velocity, one shared lateral direction, and battle
-persistent wave learning. Adaptive's movement is still repeatable enough in
-simple guess-factor bins for that to matter.
+## Problem To Revalidate
 
-Follow-up 2026-07-04 telemetry confirmation used two 24-round battles:
+The historical symptom was poor damage exchange despite acceptable score or
+first-place results:
 
-| Opponent | Raw Result | Bullet Damage Shape | Filtered Surfer View |
-| --- | --- | --- | --- |
-| `basic-gf-surfer-port` | Adaptive lost `1544-2007` despite `15-9` firsts | Adaptive `561` vs port `1328` | no high-accuracy rounds excluded; result unchanged |
-| legacy `basic-gf-surfer` | Adaptive won `2115-1770` and `17-7` firsts | Adaptive `950` vs legacy `1234` | `4` rounds excluded; kept score `1424/20`, kept accuracy `15.4%` |
+- too much enemy bullet damage received;
+- too little damage returned per accepted shot and per unit of fired energy;
+- fire decisions that treated hit probability as the full value of a shot;
+- movement learning that mixed ordinary visits, inferred pressure, and real
+  bullet hits into one danger signal.
 
-The legacy run explains why legacy BasicGFSurfer should not be a normal gate.
-Raw Displacement looked very strong (`41/88`, `46.6%`), but after excluding
-high-accuracy rounds it dropped to `8/52` (`15.4%`). Treat legacy results as
-noisy historical context. The Python port cannot hit the same legacy glitch
-mode and is the primary test target for this plan. The durable signal is still
-combat economics: surfers hit less often but with roughly `1.9`-power bullets,
-while Adaptive fires many low-power Dynamic Cluster shots.
+Recent gun and selector corrections may have changed the size or even the
+existence of that problem. The Python
+`bots/ports/basic-gf-surfer-port` implementation is the primary focused
+opponent. Converted legacy bots may provide diagnostics, but they are not a
+promotion gate.
 
-## Goal
+If the fresh baseline does not reproduce a meaningful combat-economics problem,
+stop and rewrite the remaining hypotheses from the new evidence.
 
-Build an opponent-responsive combat loop:
+## Goals
 
-```text
-observe enemy pressure
-measure our shot value
-choose whether to fire
-choose firepower
-choose gun by expected value
-move to reduce enemy gun value
-```
-
-The result should be broadly useful against surfers, simple GF bots, KNN guns,
-head-on punishers, and weak local bots. BasicGFSurfer is the current evidence
-case, not a hard-coded target.
+- Measure the exchange between accepted shots, fired energy, damage dealt, and
+  damage received.
+- Give movement real-hit evidence semantics distinct from ordinary occupancy
+  and transient inferred pressure.
+- Estimate fire utility from observable outcomes before changing fire behavior.
+- Improve focused surfer performance without hiding a serious regression
+  against ordinary local opponents.
+- Keep every experiment attributable to one behavior change.
 
 ## Non-Goals
 
-- Do not special-case bot names.
-- Do not add a large opaque tactical model before simpler economics are tested.
-- Do not hide bad guns with selector hacks when the real issue is firepower or
-  movement predictability.
-- Do not promote raw legacy BasicGFSurfer gains. The Python port is the primary
-  clean surfer target for this plan.
-- Do not make every metric a decision input. Telemetry-only diagnostics are
-  allowed and should stay telemetry-only until useful.
-- Do not preserve old behavior only because it is current behavior. If a shared
-  replacement wins cleanly and explains itself in telemetry, the old path can
-  be deleted instead of carried as compatibility debt.
+- No opponent-name special cases.
+- No universal high-cardinality combat-regime key.
+- No new PIF replay-candidate bonuses or discrete coarse replay rewards.
+- No dynamic firepower floors.
+- No simultaneous selector recalibration.
+- No anti-surfer gun rebuild inside this plan.
+- No compatibility switches or dead experiment branches after a decision.
 
-## Compatibility Stance
+## Design Rules
 
-This is a core-system plan. Prefer changes in `bots/bot_core/` over
-bot-specific fixes when the behavior is generally useful. Adaptive Prime can be
-the first rollout target because it has the strongest validation pressure, but
-Chase Lock, Circle Strafer, and Sweep Pressure should inherit the same improved
-combat economics after smoke validation.
+### Count accepted shots, not requested shots
 
-Backward compatibility is not a goal by itself. Keep a compatibility layer only
-when it protects a proven behavior, a necessary force-test hook, or a migration
-path for experiments. If the old selector/fire/movement behavior is simply
-worse and the new shared behavior is validated, remove the old code rather than
-supporting both.
+An own shot exists only after the engine accepts it and returns a fired bullet.
+Use the existing pending-gun-wave and fired-bullet attribution path. Requested
+fire commands must not enter conversion or energy accounting as real shots.
 
-## Design Principles
+### Keep evidence meanings separate
 
-1. Every new decision input must answer a battle question:
-   - Are we being out-damaged?
-   - Is the enemy hard to hit?
-   - Is the enemy hitting us predictably?
-   - Is this shot worth giving the enemy another wave?
-   - Is this movement candidate landing in a danger region?
+These observations are not interchangeable:
 
-2. Prefer small rolling summaries over large models:
-   - rolling hit rate
-   - rolling damage per shot
-   - rolling enemy hit rate
-   - hit guess-factor danger by coarse state
-   - recent damage deficit
+- **visit occupancy:** where the enemy or our bot passed while a wave existed;
+- **real hit danger:** where an actual bullet hit;
+- **expected pressure:** unresolved or low-confidence inferred enemy fire.
 
-3. Keep the loop inspectable:
-   - each adjustment emits a reason
-   - raw scores remain visible beside adjusted scores
-   - every gate has an env kill switch during experiments
+Expected pressure may affect a current decision, but it must not become a
+permanent real-hit observation when no hit occurred.
 
-4. Implement in layers. A later layer must prove it adds value beyond earlier
-   economics.
+### Instrument before acting
 
-5. Put general improvements in shared systems:
-   - opponent combat profile belongs in shared runtime state
-   - shot value and firepower policy belong in shared fire decisions
-   - enemy-gun danger belongs in shared movement scoring
-   - bot-local config should express personality, not duplicate core logic
+Each new metric first runs in telemetry or shadow mode. A behavior phase starts
+only when attribution coverage, sample volume, and calibration are adequate.
 
-## Implementation Subplan: Wave Evidence Semantics
+### Change one decision dimension at a time
 
-Before changing firepower or selector behavior, split the meaning of wave
-evidence. The BasicGFSurfer port is not strong because its wave physics are
-more advanced. It is strong because each wave observation has a clear purpose:
-its gun learns from accepted-shot virtual visits, and its surfing danger is
-anchored in real bullet hits.
+Fire/hold at the current selected power is one experiment. Choosing a different
+power is another. Gun selection is a third and remains outside this plan.
 
-Adaptive's current movement profile can mix ordinary enemy-wave pass visits
-with real bullet-hit visits. That makes the danger surface partly describe
-where Adaptive happened to be when waves arrived, not where the enemy gun
-actually hit. This should be fixed first because later EV and movement decisions
-should consume clean evidence, not compensate for polluted profiles.
+### Validate Adaptive Prime before sharing behavior
 
-### Evidence Kinds
+Shared data structures may live in `bot_core`, but new live policy remains
+disabled for other bots until Adaptive Prime has focused evidence and release
+smokes.
 
-Define explicit evidence kinds and keep their consumers separate:
-
-| Evidence | Source | Primary consumer |
-| --- | --- | --- |
-| `gun_virtual_visit` | our accepted-shot gun wave reaches enemy position | gun learning and virtual-gun scoring |
-| `movement_wave_pass` | confirmed enemy wave reaches our current position | flattening and anti-repetition pressure |
-| `movement_bullet_hit` | real enemy bullet hit matched to a movement wave | enemy-gun danger |
-| `expected_enemy_wave` | gun-heat or power prediction without confirmed drop | immediate movement planning with confidence penalty |
-
-Do not write all four into the same long-term danger meaning. A wave pass says
-"we occupied this GF region." A bullet hit says "the enemy gun punished this GF
-region." Those are related, but they are not the same signal.
-
-### Movement Profile Split
-
-Replace the single movement-danger interpretation with separate stores:
-
-```text
-enemy_hit_profile
-  updated only from matched real bullet hits
-  high weight
-  segmented by own-risk regime
-
-visit_flattening_profile
-  updated from ordinary confirmed wave passes
-  low or medium weight
-  used to avoid repeated occupancy, not to claim enemy aim danger
-
-expected_wave_pressure
-  optional telemetry-only or very low weight
-  expires quickly unless confirmed
-```
-
-Candidate scoring should combine them explicitly:
-
-```text
-danger =
-  enemy_hit_danger
-  + small_flattening_penalty
-  + immediate_expected_wave_pressure
-  + wall/position risk
-```
-
-`movement_bullet_hit` should no longer be just "wave pass weight x3" in the
-same table. It should update enemy-hit danger directly, while wave pass evidence
-remains useful for flattening and anti-repetition.
-
-### Own-Risk Regime
-
-Bullet-hit danger should be keyed by the state the enemy gun saw when firing,
-not only by final GF bin. Start with coarse buckets:
-
-- distance bucket
-- enemy bullet-power bucket
-- our lateral bucket
-- our advancing bucket
-- wall bucket
-- flight-time bucket
-- recent direction-change bucket
-- recent decel bucket
-
-This is the movement-side counterpart to the surfer gun's simple
-distance/velocity/last-velocity segmentation. The exact fields can share the
-`CombatRegime` vocabulary below, but the first objective is semantic
-separation: hit danger, occupancy, and expected pressure must be distinct.
-
-### Telemetry
-
-Add movement evidence diagnostics before behavior changes:
-
-```text
-movement.wave_pass
-  evidence_kind=movement_wave_pass
-  target_id
-  wave_kind
-  gf
-  bin
-  own_risk_regime
-
-movement.hit_danger
-  evidence_kind=movement_bullet_hit
-  target_id
-  power
-  damage
-  gf
-  bin
-  own_risk_regime
-  hit_wave_error
-
-movement.danger_breakdown
-  enemy_hit_component
-  flattening_component
-  expected_wave_component
-  total_danger
-```
-
-Existing `hit.bullet` should keep reporting whether a movement wave matched,
-but add enough fields to diagnose match error and resulting danger update.
-
-### Tests
-
-Unit tests should verify:
-
-- wave-pass visits update only the flattening profile
-- real bullet hits update only the enemy-hit danger profile
-- expected waves do not create permanent hit danger without confirmation
-- candidate danger reports separate hit, flattening, and expected components
-- unmatched bullet hits are visible in telemetry and do not silently corrupt
-  danger tables
-
-### Validation
-
-Use the Python BasicGFSurfer port as the focused evidence target:
-
-```sh
-PYTHONPATH=bots .venv/bin/python -m pytest tests/test_movement_wave_evidence.py
-scripts/run-battle.sh --telemetry --rounds 24 \
-  bots/adaptive-prime bots/ports/basic-gf-surfer-port
-tools/telemetry_audit.py battle-results/runs/<run>/telemetry \
-  --require-bot adaptive-prime
-tools/combat_economics_summary.py battle-results/runs/<run>
-```
-
-Success criteria:
-
-- movement wave-match rate is reported and stable enough to trust
-- surfer bullet-damage pressure can be explained by hit-danger bins/regimes
-- wave-pass occupancy and real hit danger are visibly different in telemetry
-- no EV/firepower behavior changes are mixed into the first patch
-
-## Implementation Subplan: Shared Combat Regime Key
-
-After wave evidence semantics are clean, add a shared regime vocabulary that
-all guns, movement, and fire economics can use. The BasicGFSurfer port is strong
-because its gun and movement are aligned around a small set of meaningful state
-features. Adaptive should stop letting every subsystem describe the fight in a
-different feature language.
+## Phase 0: Fresh Current-Main Baseline
 
 ### Purpose
 
-Create one compact shared representation for "what kind of combat state is
-this?" It should be useful for:
+Replace the stale July 4 baseline and quantify current variance before setting
+promotion thresholds.
 
-- gun candidate matching
-- gun profile segmentation
-- displacement replay scoring
-- enemy-hit danger learning
-- EV fire decisions
-- anti-repetition movement
+### Configuration
 
-This is not a new tactical brain. It is a shared feature adapter.
+- Use the normal Adaptive Prime selector and current production configuration.
+- Use the Python Basic GF Surfer port as the primary target.
+- Do not force an individual gun for the main economics baseline.
+- Keep performance runs telemetry-free.
 
-### Simplicity Lesson From BasicGFSurfer
+### Diagnostic run
 
-BasicGFSurfer is not strong because it has no features. It is strong because
-its gun and movement use a small, consistent feature language. Its gun cares
-about distance, velocity, last velocity, and lateral direction; its movement
-learns guess-factor danger from our waves.
-
-The shared regime key should copy that alignment property, not the exact bot.
-It must be a common vocabulary with per-system adapters:
-
-- Dynamic Cluster uses it as soft neighbor weighting.
-- Traditional GF uses a compact subset as one profile source.
-- Displacement uses it as replay candidate bonuses.
-- Movement uses own-risk regimes for enemy-hit danger.
-- Fire EV uses regime profitability/danger, not full hard buckets.
-- Linear and head-on mostly ignore it.
-
-Do not create one giant universal hard segment key. That would recreate
-sparsity and make the system harder to reason about. The value is consistency
-across systems, with each gun using only the subset that matches its model.
-
-### New Shared Module
-
-Add:
-
-```text
-bots/bot_core/combat/regime.py
-```
-
-Core structures:
-
-```text
-CombatRegime
-  distance_bucket
-  flight_time_bucket
-  target_speed_bucket
-  target_last_speed_bucket
-  target_lateral_bucket
-  target_advancing_bucket
-  target_accel_bucket
-  target_wall_bucket
-  own_speed_bucket
-  own_last_speed_bucket
-  own_lateral_bucket
-  enemy_power_bucket
-
-CombatRegimeConfig
-  distance_edges
-  flight_time_edges
-  speed_edges
-  lateral_edges
-  advancing_edges
-  wall_edges
-  power_edges
-
-build_target_regime(...)
-build_own_risk_regime(...)
-```
-
-Keep values coarse and stable. Start with buckets that can be inspected in
-telemetry, not continuous weights hidden in each gun.
-
-Initial bucket shape:
-
-```text
-distance: close / mid / far / very_far
-flight_time: short / medium / long
-speed: stopped / slow / medium / fast
-last_speed: stopped / slow / medium / fast
-lateral: reverse / low / medium / high
-advancing: retreating / flat / advancing
-wall: near / mid / open
-power: low / medium / high
-```
-
-### Integration Rules
-
-Do not force every system to hard-segment on the full regime. Each system should
-use the same regime differently:
-
-| System | First use |
-| --- | --- |
-| Dynamic Cluster | Soft neighbor bonus for same distance/speed/last-speed/lateral/flight-time regime. |
-| Traditional GF | Established adapter keyed by flight time, absolute lateral speed, and wall margin. |
-| Displacement | Replay candidate bonus for same speed/last-speed/lateral/wall/flight-time regime. |
-| Anti-surfer | Detect repeated post-fire movement responses by regime. |
-| Movement | Record enemy-hit danger by own-risk regime. |
-| EV fire gate | Ask whether current regime is profitable or dangerous. |
-| Telemetry | Emit sampled regime fields for calibration and audit. |
-
-Start with telemetry-only regime emission, then enable one consumer at a time.
-The first behavior consumer should be movement hit-danger lookup, because the
-wave-evidence split depends on own-risk regimes and directly addresses the
-surfer damage leak. Displacement or Dynamic Cluster can consume the same regime
-next as soft candidate-similarity bonuses. Traditional GF already has its
-established three-axis adapter; shared regime work may supply those inputs but
-must preserve the fixed key instead of adding an alternate profile model.
-
-### Telemetry
-
-Add sampled regime diagnostics to existing events before using the regime for
-decisions:
-
-```text
-track:
-  combat_regime
-  combat_regime_distance
-  combat_regime_target_speed
-  combat_regime_target_last_speed
-  combat_regime_lateral
-  combat_regime_wall
-
-gun.wave_visit / gun.eval_wave_visit:
-  fire_context_regime
-
-hit.bullet or combat.profile:
-  own_risk_regime
-```
-
-Use readable bucket labels in telemetry. If integer buckets are needed for
-speed, emit labels and ints together only after the analyzer needs both.
-
-### Tests
-
-Unit tests should pin bucket boundaries and symmetry:
-
-- distance and flight-time bucket boundaries
-- velocity and last-velocity buckets
-- lateral/advancing sign handling
-- wall bucket from wall margin
-- own-risk regime includes enemy bullet-power bucket
-- regime keys are hashable and stable
-- missing target-motion data falls back predictably
-
-Integration tests should verify:
-
-- Adaptive can build a regime during aim/fire ticks.
-- `gun.wave_visit` carries the regime from the fired wave.
-- A forced Dynamic Cluster or Displacement run can report regime diagnostics
-  without changing decisions.
-
-### Validation
-
-Telemetry-only run:
+Start with one 12-round telemetry run:
 
 ```sh
-PYTHONPATH=bots .venv/bin/python -m pytest tests/test_combat_regime.py
-scripts/run-battle.sh --telemetry --rounds 12 \
-  bots/adaptive-prime bots/ports/basic-gf-surfer-port
-tools/telemetry_audit.py battle-results/runs/<run>/telemetry \
+scripts/run-battle.sh \
+  --rounds 12 \
+  --telemetry \
+  bots/adaptive-prime \
+  bots/ports/basic-gf-surfer-port
+```
+
+Then inspect the generated run with:
+
+```sh
+tools/telemetry_audit.py \
+  battle-results/runs/<run>/telemetry \
   --require-bot adaptive-prime
+
+tools/combat_economics_summary.py battle-results/runs/<run>
+
+tools/gun_eval_summary.py \
+  battle-results/runs/<run>/telemetry \
+  --bot adaptive-prime
 ```
 
-Analyzer follow-up:
+A second 12-round run is allowed when the first run reveals a clear telemetry
+gap or unusually noisy result. Do not tune behavior from one run.
+
+### Variance and promotion baseline
+
+After diagnostics are trustworthy, use a current-tree series to estimate
+variance. A `3 x 24` series is the preferred promotion baseline, but it exceeds
+50 total rounds and therefore requires explicit user approval:
 
 ```sh
-tools/gun_eval_summary.py battle-results/runs/<run>/telemetry --bot adaptive-prime
-tools/combat_economics_summary.py battle-results/runs/<run>
+scripts/run-battle-series.sh \
+  --runs 3 \
+  --rounds 24 \
+  bots/adaptive-prime \
+  bots/ports/basic-gf-surfer-port
 ```
 
-Success criteria:
+Record at minimum:
 
-- Regime labels are stable and interpretable.
-- The port matchup shows repeated regimes before enemy damage spikes.
-- No behavior changes happen in the first telemetry-only patch.
-- Later gun/movement experiments reuse this shared regime instead of adding
-  gun-local one-off segmentation.
+- score share and first places;
+- our bullet damage and enemy bullet damage;
+- accepted shots and inferred enemy shots;
+- average accepted firepower and average hit power;
+- damage per accepted shot;
+- damage per unit of fired energy when supported by the summary tool;
+- shots and hits by selected gun/source;
+- inferred enemy-fire coverage;
+- real enemy-hit-to-wave match coverage.
 
-## Implementation Subplan: Gun Evidence Calibration
+### Exit gate
 
-Guns can and should keep different internal feature models. Dynamic Cluster,
-Traditional GF, Displacement, Linear, and Anti-surfer do not need the same
-training data or the same feature vector. The selector problem is different:
-it must not compare private raw scores as if every gun's confidence means the
-same thing.
+Phase 0 is complete only when:
 
-The BasicGFSurfer port is a useful warning. Its gun is simple but dense: every
-accepted-shot wave updates one distance/velocity/last-velocity profile. A
-sparse sophisticated gun should not beat a dense simple gun in the selector
-unless its evidence converts into real hits or clearly fits the current regime.
+- the current problem is stated from current evidence;
+- telemetry attribution gaps are known;
+- baseline variance is measured well enough to define numeric regression gates;
+- later phases are either confirmed as relevant or explicitly removed.
 
-### Evidence Contract
+### Current evidence
 
-Every selectable gun should expose a common evidence shape beside its private
-diagnostics:
+The 2026-07-15 current-main diagnostic (`20260715-194007`) reproduced the
+historical problem over 12 rounds: Adaptive won `8/12` first places through
+survival but lost score `803-909` and bullet damage `281-607`. It accepted `721`
+shots at `13.2%` accuracy; Dynamic Cluster supplied `615` low-power shots at
+`0.68` average power. The focused combat-economics problem therefore remains
+relevant.
 
-```text
-GunEvidence
-  mode
-  raw_score
-  effective_samples
-  source_quality        # exact / coarse / global / replay / fallback
-  source_penalty
-  regime_fit
-  real_hit_conversion
-  calibrated_hit_probability
-  uncertainty
-```
+The telemetry-only combat ledger was then implemented and validated against
+Tank Royale's terminal callback ordering. The final 12-round Phase 1 run
+(`20260715-200823`) reconciled `721` accepted bullets to `721` final outcomes,
+including `106` hits and `320.9` damage. It recorded `659` inferred enemy shots
+and `74` real enemy hits, with `95.9%` movement-wave match coverage. Seven
+winning-hit callbacks corrected provisional round-end misses; the audit
+reported no issues.
 
-Definitions:
+The runner can terminate a defeated bot before `on_death` or all per-bullet
+round-close telemetry is emitted. Run summaries therefore reconcile accepted
+`bullet.fired` records and real hit callbacks at terminal EOF, treating bullets
+still in flight as misses. This is analysis-only and does not alter bot
+behavior. The final review also covered the inverse terminal ordering: target
+death precedes the accepted-fire callback, so target cleanup now retains the
+pending gun wave until that callback and the ledger counts even a genuinely
+unattributed accepted bullet.
 
-- `raw_score` is the gun's native virtual score or model score.
-- `effective_samples` is the amount of relevant evidence after source and
-  regime penalties, not just total visits.
-- `source_quality` explains where the estimate came from.
-- `regime_fit` says whether the gun has evidence for this combat regime.
-- `real_hit_conversion` compares virtual confidence to actual bullet hits.
-- `calibrated_hit_probability` is the value allowed into EV calculations.
-- `uncertainty` is high when samples are sparse, source quality is weak, or
-  real conversion is unknown.
+The approved telemetry-free `3 x 24` variance series
+(`20260715-220305`) completed on the current tree. Across 72 rounds Adaptive
+scored `5056` to the surfer's `5491`, won `50/72` first places, dealt `1799`
+bullet damage, and received `3837`. Repeat-level Adaptive score share averaged
+`48.1%` with `6.2` percentage-point sample deviation (`41.2%` to `53.0%`);
+first-place rate averaged `69.4%` with `9.6` percentage-point deviation
+(`58.3%` to `75.0%`). Adaptive score per round averaged `70.22 +/- 6.70`, own
+bullet damage per round `24.99 +/- 0.77`, and enemy bullet damage per round
+`53.29 +/- 5.48`.
 
-Raw virtual score remains diagnostic. Calibrated probability is the decision
-input:
+Predeclare the focused A/B regression floor as `42%` aggregate score share and
+`60%` first-place rate, approximately one observed repeat-level standard
+deviation below the current means. For the movement experiment, also require
+own bullet damage per round of at least `24.2`, while enemy bullet damage must
+improve in at least two of three repeats and in aggregate. The separate live
+telemetry attribution run must confirm that any defensive gain is not explained
+by materially fewer accepted shots or lost firing opportunities.
 
-```text
-gun_ev = calibrated_hit_probability * damage_for_current_firepower
-```
+## Phase 1: Shared Combat Ledger, Telemetry Only
 
-### Selector Rules
+### Purpose
 
-- Do not let global/coarse/fallback sources look as trustworthy as exact or
-  high-fit replay sources.
-- Do not let sparse complex guns outrank dense simple guns without real
-  conversion or strong regime fit.
-- Do not compare virtual scores from different guns directly after calibration
-  exists.
-- Keep raw score, adjusted score, and calibration fields visible in telemetry.
-- Preserve force-gun testing so selector calibration cannot hide a bad gun.
+Create one observable, time-aligned account of combat events without changing
+movement, fire, or selection behavior.
 
-### Telemetry
+### Proposed ownership
 
-Extend `gun.switch_decision`, `gun.wave_visit`, and `gun.eval_wave_visit` with
-calibration fields once the evidence contract exists:
-
-```text
-gun_evidence_raw_score
-gun_evidence_effective_samples
-gun_evidence_source_quality
-gun_evidence_source_penalty
-gun_evidence_regime_fit
-gun_evidence_real_conversion
-gun_evidence_calibrated_hit_probability
-gun_evidence_uncertainty
-```
-
-### Validation
-
-Use forced-gun and normal-selector runs against the Python BasicGFSurfer port:
-
-- forced guns expose comparable evidence fields without changing behavior
-- dense/simple guns are not penalized just because they are simple
-- sparse/weak-source guns do not win selector decisions from optimistic raw
-  virtual score alone
-- calibrated probability tracks real hit conversion better than raw score
-- selector changes are explainable from telemetry before they are allowed to
-  affect sticky gun choice
-
-## Implementation Subplan: Profile And EV Fire Slice
-
-After wave evidence and regime labels are clean, add a small shared
-telemetry-first profile slice. The useful fire-side change is not another gun
-threshold; it is a reliable live view of the damage exchange and a single
-guarded place where fire decisions can use it.
-
-### Evidence To Encode
-
-The Python BasicGFSurfer port is intentionally focused:
-
-- fixed bullet power `1.9`
-- gun segmentation by distance, enemy velocity, and enemy last velocity
-- one shared lateral direction
-- battle-persistent GF gun stats
-- surfing waves inferred from our energy drops
-- hit danger learned into one surf-stat buffer
-
-That means Adaptive should assume the port gets value from two things:
-
-1. Adaptive repeatedly exposing similar distance/velocity/last-velocity states.
-2. Adaptive firing enough weak waves to let the port surf while the port returns
-   higher-value bullets.
-
-The first implementation slice should measure those facts directly. Do not
-hard-code BasicGFSurfer or add anti-surfer aiming yet.
-
-### New Shared Runtime Object
-
-Add a shared profile module, tentatively:
+Add a small shared module such as:
 
 ```text
 bots/bot_core/combat/profile.py
 ```
 
-Core structures:
+Possible public concepts:
 
 ```text
 CombatProfileStore
-  profile_for(target_id)
-  record_our_fire(target_id, turn, power, aim_mode, gun_score, gun_visits)
-  record_our_hit(target_id, turn, power, damage, aim_mode)
-  record_enemy_fire(target_id, turn, power, confidence)
-  record_enemy_hit(target_id, turn, power, damage, movement_mode, gf_bin)
-  snapshot(target_id, turn)
-  clear_round_state()
-  clear_battle_state()
-
 CombatProfileSnapshot
-  our_shots, our_hits, our_hit_rate
-  our_avg_power, our_avg_hit_power, our_damage_per_shot
-  enemy_shots, enemy_hits, enemy_hit_rate
-  enemy_avg_power, enemy_damage_per_shot, enemy_damage_per_hit
-  rolling_damage_delta
-  recent_our_hit_rate
-  recent_enemy_hit_rate
-  tags
 ```
 
-Use small rolling windows first. A fixed-size deque per target is enough:
+Names are provisional. Prefer the smallest interface that fits existing bot
+event plumbing.
 
-```text
-recent our fire events: 40
-recent enemy fire events: 40
-recent damage events: 40
-```
-
-Keep total counters beside rolling counters so telemetry can show both lifetime
-and recent signals. Do not add decay curves until simple windows fail.
-
-Tags should be deterministic and explainable:
-
-```text
-damage_deficit:
-  enemy bullet damage - our bullet damage >= configured margin
-
-survival_lead_damage_loss:
-  our energy/score shape is okay but bullet damage delta is negative
-
-evasive_target:
-  our recent hit rate below threshold after enough shots
-
-high_pressure_enemy:
-  enemy recent damage per shot or damage per hit above threshold
-
-surfer_like_pressure:
-  high_pressure_enemy and evasive_target and enemy_avg_power >= 1.5
-
-last_stand:
-  our energy below existing low-energy policy band
-```
-
-Use config defaults in shared code, then expose only a small Adaptive rollout
-flag in `bots/adaptive-prime/adaptive_config.py`:
-
-```text
-ROBOCODE_ADAPTIVE_COMBAT_PROFILE=1
-ROBOCODE_ADAPTIVE_EV_FIRE_GATE=0
-```
-
-The profile flag can default on once telemetry-only tests pass. The EV gate
-must default off until battle validation passes.
-
-### Adaptive Integration Points
-
-Wire the store into Adaptive first:
-
-| Source | Current location | Profile update |
-| --- | --- | --- |
-| Our requested fire | `AdaptivePrime._track_or_search()` before `set_fire()` | keep proposed shot context for the pending bullet. |
-| Actual bullet fired | `AdaptivePrime.on_bullet_fired()` | `record_our_fire(...)` using actual bullet id/power and selected gun. |
-| Our bullet hit | `AdaptivePrime.on_bullet_hit()` | `record_our_hit(...)` with damage, power, and stored aim mode. |
-| Enemy fire detected | `AdaptivePrime._detect_enemy_fire()` after accepted drop | `record_enemy_fire(...)` with inferred power and confidence `energy_drop`. |
-| Enemy bullet hit us | `AdaptivePrime.on_hit_by_bullet()` | `record_enemy_hit(...)` with bullet power, damage, movement mode if known, and movement GF/bin when wave matched. |
-| Round/game reset | existing reset handlers | clear round waves, preserve battle profile only if target ids are stable for the battle; clear on game start. |
-
-Prefer adding a small `CombatProfileStore` member to Adaptive rather than
-threading profile data through unrelated classes. Once proven, move construction
-into shared bot wiring for Chase/Circle/Sweep.
-
-### Telemetry Shape
-
-Add a sampled event instead of overloading every `track` field:
-
-```text
-combat.profile
-  target
-  our_shots
-  our_hits
-  our_hit_rate
-  our_avg_power
-  our_damage_per_shot
-  enemy_shots
-  enemy_hits
-  enemy_hit_rate
-  enemy_avg_power
-  enemy_damage_per_shot
-  rolling_damage_delta
-  tags
-```
-
-Also add a compact subset to `track` only after it proves useful in the viewer:
-
-```text
-combat_tags
-combat_damage_delta
-combat_enemy_pressure
-```
-
-Update:
-
-- `bots/bot_core/telemetry/schema.py`
-- `bots/bot_core/telemetry/fire.py` or a new `telemetry/combat.py`
-- `tools/telemetry_audit.py` tests if required fields are introduced
-- `tools/combat_economics_summary.py` only if the new event enables a useful
-  run-level table; do not block the profile phase on analyzer changes
-
-### EV Fire Gate Prototype
-
-After telemetry-only profile data is correct, add a guarded function in shared
-energy/fire code, tentatively:
-
-```text
-bots/bot_core/energy/shot_value.py
-```
-
-Inputs:
-
-```text
-base FireDecision
-proposed firepower
-selected aim mode
-selected gun confidence and visits
-dynamic shot quality diagnostics when present
-CombatProfileSnapshot
-distance
-target energy
-own energy
-```
-
-Computation:
-
-```text
-damage_value = bullet_damage_for_power(firepower)
-hit_estimate = blend(selected virtual score, recent real hit rate, shot quality)
-shot_ev = hit_estimate * damage_value
-enemy_wave_cost = pressure multiplier when tags include surfer_like_pressure
-net_shot_value = shot_ev - enemy_wave_cost
-```
-
-Decision rules for the first prototype:
-
-- Never override stale target, gun alignment, critical energy, or impossible
-  energy decisions.
-- Do not block finishers inside existing finisher distance.
-- Do not block high-confidence shots with `firepower >= 1.3`.
-- Under `surfer_like_pressure`, block weak Dynamic Cluster shots when:
-
-```text
-firepower < 1.3
-net_shot_value < configured minimum
-target is not a finisher
-```
-
-- Emit a reason even when allowing:
-
-```text
-ev_ready
-ev_hold_low_value
-ev_allow_finisher
-ev_allow_good_shot
-ev_disabled
-```
-
-Do not change `AimModeSelector` in this slice. If the selected gun is bad, the
-profile and EV telemetry should expose it first.
-
-### Firepower Floor Prototype
-
-Only after the EV gate produces expected holds, add a tiny firepower floor
-wrapper around Adaptive's current `_select_firepower()` result:
-
-```text
-if surfer_like_pressure and good_shot:
-    firepower = max(firepower, 1.6)
-elif evasive_target and good_shot:
-    firepower = max(firepower, 1.3)
-elif weak_shot:
-    leave firepower unchanged and let EV gate hold it
-```
-
-`good_shot` should initially mean:
-
-```text
-selected gun visits >= threshold
-selected gun score >= threshold
-or dynamic_cluster_shot_quality >= threshold
-```
-
-This keeps the first behavior change readable: weak shots are held, good shots
-are paid.
-
-### Tests To Write First
-
-Unit tests:
-
-- profile records our shots, hits, damage per shot, and average power
-- profile records enemy inferred fire and enemy bullet hits
-- rolling metrics differ from lifetime metrics after old events fall out
-- tags activate only after minimum sample counts
-- short low-sample profiles do not mark `surfer_like_pressure`
-- EV gate never bypasses stale/alignment/critical-energy holds
-- EV gate holds weak low-power shots only under pressure tags
-- EV gate allows finishers and good high-power shots
-- firepower floor raises only good shots and leaves weak shots to the gate
-
-Integration-style tests:
-
-- Adaptive `on_bullet_fired()` and `on_bullet_hit()` update the profile through
-  actual bullet ids/powers.
-- `hit.bullet` with a movement wave match records enemy hit pressure and GF/bin
-  context.
-- `combat.profile` passes telemetry schema/audit checks.
-
-### Validation Commands
-
-First patch, telemetry-only:
-
-```sh
-PYTHONPATH=bots .venv/bin/python -m pytest \
-  tests/test_combat_profile.py \
-  tests/test_telemetry_audit.py
-
-scripts/run-battle.sh --telemetry --rounds 12 \
-  bots/adaptive-prime bots/ports/basic-gf-surfer-port
-
-tools/telemetry_audit.py battle-results/runs/<run>/telemetry \
-  --require-bot adaptive-prime
-tools/combat_economics_summary.py battle-results/runs/<run>
-```
-
-Behavior patch, EV gate enabled for candidate:
-
-```sh
-scripts/run-ab.sh \
-  --name adaptive-ev-fire-gate \
-  --preset adaptive-1v1-basic-gf-surfer-port \
-  --baseline <baseline-worktree> \
-  --candidate <candidate-worktree> \
-  --candidate-env ROBOCODE_ADAPTIVE_EV_FIRE_GATE=1 \
-  --rounds 24 \
-  --repeats 3 \
-  --telemetry
-
-tools/combat_economics_summary.py battle-results/ab/<experiment>
-for telemetry in battle-results/ab/<experiment>/candidate/adaptive-vs-basic-gf-surfer-port/run-*/telemetry; do
-  tools/gun_eval_summary.py "$telemetry" --bot adaptive-prime
-done
-```
-
-Promotion requires better raw port economics, not filtered legacy economics:
-
-- Adaptive score and firsts do not collapse.
-- Adaptive bullet damage rises or port bullet damage falls materially.
-- Adaptive average hit power rises.
-- Low-power Dynamic Cluster shot count falls under pressure.
-- Per-gun real conversion does not hide a broken gun behind fewer shots.
-- `combat.profile` tags activate before the late-round damage deficit, not only
-  after the battle is already lost.
-
-## Phase 0: Wave Evidence Semantics
-
-Separate wave-pass occupancy from real enemy-hit danger before adding new
-economics. This is the first behavior-adjacent change because later combat
-profile, EV, and movement decisions should consume clean evidence.
-
-Implement:
-
-- `enemy_hit_profile` for matched real bullet hits.
-- `visit_flattening_profile` for ordinary enemy-wave pass visits.
-- explicit evidence-kind telemetry for wave passes, hit-danger updates, and
-  expected waves.
-- danger breakdown fields that show hit danger separately from flattening
-  pressure.
-
-Initial implementation should preserve current movement decisions or use the
-new stores only behind a guarded flag. First prove that the evidence separation
-is correct and visible.
-
-Acceptance:
-
-- Unit tests prove each evidence kind updates only its intended store.
-- `hit.bullet` and movement telemetry report wave-match status, match error,
-  GF/bin, and own-risk regime.
-- A 24-round port run can explain surfer bullet hits through hit-danger
-  evidence without relying on wave-pass counts as the main danger signal.
-
-## Phase 1: Shared Combat Regime Key
-
-Add the shared regime vocabulary after evidence kinds are separated. The regime
-does not need to control behavior immediately; first it should label gun visits,
-movement hit danger, and future EV/profile records in the same coarse language.
-
-Acceptance:
-
-- Regime bucket unit tests pass.
-- `track`, `gun.wave_visit`, and movement hit-danger telemetry carry readable
-  regime labels.
-- No gun or firepower behavior changes happen in the first regime patch.
-
-## Phase 2: Opponent Combat Profile
-
-Add a shared per-target combat profile that is updated from existing telemetry
-events and runtime observations.
+### Events
 
 Track:
 
-- our shots, hits, average firepower, and bullet damage by target
-- our rolling hit rate and rolling damage per shot
-- enemy shots inferred from energy drops
-- enemy hits on us, average bullet power, and damage per hit
-- score-shape signals: survival lead, bullet-damage deficit, low-energy state
-- target evasiveness: low hit rate despite many shots
-- enemy pressure: high enemy damage per hit or frequent hits
+- accepted own bullet fires, including power, gun mode, source, and context;
+- resolved own bullet hits and misses;
+- inferred enemy fires with inference confidence;
+- real enemy bullet hits and their matched wave when available.
 
-Derived tags:
+Maintain both lifetime totals and a recent **turn window**. Do not compute a
+damage delta by subtracting unrelated fixed-length event deques: sparse hit and
+fire streams cover different time spans. All recent values must share the same
+turn bounds.
+
+### Derived observations
+
+Expose objective quantities and conservative observable tags such as:
 
 ```text
-easy_target
-evasive_target
-high_pressure_enemy
 damage_deficit
-survival_lead_damage_loss
-surfer_like
-last_stand
+low_our_conversion
+high_enemy_damage
+enemy_fire_detection_weak
 ```
 
-Initial implementation should only publish profile state and telemetry. Do not
-change behavior in the first patch.
+Do not emit behavior labels such as `surfer_like`, do not duplicate the current
+FireGate `last_stand` logic, and do not depend on a runtime score field that has
+not been proven available.
 
-Acceptance:
+### Telemetry
 
-- `track` or a new sampled event shows profile tags and core rolling metrics.
-- Unit tests cover profile updates from our fire/hit and enemy-hit events.
-- A 12-round port run shows the profile identifies high enemy pressure and
-  damage deficit before the final rounds.
+Emit a versioned `combat.profile` event or equivalent fields containing:
 
-## Phase 3: Enemy-Hit Danger Movement
+- recent and lifetime window bounds;
+- accepted shots, resolved outcomes, and fired energy;
+- damage dealt and received;
+- enemy-fire confidence totals;
+- attribution coverage and observable tags.
 
-Use the clean `enemy_hit_profile` from Phase 0 in movement scoring. This should
-be generic, not surfer-only.
+### Exit gate
 
-When we are hit, record the hit guess factor and own-risk regime:
+- Unit tests cover accepted-shot semantics, turn-window expiry, delayed
+  outcomes, and confidence weighting.
+- A 12-round telemetry run passes audit.
+- Summary totals reconcile with existing bullet and gun telemetry within an
+  explained tolerance.
+- No live decision consumes the ledger yet.
 
-- distance bucket
-- our lateral velocity bucket
-- our acceleration or last-velocity bucket
-- wall margin bucket
-- enemy bullet-power bucket
-- enemy gun-heat/wave timing confidence
+## Phase 2: Split Movement Evidence, Shadow First
 
-Movement candidate scoring then asks:
+### Current defect
+
+The current flattener can record ordinary wave visits and weighted real bullet
+hits into the same movement profile. Expected waves may also mature into
+ordinary visits. That makes a dense travel lane look like proven bullet danger
+and lets uncertain inference persist as fact.
+
+### Target evidence stores
+
+Separate at least:
 
 ```text
-if candidate lands in a historically dangerous GF region:
-    add enemy_hit_danger
-if candidate repeats heavily visited wave-pass regions:
-    add smaller flattening penalty
+visit_occupancy_profile   # ordinary wave passage
+enemy_hit_profile        # matched real enemy bullet hits
+expected_wave_pressure   # transient, confidence weighted, not permanent truth
 ```
 
-This directly attacks the BasicGFSurfer port's focused gun shape, but it also
-helps against other GF-style enemies.
+Reuse `MovementProfile` and `MovementStatsBufferSet` where their mechanics fit;
+do not duplicate kernels or bin math. The semantic separation matters more than
+new container types.
 
-Acceptance:
+### Context policy
 
-- Unit tests cover hit-danger update and lookup separately from flattening.
-- Telemetry shows top danger bins and whether movement avoided them.
-- Against the Python port, enemy bullet damage falls without relying only on
-  reduced firing.
+Do not key all three stores by one giant regime. Begin with the movement inputs
+already known to influence escape and risk, for example distance, bullet power,
+lateral motion, and wall state. Prefer continuous similarity or a small
+hierarchical adapter. Add a dimension only after telemetry shows that it
+improves prediction without destroying sample density.
 
-## Phase 4: Expected-Value Fire Gate
+Current validated gun models keep their own feature shapes. In particular, this
+phase must not add bonuses to PIF replay candidate ranking.
 
-Replace "aligned enough, fire" with "shot is worth firing." This does not mean
-the bot becomes passive. It means low-value shots stop training strong enemies
-for free.
+### Shadow telemetry
 
-Compute:
+For each movement choice, report the candidate's:
+
+- wall and position risk;
+- occupancy density;
+- real-hit danger;
+- transient expected pressure;
+- hit-profile support and fallback level;
+- selected direction under current behavior and under the shadow formula.
+
+Also report wave-match error and the fraction of real hits that could update the
+hit profile.
+
+### Current evidence
+
+The shadow-only implementation keeps the existing composite movement profile
+as an explicitly named compatibility input to the live score. In parallel it
+records confirmed-wave occupancy, matched real-hit evidence, and active
+confidence-weighted expected-wave pressure. Neither the clean evidence stores
+nor the shadow choice feed a live command.
+
+The one-round telemetry smoke (`20260715-201814`) recorded `39` confirmed
+occupancy passages and `4` expired expected waves with zero permanent occupancy
+writes. All `8` real hits matched a movement wave; radial match errors ranged
+from `16.98` to `38.21`, below the `55` tolerance. Hit support progressed from
+occupancy fallback through blended support to the hit-profile level. The
+shadow direction differed on `8/28` sampled direction choices, while the shadow
+go-to destination differed on `5/31` samples. The telemetry audit was clean,
+and no turn was skipped (`4.554 ms` maximum sampled decision time).
+
+### Exit gate
+
+- Existing movement behavior is unchanged.
+- Real hits never enter the occupancy-only channel.
+- Unresolved expected waves never become permanent hit evidence.
+- Support and match coverage are sufficient to justify a live experiment.
+
+## Phase 3: Enemy-Hit Danger Movement Experiment
+
+### Hypothesis
+
+A movement score that treats matched real hits as stronger evidence than
+ordinary occupancy will reduce enemy bullet damage without sacrificing too much
+position quality or our own firing opportunity.
+
+### Candidate score
+
+Use the existing position and wall terms, then add evidence in this order:
 
 ```text
-hit_estimate = selected_gun_confidence adjusted by recent real conversion
-damage_value = bullet damage for proposed firepower
-shot_ev = hit_estimate * damage_value
-enemy_wave_cost = pressure-weighted cost of giving a surfer-like enemy a wave
-net_shot_value = shot_ev - enemy_wave_cost
+movement_danger =
+  current_position_and_wall_danger
+  + supported_enemy_hit_danger
+  + smaller_visit_occupancy_term
+  + transient_expected_pressure
 ```
 
-Behavior:
+Weights are not fixed by this document. Derive initial bounds from the Phase 2
+shadow distributions so no new component dominates merely because its numeric
+scale differs.
 
-- Easy target: current fire policy mostly unchanged.
-- Evasive target: require higher `net_shot_value`.
-- High-pressure enemy: prefer fewer, stronger shots when confidence is good.
-- Surfer-like enemy: hold weak low-power shots unless they are kill shots or
-  movement/position creates a short escape window.
+Use hierarchical fallback when the hit profile is sparse. With no supported hit
+evidence, behavior should remain close to the current movement policy.
 
-Acceptance:
+### Experiment discipline
 
-- BasicGFSurfer port run shows fewer low-power Dynamic Cluster shots.
-- Average Adaptive hit power rises without a collapse in hit rate.
-- Score and bullet damage are both reported; hit rate alone is not accepted as
-  success.
+- Use one explicit Adaptive-only experiment flag.
+- Compare the current formula with only the evidence weighting changed.
+- Do not change gun selection, fire gate, or firepower in the same A/B.
+- Remove the flag and rejected code after the decision.
 
-## Phase 5: Dynamic Firepower Floors
+### Current implementation
 
-Once the EV gate exists, add firepower floors from opponent profile instead of
-hard-coded surfer rules.
+Phase 2 shadow distributions set the tested candidate's occupancy weight to
+`0.65`, real-hit weight to `1.5` with a `2.0` component cap,
+expected-pressure weight to `0.35` with a `1.5` component cap, and hit-only
+selection support to `6`.
 
-Example policy:
+The approved telemetry-free focused A/B
+(`20260715-201328-movement-evidence`) rejected this candidate decisively.
+Enemy bullet damage worsened in all three repeats (`1316 -> 1430`,
+`1453 -> 1515`, and `1243 -> 1654`), for an aggregate `4012 -> 4599`
+(`+14.6%`). Adaptive score fell `4970 -> 3976`, first places fell `48 -> 33`,
+and candidate score share was `34.5%`, below the predeclared `42%` floor. Own
+bullet damage was nearly unchanged (`1847 -> 1832`), so the regression cannot
+be explained as a simple offensive-volume trade.
+
+The candidate was not promoted. Its environment flag, live decision parameter,
+and score-selection branch were removed. The clean occupancy/hit/expected
+profiles, bounded shadow score, and comparison telemetry remain diagnostic;
+live direction and go-to selection always use the legacy score.
+
+### Exit gate
+
+Promote only when the focused A/B improves enemy-damage economics in at least
+two of three repeats, stays within the numeric score/first regression bound set
+in Phase 0, and telemetry attributes the result to movement rather than reduced
+shot volume. Run small non-surfer release smokes before enabling shared defaults.
+
+## Phase 4: Shadow Fire Utility
+
+### Purpose
+
+Estimate the value of an accepted shot without changing whether or how the bot
+fires.
+
+For proposed power `p`, define:
 
 ```text
-if easy_target:
-    normal adaptive firepower
-elif high_pressure_enemy and good_shot:
-    firepower >= 1.6
-elif evasive_target and good_shot:
-    firepower >= 1.3
-elif evasive_target and weak_shot:
-    hold or fire only for tactical low-energy reasons
+q    = calibrated probability that the accepted shot hits
+D(p) = bullet damage
+B(p) = bullet-hit energy bonus
+H(p) = gun heat or time until the next firing opportunity
 ```
 
-The important rule is: good shots get paid. Weak shots do not become a stream
-of low-value bullets.
-
-Acceptance:
-
-- Against `basic-gf-surfer-port`, Adaptive's bullet damage closes materially.
-- Against local bots, firepower floors do not cause obvious survival collapse.
-- Telemetry explains each floor: `easy`, `evasive_good_shot`,
-  `high_pressure_good_shot`, `weak_hold`, etc.
-
-## Phase 6: Anti-Repetition Movement Mode
-
-When the opponent profile says the enemy is learning us, make Adaptive less
-stationary in simple feature space.
-
-Possible actions:
-
-- vary preferred distance band
-- jitter reversal timing
-- avoid repeating the same velocity/last-velocity transition
-- increase lateral-direction randomness near previously dangerous GF bins
-- occasionally choose a lower immediate movement score to break model
-  predictability
-
-Keep this bounded. The bot should not become random all the time.
-
-Activation:
+Report two primary utility views:
 
 ```text
-enemy_hit_rate_rising or repeated_hit_gf_bins or damage_deficit
+score_utility       = q * D(p)
+energy_swing_utility = q * (D(p) + B(p)) - p
 ```
 
-Acceptance:
+Report gun heat and opportunity cost separately at first. An enemy-pressure
+penalty may be emitted as a diagnostic, but it must not enter the live utility
+until its scale is calibrated against observed outcomes.
 
-- Movement telemetry shows anti-repetition active only under pressure.
-- Local bots do not become harder for Adaptive than before because movement is
-  needlessly noisy.
-- BasicGFSurfer port's bullet damage drops relative to baseline.
+### Calibration
 
-## Phase 7: Damage-Aware Gun Selection
+Emit these candidate diagnostic dimensions:
 
-The virtual gun selector should eventually rank by expected value, not only hit
-score.
+- gun mode or generic source type;
+- range;
+- accepted power;
+- model maturity or solution-quality band.
 
-Do not start here. First build profile, firepower evidence, and the gun
-evidence calibration contract. Once those exist, add a decision layer:
+Start with the smallest supported calibration model. Add a diagnostic dimension
+to calibration only when it improves held-out or later-window calibration.
 
-```text
-gun_ev = calibrated_hit_probability(mode) * damage_for_current_firepower
+### Telemetry
+
+At each accepted shot and each fire opportunity, emit:
+
+- `q`, its support, and fallback level;
+- selected power and `D(p)`, `B(p)`, and `H(p)`;
+- score and energy-swing utility;
+- eventual real outcome for accepted shots;
+- the reason current behavior fired or held.
+
+### Current implementation
+
+`FireUtilityCalibrator` now runs in shadow mode using only previously resolved,
+engine-accepted bullets. It reuses canonical physics and a global `Beta(1, 5)`
+posterior as the causal base rate. Dynamic Cluster solutions with quality at
+least `0.10` receive a fixed `1.75x` odds adjustment selected from the held-out
+evidence below. Range, power, generic maturity, and gun-mode cross-products
+remain diagnostic only. Ready-gun turns freeze causal calibration snapshots for
+every accepted-power band and emit `fire.utility_opportunity`; later hold
+opportunities retain a pending snapshot until the engine's delayed accepted-fire
+callback. Accepted bullets, outcomes, and corrections emit the corresponding
+utility lifecycle events. Durable real-hit telemetry is emitted before derived
+resolution, and corrections are limited to a real hit replacing a provisional
+`round_end` miss. No utility result feeds a live decision.
+
+`tools/fire_utility_summary.py` reconciles durable real-hit events and reports
+probability reliability across range, power, mode, quality, fallback, and
+chronological windows. It also reports supported-shot coverage, expected
+calibration error, Brier skill against the fixed `Beta(1,5)` prior, and hit/miss
+probability separation. `tools/telemetry_audit.py` verifies formula values,
+bands, the Beta base posterior and quality-odds adjustment, future-support leakage, accepted-bullet
+attribution, terminal lifecycle, and correction semantics. Unit-level
+implementation checks are complete. The revised candidate later passed the
+fresh validation gate recorded below. No fire-utility value currently feeds
+live behavior because the first Phase 5A consumer was rejected and removed.
+
+### Phase 4 evidence: run `20260715-211503`
+
+The first 12-round validation captured 749 accepted and resolved shots, but did
+not pass the gate. The audit found four accepted shots without a staged
+ready-gun opportunity. In each case, a ready fire command was followed by one
+or more hold opportunities before the engine's delayed accepted-fire callback;
+the hold path had discarded the pending snapshot. One final-round real hit was
+also absent from generic durable hit telemetry because derived resolution was
+emitted first and the defeated process terminated between the two records.
+Both lifecycle defects now have regression tests and fixes.
+
+The old sparse mode/range/power/quality hierarchy produced Brier skill
+`-0.0060` against the fixed prior and hit/miss probability separation `+0.0006`.
+A chronological causal replay reproduced the recorded probabilities and tested
+smaller models. Per-mode calibration after 18 resolved mode shots achieved
+Brier skill `+0.0081` and separation `+0.00045`; power subsegments were negative
+and the old quality dimension added no benefit because its thresholds collapsed
+nearly all Dynamic Cluster shots into one band. The mode-only model became the
+next revalidation candidate but was rejected by the following run. No Phase 5
+behavior was enabled.
+
+### Phase 4 revalidation: run `20260715-213040`
+
+The fresh 12-round run passed the instrumentation checks: the audit reported
+zero issues, all 709 engine-accepted bullets had utility records, and there were
+no duplicate or unstaged accepts. Utility outcomes covered 707/709 shots; the
+two remaining bullet IDs (`19` and `112`) were still in flight in the final
+round when the defeated process terminated and are finalized as EOF misses by
+the summary. The supported posterior appeared for 706 shots, including 633
+per-mode predictions.
+
+Calibration still failed the predeclared directional gate. Predicted hit rate
+was 14.6% versus 15.2% observed, but Brier skill against the fixed prior was
+`-0.0106` and hit/miss probability separation was `-0.0038`. Offline causal
+replay tested global-only updates, per-mode support thresholds from 30 through
+100, stronger priors, and end-of-round updates. All learned variants remained
+negatively discriminative on this run. A fixed 14% estimate was stable across
+the two runs but had zero discrimination, so it is not a sufficient learned
+calibration model and must not be used to claim this gate passed.
+
+The mode-only implementation was rejected rather than retained as a promotion
+candidate. The next calibration revision had to be selected using multi-run or
+otherwise held-out evidence rather than another parameter search on one
+12-round result. Phase 5 remained blocked.
+
+### Phase 4 calibration revision: held-out Dynamic quality
+
+Cross-run diagnosis found that the model had removed its only stable shot-level
+predictor. Dynamic Cluster's configured `0.35/0.55` diagnostic thresholds
+classified essentially every accepted surfer shot as `weak`. At the actual
+scale, `solution_quality >= 0.10` was consistently useful:
+
+- run `20260715-211503`: 7/33 high-quality hits versus 86/716 other shots;
+- run `20260715-213040`: 20/60 high-quality hits versus 88/649 other shots.
+
+The pooled odds ratio is about `2.80`, with a lower 95% bound near `1.74`.
+Use the rounded conservative `1.75x` odds multiplier over the causal global
+posterior; do not use the fitted central estimate. Strict staged replay preserves
+the real ready-opportunity snapshot and delayed accepted-fire callback. It gives
+Brier skill/separation `+0.0120/+0.0007` on the first run and
+`+0.0126/+0.0092` on the second. The same feature also remained positive when
+trained on either run and scored on the other, while gun mode alone did not.
+
+This is retrospective candidate-selection evidence, not a fresh validation.
+Keep the revised model shadow-only and require a separately approved telemetry
+run to pass the existing contract before Phase 4 or Phase 5 advances.
+
+The retrospective calculation is reproducible with the production calibrator,
+including staged opportunity snapshots and an independent reset for each run:
+
+```sh
+tools/fire_utility_replay.py \
+  battle-results/runs/20260715-211503/telemetry \
+  battle-results/runs/20260715-213040/telemetry \
+  --bot adaptive-prime \
+  --json-output battle-results/fire-utility-replay.json
 ```
 
-Use this for fire decisions first. Only after that should it affect sticky gun
-selection.
+The replay must remain a model-selection diagnostic. The validation gate below
+is scored from the probabilities recorded during a new live battle.
 
-Rules:
+### Phase 4 validation contract
 
-- Raw virtual score remains visible.
-- Raw virtual score is diagnostic; calibrated hit probability is the decision
-  input.
-- Adjusted EV score is separate.
-- Every selectable gun reports effective samples, source quality, regime fit,
-  real hit conversion, calibrated hit probability, and uncertainty.
-- Low-power high-hit modes should not automatically dominate.
-- High-power shots require enough confidence.
+Any approved telemetry revalidation is an instrumentation and calibration gate,
+not a behavior-promotion run. Save all four machine-readable reports:
 
-Acceptance:
+```sh
+run=battle-results/runs/<run>
 
-- `gun.switch_decision` reports raw score, calibrated hit probability,
-  source quality, uncertainty, adjusted score, firepower, and EV.
-- Selector changes are explainable from telemetry.
-- A forced-gun matrix still runs, so selector changes are not masking bad guns.
+tools/telemetry_audit.py "$run/telemetry" \
+  --require-bot adaptive-prime \
+  --json-output "$run/telemetry-audit.json"
 
-## Phase 8: Surfer-Algorithm Exploitation
+tools/combat_economics_summary.py "$run" \
+  --json-output "$run/combat-economics.json"
 
-Only after generic economics and movement danger exist, add a specialized but
-still generic anti-surfer aim path.
+tools/gun_eval_summary.py "$run/telemetry" \
+  --bot adaptive-prime \
+  --json-output "$run/gun-eval.json"
 
-The idea is not "shoot BasicGFSurfer." The idea is "shoot enemies whose movement
-is reacting to our waves."
+tools/fire_utility_summary.py "$run/telemetry" \
+  --bot adaptive-prime \
+  --json-output "$run/fire-utility.json"
+```
 
-Approach:
+Pass the instrumentation gate only when the audit has zero issues, utility
+accepted-shot coverage is `100%`, there are no duplicate accepted shots or
+unstaged accepts, and any utility-resolution shortfall is limited to explained
+terminal process truncation reconciled by durable bullet events. Report, but do
+not tune from, groups with fewer than `30` resolved shots. Phase 4 may advance
+only if supported fallback levels appear after the prior-only warm-up and the
+prequential diagnostics are directionally useful: non-negative Brier skill
+against the fixed prior and non-negative hit/miss probability separation. If
+either is negative, keep utility shadow-only and revise calibration before any
+Phase 5 behavior flag.
 
-- detect surfer-like behavior from enemy movement after our fire events
-- simulate enemy left/right surf choices
-- infer which side their danger model prefers from recent history
-- aim at the likely surf destination
+### Phase 4 fresh validation: run `20260715-220126`
 
-This can become a new `anti_surfer` implementation or a Displacement/particle
-gun feature. It should not be a broad selector penalty.
+The separately approved 12-round live run passed the contract with the revised
+model still shadow-only. The telemetry audit reported zero issues, all `713`
+engine-accepted bullets had exactly one utility record and final outcome, and
+supported global predictions appeared on `710/713` shots. The Dynamic quality
+fallback appeared on `41` supported shots.
 
-Acceptance:
+Predicted hit rate was `16.1%` versus `15.7%` observed. Brier skill against the
+fixed prior was `+0.00087` and hit/miss probability separation was `+0.00582`.
+The positive margin is modest, so it does not justify additional calibration
+complexity, but both predeclared directional checks passed. Phase 4 is complete
+and the model remains the fixed input for the isolated Phase 5 experiments.
+The battle also supplied the current telemetry attribution baseline: `713`
+accepted shots, `112` hits, `0.77` average accepted power, about `0.80` average
+hit power, `0.519` damage per accepted shot, `0.672` damage per fired energy,
+`649` inferred enemy shots, and `100%` real enemy-hit-to-wave match coverage.
 
-- Anti-surfer mode beats baseline in forced-gun runs against the Python
-  BasicGFSurfer port.
-- It does not fire often in ordinary selector runs unless diagnostics show
-  relevant surfer-like behavior.
+### Exit gate
 
-## Validation Matrix
+- Reliability summaries compare predicted probability bands with real outcomes.
+- Overall calibration is directionally useful, and diagnostic range/power
+  slices reveal no material inversion at supported sample sizes.
+- Sparse gun modes fall back safely to global evidence or the prior.
+- Live fire behavior remains unchanged.
 
-Every phase that changes behavior should run the focused combat-economics gate:
+## Phase 5: Isolated Fire Behavior Experiments
+
+### Experiment A: fire or hold at current power
+
+Use the current policy-selected power and current same-mode aim. Change only the
+decision to fire or hold based on calibrated utility.
+
+Preserve existing safety and tactical rules, including stale-solution,
+alignment, critical-energy, last-stand, and finisher semantics. Do not create an
+unconditional `p >= 1.3` or similar confidence bypass; that makes the gate
+circular and prevents calibration from evaluating expensive shots.
+
+#### Rejected pre-A/B candidate
+
+The first default-off candidate kept the existing fire gate authoritative,
+waited for `30` resolved shots, fired at non-negative energy-swing utility,
+preserved critical-energy/last-stand/finisher shots, and forced one probe after
+at most the selected shot's cooldown interval. Its zero threshold was the
+physical break-even point rather than a fitted parameter.
+
+The two-round telemetry smoke (`20260715-223552`) failed the readiness gate
+decisively, so no performance A/B was run. After `31` warm-up fires, an early
+low global hit rate moved the shared base posterior below break-even. The bot
+then emitted `678` utility-negative holds and only `22` cooldown probes,
+accepted `62` shots, hit `2`, and lost score `9-291`. The audit's fire-reason
+errors also confirmed that experimental fire reasons would have required a
+schema contract change before any larger run.
+
+This is a model-resolution failure, not a threshold-tuning opportunity. Outside
+the positive Dynamic-quality flag, every ordinary opportunity shares the same
+global probability, so any threshold becomes a battle-wide on/off switch rather
+than shot selection. The flag, live gate, probe state, experimental reasons,
+and schema field were removed. Do not retry Experiment A until a separately
+validated negative shot-level predictor exists.
+
+### Experiment B: choose among supported powers
+
+Run only after Experiment A is decided. Compare a small set of powers already
+supported by current policy. Every candidate must be re-aimed in the same gun
+mode through a side-effect-free evaluation path before utility comparison.
+
+Do not:
+
+- impose a dynamic minimum-power floor;
+- let the selector choose a different gun during candidate evaluation;
+- reuse one bearing for powers with materially different flight time;
+- combine this experiment with movement changes.
+
+Experiment B is deferred with Experiment A. The validated model has no
+power-conditioned hit probability, so score utility would mechanically prefer
+more damage while energy utility would choose boundary powers from a shared
+global probability. That is not supported power selection. Require held-out
+power-dependent calibration before implementing this path.
+
+### Exit gate
+
+Each experiment gets its own baseline/candidate A/B and telemetry explanation.
+Promote only if the economics improvement is repeatable, score remains within
+its predeclared bound, and the apparent gain is not just lower firing volume or
+one gun disappearing from selection.
+
+## Deferred Work
+
+### Selector calibration
+
+Gun switching is a separate decision layer. Revisit it after combat-ledger and
+fire-utility data are stable, using the
+[damage-calibrated selector plan](confidence-calibrated-virtual-selector-plan.md).
+That plan must be revalidated against this document before implementation; any
+dependency on a universal `CombatRegime` is obsolete.
+
+### Anti-surfer gun
+
+The anti-surfer aim model remains governed by the
+[anti-surfer safety-surface rebuild plan](gun-anti-surfer-safety-surface-rebuild.md).
+Do not fold its hypotheses into PIF or use it to hide poor selector calibration.
+
+### Movement anti-repetition
+
+Defer anti-repetition penalties until telemetry proves that repeated bins,
+directions, or transitions concentrate real enemy hits. A vague preference for
+novel movement is not enough evidence for a live term.
+
+## Validation Workflow
+
+### Unit and repository checks
+
+For shared math, profiles, or telemetry schemas:
 
 ```sh
 PYTHONPATH=bots .venv/bin/python -m pytest
-git diff --check
-scripts/run-battle.sh --telemetry --rounds 24 bots/adaptive-prime bots/ports/basic-gf-surfer-port
-tools/combat_economics_summary.py battle-results/runs/<run>
-tools/gun_eval_summary.py battle-results/runs/<run>/telemetry --bot adaptive-prime
 ```
 
-Do not include the local-bot matrix in this plan's normal loop. Chase, Circle,
-and Sweep are useful smoke opponents for broad release confidence, but they are
-not the evidence target for the combat-economics problem and slow iteration
-without answering the main question.
-
-Do not use legacy `basic-gf-surfer` as a normal gate. It is noisy and can
-produce high-accuracy rounds that distort raw gun conclusions. Use it only when
-explicitly investigating converted legacy behavior, and then report the
-accuracy-filtered view as diagnostic context, not as the primary promotion
-policy:
+For every telemetry phase:
 
 ```sh
-tools/combat_economics_summary.py battle-results/runs/<legacy-run> --accuracy-filter-threshold 0.30
+scripts/run-battle.sh \
+  --rounds 12 \
+  --telemetry \
+  bots/adaptive-prime \
+  bots/ports/basic-gf-surfer-port
+
+tools/telemetry_audit.py \
+  battle-results/runs/<run>/telemetry \
+  --require-bot adaptive-prime
+
+tools/fire_utility_summary.py \
+  battle-results/runs/<run>/telemetry \
+  --bot adaptive-prime
 ```
 
-Promotion gate:
+### Performance A/B
+
+Performance comparisons must use distinct baseline and candidate worktrees or
+repository references and must leave telemetry off:
 
 ```sh
-scripts/run-ab.sh --name combat-economics-gate --preset adaptive-1v1-basic-gf-surfer-port --rounds 24 --repeats 3 --telemetry
-tools/combat_economics_summary.py battle-results/ab/<experiment>
+scripts/run-ab.sh \
+  --name <experiment> \
+  --preset adaptive-1v1-basic-gf-surfer-port \
+  --baseline <baseline-worktree> \
+  --candidate <candidate-worktree> \
+  --rounds 24 \
+  --repeats 3
 ```
 
-Judge using:
+Do not compare one dirty tree with itself through `run-ab.sh`. Use
+`run-battle-series.sh` when estimating variance for one current tree. Ask for
+explicit approval before any planned batch totaling 50 or more rounds.
 
-- raw score and firsts against the port
-- bullet damage, not just survival
-- our average hit power
-- enemy average hit power
-- our damage per shot
-- enemy damage per shot
-- per-gun real conversion
-- movement danger-bin hit reduction
+Keep diagnostic telemetry runs separate from performance runs. Telemetry is for
+attribution; telemetry-free A/Bs are for promotion.
 
-## Suggested Implementation Order
+### Opponent matrix
 
-1. Split movement wave evidence into hit danger, wave-pass flattening, and
-   expected-wave pressure.
-2. Add shared `CombatRegime` / own-risk regime telemetry.
-3. Shared `CombatProfile` in `bot_core`: telemetry-only opponent profile.
-4. Fire telemetry additions: record proposed firepower, selected gun, confidence,
-   shot EV inputs, and final decision reason.
-5. Shared enemy-hit GF danger table for movement using the clean hit profile.
-6. Shared EV fire gate in the core fire-decision path, guarded by env flag.
-   Validate with Adaptive against the Python BasicGFSurfer port, then let other
-   repo bots inherit the shared behavior unless a bot-specific personality
-   conflict appears.
-7. Shared dynamic firepower floors in the core firepower policy, with bot-local
-   personality knobs only for aggression/conservation bias.
-8. Anti-repetition movement mode using that danger table.
-9. Gun evidence calibration: raw score, effective samples, source quality,
-   regime fit, real conversion, calibrated probability, and uncertainty.
-10. Damage-aware virtual gun selector using calibrated probability, not private
-   raw scores.
-11. Rebuild anti-surfer gun using reachable surf-choice prediction.
-12. Delete or collapse old selector/fire/movement branches that are beaten by the
-   shared replacement and no longer serve force testing or diagnostics.
+- Primary focused gate: Python Basic GF Surfer port.
+- Release smokes: `1-8` rounds against a small non-surfer selection from the
+  local core bots.
+- Converted legacy bots: optional parity or diagnostic evidence only.
+
+### Promotion rules
+
+Before an A/B begins, record numeric bounds derived from Phase 0 variance. A
+candidate is promotable only when:
+
+- its primary economics metric improves in at least two of three repeats;
+- score share and first places remain inside the predeclared regression bound;
+- the telemetry run explains the causal path;
+- reduced shot volume or disappearance of one gun does not hide the result;
+- telemetry audits and relevant tests pass;
+- temporary experiment flags and rejected branches are removed.
+
+## Implementation Order
+
+```text
+0. current-main baseline and variance
+1. telemetry-only combat ledger
+2. shadow movement-evidence split
+3. isolated enemy-hit danger movement A/B
+4. shadow fire-utility calibration
+5. fire/hold A/B at current power
+6. discrete same-mode power-choice A/B
+7. selector work under its dedicated plan
+8. anti-surfer work under its dedicated plan
+```
+
+Do not advance merely because a phase is implemented. Advance only after its
+exit gate is met.
+
+## Model and Reasoning Guidance
+
+- Use **Sol with Extra High reasoning** for architecture changes, plan
+  revalidation, movement evidence semantics, and fire-utility design.
+- Use **High reasoning** for bounded implementation phases once their design and
+  exit gate are fixed.
+- Use **Medium reasoning** only for mechanical schema, documentation, or test
+  updates after the design is frozen.
+- Do not use Ultra as the default implementation mode. These phases are
+  sequential, share state, and require evidence from one phase before the next
+  can be designed safely.
 
 ## Success Definition
 
-The repo bots become stronger because their decisions are better, not because
-they have more math. A successful version should:
+This plan succeeds when:
 
-- stop losing bullet damage while winning survival
-- make high-confidence hits worth more
-- stop training strong surfers with weak shots
-- move away from enemy-proven danger bins
-- remain strong against local non-surfer bots
-- explain decisions through telemetry
-- leave less dead compatibility code behind than it introduces
+- the current combat-economics problem is confirmed with current-main evidence;
+- accepted-shot, damage, energy, and enemy-fire accounting reconcile;
+- real-hit movement evidence is no longer conflated with occupancy or uncertain
+  expected pressure;
+- a promoted movement change reduces enemy bullet damage without an unexplained
+  offensive collapse;
+- a promoted fire change improves damage or energy exchange without hiding
+  behind reduced shot volume;
+- focused surfer gains survive small non-surfer release smokes;
+- no dead flags, old formulas, or compatibility residue remain.
+
+### Current conclusion
+
+The accounting, evidence-separation, and shadow-calibration goals are complete.
+The live-promotion goals are not: the split-evidence movement candidate worsened
+enemy damage in all three repeats, and the first fire/hold candidate failed its
+telemetry smoke before A/B. Those candidates and their flags were removed, so
+the cleaned tree deliberately retains the existing live movement and fire
+policies.
+
+Execution therefore stops at a safe shadow-only foundation rather than claiming
+the plan's full success definition. A future fire experiment requires a
+held-out negative shot-level predictor; a power experiment additionally
+requires power-conditioned hit probability. Release smokes establish that the
+cleaned tree still runs against ordinary opponents, not that a rejected live
+candidate produced a gain.
+
+## Stop Conditions
+
+Stop and reassess when any of these occurs:
+
+- Current-main evidence no longer shows the historical economics problem.
+- Enemy fires or real hits cannot be attributed reliably enough to train the
+  proposed profile.
+- A candidate wins only against the focused port and materially regresses the
+  non-surfer release smoke.
+- An apparent gain comes from a different gun mix or firing volume rather than
+  the behavior under test.
+- Three independent live behavior hypotheses fail after trustworthy shadow
+  instrumentation; revisit the architecture instead of adding more terms.

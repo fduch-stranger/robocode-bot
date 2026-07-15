@@ -59,6 +59,11 @@ Key movement telemetry:
 - `enemy.fire_detected`
 - `enemy.gun_heat_wave`
 
+The bounded split-evidence movement candidate was rejected by its focused
+`3 x 24` A/B and its live experiment hook was removed. Normal behavior uses the
+legacy composite movement score. The separate occupancy, matched-hit, and
+transient expected-pressure components remain shadow telemetry for diagnosis.
+
 ## Guns
 
 Normal selectable guns are `linear`, `dynamic_cluster`, `traditional_gf`, and
@@ -143,6 +148,40 @@ Primary telemetry:
 - `gun.traditional_gf_profile`: Traditional GF source/profile diagnostics.
 - `bot.turn_timing` / `bot.skipped_turn`: decision-time budget and skipped tick
   diagnostics.
+- `combat.profile`: common-window and lifetime accepted-shot, fired-energy,
+  damage-exchange, inferred-enemy-fire, and movement-wave-match accounting.
+- `bullet.resolved`: accepted own-bullet outcome with gun/source attribution.
+- `bullet.resolution_corrected`: late winning-hit correction to a provisional
+  round-end miss.
+- `fire.utility_opportunity`: shadow value of the already selected power on
+  every ready-gun turn, with the unchanged fire/hold reason.
+- `fire.utility_accepted`: causal prediction bound to the engine-accepted
+  bullet rather than the requested fire command.
+- `fire.utility_outcome` / `fire.utility_outcome_corrected`: real accepted-shot
+  outcome and any late terminal correction.
+- `movement.evidence_shadow`: current versus split-evidence direction using
+  confirmed occupancy, matched-hit danger, transient expected pressure, and
+  hit-support fallback.
+- `movement.goto_surf`: also includes the split evidence for the live
+  destination and the independently selected shadow destination.
+
+The combat ledger and fire-utility model are currently telemetry/shadow-only.
+Their tags, probabilities, and utility values do not alter Adaptive's fire
+gate, firepower, selector, or movement. Offline summaries finalize
+still-in-flight accepted bullets as misses when the runner terminates the
+process before its terminal callback completes. Fire probability uses the
+global `Beta(1,5)` posterior as its base rate. Dynamic Cluster solutions with
+quality at least `0.10` receive a conservative `1.75x` odds adjustment selected
+from two-run held-out evidence; all other bands remain diagnostic. A staged
+ready-fire snapshot remains bound to an engine-delayed acceptance even if later
+turns produce hold opportunities. Fresh run `20260715-220126` passed the
+directional calibration gate, fixing this model for isolated behavior tests.
+
+The first Phase 5A live fire/hold candidate was rejected by its telemetry smoke:
+the global probability acted as a battle-wide on/off switch after an early low
+hit rate. Its flag and live gate were removed. Fire utility remains shadow-only
+until a validated negative shot-level predictor exists; current power, aim mode,
+gun selection, and fire behavior are unchanged.
 
 Preferred surfer check:
 
@@ -155,6 +194,8 @@ tools/telemetry_audit.py battle-results/runs/<run>/telemetry \
 tools/combat_economics_summary.py battle-results/runs/<run>
 tools/gun_eval_summary.py battle-results/runs/<run>/telemetry \
   --bot adaptive-prime --post-switch-shots 6
+tools/fire_utility_summary.py battle-results/runs/<run>/telemetry \
+  --bot adaptive-prime
 ```
 
 Use [Tooling](../../docs/tooling.md) for the full experiment workflow.

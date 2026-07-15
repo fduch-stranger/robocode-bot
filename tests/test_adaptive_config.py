@@ -38,6 +38,5 @@ class AdaptiveConfigTest(unittest.TestCase):
         self.assertNotIn("linear_wall_aware", config.GunPolicy().selectable_modes)
         self.assertIn("displacement", config.GunPolicy().selectable_modes)
 
-
 if __name__ == "__main__":
     unittest.main()

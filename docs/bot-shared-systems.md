@@ -118,6 +118,58 @@ Accepted fire creates a movement wave, enemy fire-power sample, gun-heat update,
 and evasion window. Expected fire can also be generated from gun heat, but
 direct energy-drop evidence wins over stale heat estimates.
 
+## Combat Ledger
+
+`CombatProfileStore` is a shared, telemetry-first ledger for accepted-shot and
+damage economics. Adaptive Prime is the first consumer. It records:
+
+- engine-accepted own bullets and their actual power;
+- hit, wall, bullet-collision, and round-end resolutions;
+- inferred enemy shots with scan-gap confidence;
+- real enemy hits and whether a movement wave was matched.
+
+Lifetime totals are paired with a common recent turn window. The ledger does
+not use separate event-count deques, so sparse fire and hit streams are not
+silently compared across different time spans. `combat.profile` is sampled
+during tracking and emitted at round close; `bullet.resolved` exposes the final
+outcome of each accepted own bullet. A late winning-hit callback can replace a
+provisional round-end miss through `bullet.resolution_corrected`. Because the
+runner can stop a defeated process before terminal callbacks finish, offline
+summaries reconcile durable accepted-shot and real-hit events at EOF and count
+remaining in-flight bullets as misses. Terminal target cleanup preserves a
+pending gun wave until the lower-priority accepted-fire callback, while a truly
+targetless accepted bullet is retained in an unattributed ledger bucket. These
+observations are telemetry-only and do not currently change fire, gun
+selection, or movement.
+
+## Shadow Fire Utility
+
+`FireUtilityCalibrator` estimates the value of the power already selected by
+Adaptive Prime. It learns only from engine-accepted bullets after their real
+outcome is known. Pending requests, virtual waves, and the shot being predicted
+do not enter its support, so each prediction is causal.
+
+Every ready-gun turn emits `fire.utility_opportunity` with the current
+behavior's `fire` or `hold` action and unchanged `FireDecision` reason. An
+accepted engine bullet emits `fire.utility_accepted`; its eventual hit, wall,
+bullet collision, or round-end miss emits `fire.utility_outcome`. A late hit
+can correct a provisional terminal miss through
+`fire.utility_outcome_corrected`. Calibration uses the causal global posterior
+as its base rate. Dynamic Cluster solutions at or above the held-out `0.10`
+quality threshold receive one conservative fixed odds adjustment; range,
+accepted-power, other gun modes, and generic maturity remain diagnostic only. A
+ready fire snapshot remains pending across later hold opportunities until the
+engine reports whether it accepted that command. Exact formulas and thresholds
+are in [Core Data Structures](bot-core-data-structures.md).
+
+This path is shadow-only: no utility value is read by the fire gate, power
+policy, gun selector, or movement. Adaptive's first Phase 5A fire/hold candidate
+was rejected at its telemetry smoke because the global base probability became
+a battle-wide hold switch. Its live gate and experiment flag were removed.
+`tools/fire_utility_summary.py` reconciles durable real hits and reports
+reliability by probability, range, power, mode, quality, fallback level, and
+chronological window.
+
 ## Movement
 
 Shared movement code lives in `bot_core.movement`.
@@ -137,6 +189,21 @@ profile danger, stats-buffer danger, and surfing candidate selection to smaller
 helpers. Movement prediction follows Tank Royale target-speed order closely:
 speed update, movement along previous direction, turn limit, wall clipping, and
 zero speed after wall collision.
+
+Adaptive Prime currently maintains an explicit legacy composite profile for
+the unchanged live movement score and three separate diagnostic channels:
+confirmed-wave occupancy, matched real enemy hits, and transient
+confidence-weighted expected-wave pressure. `movement.evidence_shadow` and the
+extended `movement.goto_surf` fields compare the live choice with a clean
+evidence formula. Real hits never enter the occupancy channel, and expected
+waves leave no permanent clean-profile evidence.
+
+Adaptive's bounded split-evidence candidate uses occupancy weight `0.65`, hit
+weight `1.5` with a `2.0` component cap, and expected-pressure weight `0.35`
+with a `1.5` component cap. Hit-only selection starts at support `6`. Its
+focused `3 x 24` A/B increased enemy bullet damage in every repeat, so the live
+selection branch and experiment flag were removed. The legacy score remains
+live; the bounded formula remains diagnostic-only shadow telemetry.
 
 Minimum-risk movement scores candidate destinations using enemy proximity,
 focus-target distance, wall/travel risk, recent-destination penalty, and
@@ -162,6 +229,13 @@ Telemetry is JSONL. Common events:
 | `bullet.fired` / `bullet.hit_bot` | Our real fire and hits. |
 | `enemy.fire_detected` / `enemy.gun_heat_wave` | Confirmed or expected enemy fire. |
 | `hit.bullet` | Enemy bullet hit on us. |
+| `combat.profile` | Recent and lifetime accepted-shot, damage, enemy-fire-confidence, and attribution totals. |
+| `bullet.resolved` | Final accepted own-bullet outcome and gun attribution. |
+| `bullet.resolution_corrected` | Late winning-hit correction to a provisional terminal miss. |
+| `fire.utility_opportunity` | Shadow utility and current fire/hold reason whenever the gun is ready. |
+| `fire.utility_accepted` | Causal utility prediction bound to an engine-accepted bullet. |
+| `fire.utility_outcome` / `fire.utility_outcome_corrected` | Real outcome and any late correction for the accepted prediction. |
+| `movement.evidence_shadow` | Live versus shadow direction with occupancy, hit, expected-pressure, support, and fallback components. |
 | `movement.profile_visit` / `movement.flatten` | Movement learning and direction flips. |
 | `movement.goto_surf` / `movement.minimum_risk` | Movement planner decisions. |
 

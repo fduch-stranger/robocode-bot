@@ -35,6 +35,8 @@ Telemetry and analysis:
 tools/telemetry_audit.py battle-results/runs/<run>/telemetry --require-bot adaptive-prime
 tools/combat_economics_summary.py battle-results/runs/<run>
 tools/gun_eval_summary.py battle-results/runs/<run>/telemetry --bot adaptive-prime
+tools/fire_utility_summary.py battle-results/runs/<run>/telemetry --bot adaptive-prime
+tools/fire_utility_replay.py battle-results/runs/<run-a>/telemetry battle-results/runs/<run-b>/telemetry --bot adaptive-prime
 tools/bot_motion_sanity.py battle-results/runs/<run-or-series> --bot BasicGFSurferFixed
 ```
 
@@ -42,6 +44,8 @@ Tool roles:
 - `telemetry_audit.py`: JSONL readability, schema fields, bullet/gun attribution, enemy-fire labels.
 - `combat_economics_summary.py`: raw score, firsts, firepower, damage, per-gun real conversion. Raw output is primary for local bots and ported opponents.
 - `gun_eval_summary.py`: virtual-gun wave scores, selector diagnostics, post-switch real conversion, Traditional GF source diagnostics.
+- `fire_utility_summary.py`: reliability and lifecycle summary for probabilities recorded live.
+- `fire_utility_replay.py`: causally applies the current production shadow calibrator to historical runs, preserving staged accepted-fire snapshots, learning from durable hits exactly once, closing unresolved round-end shots before reset, and resetting learning per run. The replay, fire-utility summary, and combat-economics summary return exit 2 with file/line context for malformed JSONL. This is retrospective evidence, not a substitute for fresh validation.
 - `radar_efficiency_summary.py`: sampled target/radar freshness, radar modes, hold reasons, reacquisition gaps, and shot-time target age.
 - `bot_motion_sanity.py`: sampled live-bot immobility detection plus clean/suspect score splits from `runner.log`.
 - `DebugLogger.sample` throttles independently per event name and clears sampling windows when the Tank Royale turn number resets for a new round; do not restore a single global sampling slot because high-frequency movement events can starve `track`.

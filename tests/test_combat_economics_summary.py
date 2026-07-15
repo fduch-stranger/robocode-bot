@@ -1,6 +1,8 @@
 import json
 import tempfile
 import unittest
+from contextlib import redirect_stderr
+from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
@@ -91,6 +93,160 @@ class CombatEconomicsSummaryTest(unittest.TestCase):
         self.assertEqual(1, summary.raw.modes["displacement"]["hits"])
         self.assertAlmostEqual(1.3, summary.raw.modes["displacement"]["avgHitPower"])
         self.assertEqual(0, summary.raw.modes["traditional_gf"]["hits"])
+
+    def test_reports_combat_profile_economics_and_coverage(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir) / "baseline" / "run-01"
+            _write_run(
+                run_dir,
+                [{"round": 1, "score": 100, "survival": 50, "bulletDamage": 40, "ramDamage": 0, "firstPlaces": 1}],
+                [[_fired(1, "dynamic_cluster", power=1.0), _combat_profile()]],
+            )
+
+            run = analyze_run(run_dir)
+            experiment = analyze_experiment([run_dir])
+
+        self.assertEqual(10, run.combat["ownAcceptedShots"])
+        self.assertEqual(9, run.combat["ownResolvedShots"])
+        self.assertAlmostEqual(2 / 9, run.combat["ownHitRate"])
+        self.assertAlmostEqual(0.9, run.combat["ownResolutionCoverage"])
+        self.assertAlmostEqual(0.6, run.combat["ownDamagePerFiredEnergy"])
+        self.assertAlmostEqual(0.9, run.combat["enemyAverageFireConfidence"])
+        self.assertAlmostEqual(0.75, run.combat["enemyHitMatchCoverage"])
+        self.assertAlmostEqual(-18.0, run.combat["damageDelta"])
+        self.assertEqual(10, experiment["combat"]["baseline"]["ownAcceptedShots"])
+
+    def test_reconciles_stale_terminal_profile_from_durable_events(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir) / "baseline" / "run-01"
+            fired_one = _fired(1, "dynamic_cluster", power=1.0)
+            fired_one["fields"]["target"] = 2  # type: ignore[index]
+            fired_two = _fired(2, "dynamic_cluster", power=0.7)
+            fired_two["fields"]["target"] = 2  # type: ignore[index]
+            profile = _combat_profile()
+            profile["fields"].update(  # type: ignore[union-attr]
+                {
+                    "lifetime_own_accepted_shots": 1,
+                    "lifetime_own_resolved_shots": 1,
+                    "lifetime_own_hits": 0,
+                    "lifetime_own_misses": 1,
+                    "lifetime_own_fired_energy": 1.0,
+                    "lifetime_own_hit_damage": 0.0,
+                }
+            )
+            _write_run(
+                run_dir,
+                [{"round": 1, "score": 100, "survival": 50, "bulletDamage": 4, "ramDamage": 0, "firstPlaces": 1}],
+                [[fired_one, profile, fired_two, _hit("dynamic_cluster", bullet_id=1, power=1.0, damage=4.0)]],
+            )
+
+            run = analyze_run(run_dir)
+
+        self.assertEqual(2, run.combat["ownAcceptedShots"])
+        self.assertEqual(2, run.combat["ownResolvedShots"])
+        self.assertEqual(1, run.combat["ownHits"])
+        self.assertEqual(1, run.combat["ownMisses"])
+        self.assertAlmostEqual(1.7, run.combat["ownFiredEnergy"])
+        self.assertAlmostEqual(4.0, run.combat["ownHitDamage"])
+
+    def test_reconciles_targetless_engine_accepted_fire(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir) / "baseline" / "run-01"
+            _write_run(
+                run_dir,
+                [
+                    {
+                        "round": 1,
+                        "score": 0,
+                        "survival": 0,
+                        "bulletDamage": 0,
+                        "ramDamage": 0,
+                        "firstPlaces": 0,
+                    }
+                ],
+                [[_fired(1, "dynamic_cluster", power=0.7)]],
+            )
+
+            run = analyze_run(run_dir)
+
+        self.assertEqual(1, run.combat["ownAcceptedShots"])
+        self.assertEqual(1, run.combat["ownResolvedShots"])
+        self.assertEqual(1, run.combat["ownMisses"])
+        self.assertAlmostEqual(0.7, run.combat["ownFiredEnergy"])
+
+    def test_reconciles_enemy_hits_without_inferred_fire_events(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir) / "baseline" / "run-01"
+            profile = _combat_profile()
+            profile["fields"].update(  # type: ignore[union-attr]
+                {
+                    "lifetime_enemy_inferred_shots": 0,
+                    "lifetime_enemy_hits": 0,
+                    "lifetime_enemy_hit_damage": 0.0,
+                    "lifetime_enemy_hits_matched": 0,
+                }
+            )
+            enemy_hit = {
+                "bot": "adaptive-prime",
+                "event": "hit.bullet",
+                "fields": {
+                    "owner": 2,
+                    "power": 1.5,
+                    "damage": 7.0,
+                    "energy": 30.0,
+                    "movement_wave_match": True,
+                },
+            }
+            _write_run(
+                run_dir,
+                [
+                    {
+                        "round": 1,
+                        "score": 50,
+                        "survival": 20,
+                        "bulletDamage": 0,
+                        "ramDamage": 0,
+                        "firstPlaces": 0,
+                    }
+                ],
+                [[profile, enemy_hit]],
+            )
+
+            run = analyze_run(run_dir)
+
+        self.assertEqual(0, run.combat["enemyInferredShots"])
+        self.assertEqual(1, run.combat["enemyHits"])
+        self.assertAlmostEqual(7.0, run.combat["enemyHitDamage"])
+        self.assertEqual(1, run.combat["enemyHitsMatched"])
+
+    def test_cli_reports_malformed_jsonl_without_a_traceback(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_dir = Path(temp_dir) / "baseline" / "run-01"
+            _write_run(
+                run_dir,
+                [
+                    {
+                        "round": 1,
+                        "score": 0,
+                        "survival": 0,
+                        "bulletDamage": 0,
+                        "ramDamage": 0,
+                        "firstPlaces": 0,
+                    }
+                ],
+                [[]],
+            )
+            telemetry_path = run_dir / "telemetry" / "adaptive-prime-test.jsonl"
+            with telemetry_path.open("a", encoding="utf-8") as stream:
+                stream.write('{"bot": "adaptive-prime"')
+            stderr = StringIO()
+
+            with patch("sys.argv", ["combat_economics_summary.py", str(run_dir)]):
+                with redirect_stderr(stderr):
+                    exit_code = main()
+
+        self.assertEqual(2, exit_code)
+        self.assertIn("adaptive-prime-test.jsonl:2", stderr.getvalue())
 
     def test_aggregates_baseline_candidate_delta(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -581,6 +737,30 @@ def _wave_visit(
             "dynamic_cluster_shot_quality": shot_quality,
         },
         "turn": 30,
+    }
+
+
+def _combat_profile() -> dict[str, object]:
+    return {
+        "bot": "adaptive-prime",
+        "event": "combat.profile",
+        "fields": {
+            "target": 2,
+            "lifetime_own_accepted_shots": 10,
+            "lifetime_own_resolved_shots": 9,
+            "lifetime_own_hits": 2,
+            "lifetime_own_misses": 7,
+            "lifetime_own_fired_energy": 20.0,
+            "lifetime_own_hit_damage": 12.0,
+            "lifetime_enemy_inferred_shots": 20,
+            "lifetime_enemy_weighted_shots": 18.0,
+            "lifetime_enemy_inferred_fired_energy": 38.0,
+            "lifetime_enemy_weighted_fired_energy": 34.2,
+            "lifetime_enemy_hits": 4,
+            "lifetime_enemy_hit_damage": 30.0,
+            "lifetime_enemy_hits_matched": 3,
+        },
+        "turn": 100,
     }
 
 

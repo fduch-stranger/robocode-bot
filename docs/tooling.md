@@ -112,6 +112,16 @@ tools/gun_eval_summary.py battle-results/runs/<run>/telemetry \
   --bot adaptive-prime \
   --json-output battle-results/runs/<run>/gun-eval-summary.json
 
+tools/fire_utility_summary.py battle-results/runs/<run>/telemetry \
+  --bot adaptive-prime \
+  --json-output battle-results/runs/<run>/fire-utility-summary.json
+
+tools/fire_utility_replay.py \
+  battle-results/runs/<run-a>/telemetry \
+  battle-results/runs/<run-b>/telemetry \
+  --bot adaptive-prime \
+  --json-output battle-results/fire-utility-replay.json
+
 tools/radar_efficiency_summary.py battle-results/runs/<run>/telemetry \
   --bot adaptive-prime \
   --json-output battle-results/runs/<run>/radar-efficiency-summary.json
@@ -123,18 +133,35 @@ tools/intent_gap_summary.py battle-results/runs/<run> \
 Tool roles:
 
 - `telemetry_audit.py`: JSONL readability, required bots, schema fields,
-  bullet/gun attribution, and enemy-fire evasion labels.
+  bullet/gun attribution, enemy-fire evasion labels, movement-evidence
+  separation, and fire-utility formulas/lifecycle.
 - `combat_economics_summary.py`: raw score, firsts, firepower, damage, and
   per-gun real conversion. Raw output is the primary view for local bots and
   ported opponents.
 - `gun_eval_summary.py`: virtual-gun wave scores, selected-gun diagnostics,
   post-switch real conversion, and Traditional GF source diagnostics.
+- `fire_utility_summary.py`: causal accepted-shot probability reliability by
+  probability, range, power, mode, quality, fallback, and chronological window,
+  plus ready-gun fire/hold reasons. Calibration diagnostics include
+  supported-shot coverage, expected calibration error, Brier skill against the
+  fixed `Beta(1,5)` prior, and hit/miss probability separation.
+- `fire_utility_replay.py`: reruns the current production shadow calibrator over
+  one or more historical telemetry directories. It preserves staged ready-fire
+  snapshots across delayed accepted callbacks, reconciles durable hits before
+  closing unresolved round-end shots, resets learning independently per run,
+  and reports both per-run and aggregate reliability. Use it for
+  reproducible retrospective candidate checks; it does not replace a fresh
+  prequential validation run.
 - `radar_efficiency_summary.py`: target freshness, radar mode distribution,
   stale/lost shots, hit rate by target age, reacquire/drop counts, and
   enemy-fire scan-gap diagnostics.
 - `intent_gap_summary.py`: missing or duplicate intent turns from
   `--intent-diagnostics` runs. Use it with `bot.turn_timing` and
   `bot.skipped_turn` telemetry when investigating skipped ticks or slow turns.
+
+The combat-economics summary and both fire-utility tools reject malformed or
+partially written JSONL with a file-and-line diagnostic and exit status `2`;
+they do not continue with a silently incomplete calibration sample.
 
 Accuracy filtering is an optional diagnostic for historical noisy Java surfer
 runs. Do not use it as the default result view:

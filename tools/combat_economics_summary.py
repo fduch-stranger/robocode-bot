@@ -20,6 +20,10 @@ SCORE_METRICS = ("score", "survival", "bulletDamage", "ramDamage", "firstPlaces"
 COUNT_METRICS = ("shots", "hits", "dynamicShots", "dynamicHits")
 
 
+class TelemetryJsonlError(ValueError):
+    pass
+
+
 @dataclass(frozen=True)
 class RoundSummary:
     round: int
@@ -93,17 +97,22 @@ class RunSummary:
     raw: AggregateSummary
     accuracyFiltered: AggregateSummary | None
     rounds: tuple[RoundSummary, ...]
+    combat: dict[str, int | float]
     warnings: tuple[str, ...] = ()
 
 
 def main() -> int:
     args = _parse_args()
-    summary = analyze_experiment(
-        [Path(path) for path in args.paths],
-        bot=args.bot,
-        target_name=args.target_name,
-        accuracy_filter_threshold=args.accuracy_filter_threshold,
-    )
+    try:
+        summary = analyze_experiment(
+            [Path(path) for path in args.paths],
+            bot=args.bot,
+            target_name=args.target_name,
+            accuracy_filter_threshold=args.accuracy_filter_threshold,
+        )
+    except TelemetryJsonlError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 2
     if args.json_output:
         Path(args.json_output).write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     _print_summary(summary)
@@ -190,6 +199,13 @@ def analyze_experiment(
         "runs": [run_to_dict(run) for run in runs],
         "raw": _with_delta(raw),
     }
+    combat = {
+        side: _aggregate_combat([run.combat for run in runs if run.side == side and run.combat])
+        for side in sides
+        if any(run.side == side and run.combat for run in runs)
+    }
+    if combat:
+        summary["combat"] = _combat_with_delta(combat)
     if accuracy_filtered is not None:
         summary["accuracyFiltered"] = _with_delta(accuracy_filtered)
     if paired_filtered is not None:
@@ -242,6 +258,7 @@ def analyze_run(
             else None
         ),
         rounds=rounds,
+        combat=_combat_profile_summary(run_dir / "telemetry", bot),
         warnings=warnings,
     )
 
@@ -253,6 +270,7 @@ def run_to_dict(run: RunSummary) -> dict[str, Any]:
         "raw": asdict(run.raw),
         "accuracyFiltered": asdict(run.accuracyFiltered) if run.accuracyFiltered is not None else None,
         "rounds": [asdict(round_summary) for round_summary in run.rounds],
+        "combat": run.combat,
         "warnings": list(run.warnings),
     }
 
@@ -373,13 +391,172 @@ def _read_bot_events(telemetry_dir: Path, bot: str) -> list[dict[str, Any]]:
         return events
     for path in sorted(telemetry_dir.glob("*.jsonl")):
         with path.open("r", encoding="utf-8") as stream:
-            for line in stream:
+            for line_number, line in enumerate(stream, start=1):
                 if not line.strip():
                     continue
-                event = json.loads(line)
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError as error:
+                    kind = "truncated final JSON" if not line.endswith("\n") else "invalid JSON"
+                    raise TelemetryJsonlError(
+                        f"{path}:{line_number}: {kind}: {error.msg}"
+                    ) from error
                 if event.get("bot") == bot:
                     events.append(event)
     return events
+
+
+_COMBAT_FIELDS = {
+    "ownAcceptedShots": "lifetime_own_accepted_shots",
+    "ownResolvedShots": "lifetime_own_resolved_shots",
+    "ownHits": "lifetime_own_hits",
+    "ownMisses": "lifetime_own_misses",
+    "ownFiredEnergy": "lifetime_own_fired_energy",
+    "ownHitDamage": "lifetime_own_hit_damage",
+    "enemyInferredShots": "lifetime_enemy_inferred_shots",
+    "enemyWeightedShots": "lifetime_enemy_weighted_shots",
+    "enemyInferredFiredEnergy": "lifetime_enemy_inferred_fired_energy",
+    "enemyWeightedFiredEnergy": "lifetime_enemy_weighted_fired_energy",
+    "enemyHits": "lifetime_enemy_hits",
+    "enemyHitDamage": "lifetime_enemy_hit_damage",
+    "enemyHitsMatched": "lifetime_enemy_hits_matched",
+}
+
+
+def _combat_profile_summary(telemetry_dir: Path, bot: str) -> dict[str, int | float]:
+    events = _read_bot_events(telemetry_dir, bot)
+    latest_by_target: dict[str, dict[str, Any]] = {}
+    for event in events:
+        if event.get("event") != "combat.profile":
+            continue
+        fields = event.get("fields") if isinstance(event.get("fields"), dict) else {}
+        target = fields.get("target")
+        latest_by_target[str(target) if target is not None else "unattributed"] = fields
+    durable_names = {"bullet.fired", "bullet.hit_bot", "enemy.fire_detected", "hit.bullet"}
+    if not latest_by_target and not any(event.get("event") in durable_names for event in events):
+        return {}
+    base = {
+        output: sum(float(fields.get(source, 0.0)) for fields in latest_by_target.values())
+        for output, source in _COMBAT_FIELDS.items()
+    }
+    for field in (
+        "ownAcceptedShots",
+        "ownResolvedShots",
+        "ownHits",
+        "ownMisses",
+        "enemyInferredShots",
+        "enemyHits",
+        "enemyHitsMatched",
+    ):
+        base[field] = int(base[field])
+    _reconcile_combat_from_events(base, events)
+    return _finalize_combat(base, runs=1)
+
+
+def _reconcile_combat_from_events(
+    base: dict[str, int | float],
+    events: list[dict[str, Any]],
+) -> None:
+    accepted_fires: list[dict[str, Any]] = []
+    own_hits: list[dict[str, Any]] = []
+    enemy_fires: list[dict[str, Any]] = []
+    enemy_hits: list[dict[str, Any]] = []
+    for event in events:
+        name = event.get("event")
+        fields = event.get("fields") if isinstance(event.get("fields"), dict) else {}
+        if name == "bullet.fired" and fields.get("bullet_id") is not None:
+            accepted_fires.append(fields)
+        elif name == "bullet.hit_bot" and fields.get("bullet_id") is not None:
+            own_hits.append(fields)
+        elif name == "enemy.fire_detected":
+            enemy_fires.append(fields)
+        elif name == "hit.bullet":
+            enemy_hits.append(fields)
+
+    accepted = len(accepted_fires)
+    if accepted and accepted >= int(base["ownAcceptedShots"]):
+        hits = len(own_hits)
+        base["ownAcceptedShots"] = accepted
+        base["ownResolvedShots"] = accepted
+        base["ownHits"] = hits
+        base["ownMisses"] = max(0, accepted - hits)
+        base["ownFiredEnergy"] = sum(_float_or_none(fields.get("power")) or 0.0 for fields in accepted_fires)
+        base["ownHitDamage"] = sum(_float_or_none(fields.get("damage")) or 0.0 for fields in own_hits)
+
+    inferred_shots = len(enemy_fires)
+    if inferred_shots and inferred_shots >= int(base["enemyInferredShots"]):
+        confidences = [
+            _float_or_none(fields.get("detection_confidence")) or 0.0
+            for fields in enemy_fires
+        ]
+        powers = [_float_or_none(fields.get("power")) or 0.0 for fields in enemy_fires]
+        base["enemyInferredShots"] = inferred_shots
+        base["enemyWeightedShots"] = sum(confidences)
+        base["enemyInferredFiredEnergy"] = sum(powers)
+        base["enemyWeightedFiredEnergy"] = sum(
+            power * confidence for power, confidence in zip(powers, confidences, strict=True)
+        )
+
+    durable_enemy_hits = len(enemy_hits)
+    if durable_enemy_hits >= int(base["enemyHits"]):
+        base["enemyHits"] = durable_enemy_hits
+        base["enemyHitDamage"] = sum(_float_or_none(fields.get("damage")) or 0.0 for fields in enemy_hits)
+        base["enemyHitsMatched"] = sum(1 for fields in enemy_hits if fields.get("movement_wave_match") is True)
+
+
+def _aggregate_combat(profiles: list[dict[str, int | float]]) -> dict[str, int | float]:
+    base = {
+        field: sum(float(profile.get(field, 0.0)) for profile in profiles)
+        for field in _COMBAT_FIELDS
+    }
+    for field in (
+        "ownAcceptedShots",
+        "ownResolvedShots",
+        "ownHits",
+        "ownMisses",
+        "enemyInferredShots",
+        "enemyHits",
+        "enemyHitsMatched",
+    ):
+        base[field] = int(base[field])
+    return _finalize_combat(base, runs=len(profiles))
+
+
+def _finalize_combat(base: dict[str, int | float], *, runs: int) -> dict[str, int | float]:
+    accepted = int(base["ownAcceptedShots"])
+    resolved = int(base["ownResolvedShots"])
+    own_hits = int(base["ownHits"])
+    fired_energy = float(base["ownFiredEnergy"])
+    own_damage = float(base["ownHitDamage"])
+    enemy_shots = int(base["enemyInferredShots"])
+    enemy_weighted_shots = float(base["enemyWeightedShots"])
+    enemy_hits = int(base["enemyHits"])
+    enemy_hits_matched = int(base["enemyHitsMatched"])
+    enemy_damage = float(base["enemyHitDamage"])
+    return {
+        "runs": runs,
+        **base,
+        "ownHitRate": own_hits / resolved if resolved else 0.0,
+        "ownResolutionCoverage": min(1.0, resolved / accepted) if accepted else 0.0,
+        "ownDamagePerAcceptedShot": own_damage / accepted if accepted else 0.0,
+        "ownDamagePerFiredEnergy": own_damage / fired_energy if fired_energy else 0.0,
+        "enemyAverageFireConfidence": enemy_weighted_shots / enemy_shots if enemy_shots else 0.0,
+        "enemyHitMatchCoverage": enemy_hits_matched / enemy_hits if enemy_hits else 0.0,
+        "damageDelta": own_damage - enemy_damage,
+    }
+
+
+def _combat_with_delta(summary_by_side: dict[str, dict[str, int | float]]) -> dict[str, Any]:
+    result: dict[str, Any] = dict(summary_by_side)
+    if "baseline" in summary_by_side and "candidate" in summary_by_side:
+        baseline = summary_by_side["baseline"]
+        candidate = summary_by_side["candidate"]
+        result["delta"] = {
+            key: float(candidate[key]) - float(baseline[key])
+            for key in candidate.keys() & baseline.keys()
+            if key != "runs"
+        }
+    return result
 
 
 def _bullet_id(fields: dict[str, Any]) -> str | None:
@@ -956,6 +1133,35 @@ def _print_summary(summary: dict[str, Any]) -> None:
     print(f"runs: {summary['runCount']} accuracy_filter_threshold: {threshold_text}")
     for warning in summary["warnings"]:
         print(f"warning: {warning}", file=sys.stderr)
+    if "combat" in summary:
+        print("combat")
+        for side in sorted(key for key in summary["combat"] if key != "delta"):
+            values = summary["combat"][side]
+            print(
+                "  {side}: runs={runs} accepted={accepted} resolved={resolved} hits={hits} "
+                "hit_rate={hit_rate:.3f} fired_energy={fired_energy:.1f} damage={damage:.1f} "
+                "damage/shot={damage_per_shot:.3f} damage/energy={damage_per_energy:.3f} "
+                "enemy_shots={enemy_shots} weighted_enemy_shots={weighted_enemy_shots:.1f} "
+                "enemy_hits={enemy_hits} enemy_damage={enemy_damage:.1f} "
+                "hit_match={hit_match:.3f} damage_delta={damage_delta:.1f}".format(
+                    side=side,
+                    runs=values["runs"],
+                    accepted=values["ownAcceptedShots"],
+                    resolved=values["ownResolvedShots"],
+                    hits=values["ownHits"],
+                    hit_rate=values["ownHitRate"],
+                    fired_energy=values["ownFiredEnergy"],
+                    damage=values["ownHitDamage"],
+                    damage_per_shot=values["ownDamagePerAcceptedShot"],
+                    damage_per_energy=values["ownDamagePerFiredEnergy"],
+                    enemy_shots=values["enemyInferredShots"],
+                    weighted_enemy_shots=values["enemyWeightedShots"],
+                    enemy_hits=values["enemyHits"],
+                    enemy_damage=values["enemyHitDamage"],
+                    hit_match=values["enemyHitMatchCoverage"],
+                    damage_delta=values["damageDelta"],
+                )
+            )
     labels = ["raw"]
     if "accuracyFiltered" in summary:
         labels.append("accuracyFiltered")

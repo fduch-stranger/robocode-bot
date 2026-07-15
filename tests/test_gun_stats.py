@@ -495,6 +495,17 @@ class GunStatsTest(unittest.TestCase):
         self.assertIsNone(tracker.record_pending_fire())
         self.assertEqual([], waves)
 
+    def test_gun_wave_tracker_can_preserve_pending_wave_until_fire_acceptance(self) -> None:
+        waves = [make_wave(target_id=7, fire_turn=1)]
+        tracker = GunWaveTracker(system_config(), waves)
+        pending = make_wave(target_id=7, fire_turn=2)
+        tracker.set_pending_wave(pending)
+
+        tracker.remove_target(7, preserve_pending=True)
+
+        self.assertEqual([], waves)
+        self.assertIs(pending, tracker.record_pending_fire())
+
     def test_gun_wave_visit_position_interpolates_between_scans(self) -> None:
         bot = SimpleNamespace(turn_number=12)
         history = TargetHistoryStore(max_history=80)

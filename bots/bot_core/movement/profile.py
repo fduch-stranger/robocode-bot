@@ -186,6 +186,9 @@ class MovementProfile:
                 score += self.profile.get((target_id, bucket, neighbor), 0.0) * weight
         return score
 
+    def sample_count(self, target_id: int, bucket: int) -> float:
+        return sum(value for key, value in self.profile.items() if key[0] == target_id and key[1] == bucket)
+
     def remove_target(self, target_id: int) -> None:
         for key in list(self.profile):
             if key[0] == target_id:
