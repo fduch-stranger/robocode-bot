@@ -318,8 +318,9 @@ virtual score
 Use this evidence offline after passive and forced evidence exists. Do not build
 an online cross-product of selection kind, distance, wall, relevance, valley
 width, and prominence; real shots are too sparse. Any later online calibration
-should use shared hierarchical calibration rather than an anti-surfer-specific
-sparse store.
+should use the shared supported-calibration policy rather than an
+anti-surfer-specific sparse store, and should add dimensions only after they
+improve held-out or later-window calibration.
 
 Expected effect:
 
