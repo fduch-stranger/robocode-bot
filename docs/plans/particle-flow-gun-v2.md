@@ -1,9 +1,15 @@
-# Particle-Flow Gun V2 Plan
+# Dedicated Particle-Flow Gun V2 Plan
 
-This plan defines the second version of the proposed `particle_flow` virtual
-gun. It is a probabilistic, regime-aware, game-theoretical gun that predicts a
-distribution of physically reachable enemy futures instead of selecting one
-historical guess factor.
+This plan defines the second version of the proposed `particle_flow` gun. It is
+a probabilistic, regime-aware gun controller that predicts a distribution of
+physically reachable enemy futures instead of selecting one historical guess
+factor.
+
+`particle_flow` is intentionally a dedicated sticky controller, not another
+always-evaluated member of the normal virtual-gun registry. When explicitly
+enabled, it owns aiming for the configured round or battle and uses an internal
+cheap fallback when its particle result is unavailable or weak. Normal virtual
+guns are not evaluated while the dedicated controller is active.
 
 This document intentionally excludes runtime packaging and dependency policy.
 It focuses on behavior, assumptions, model design, integration, telemetry, and
@@ -20,7 +26,8 @@ physics reachability
 + path probability density
 + surfer danger modeling
 + soft-minimax aim selection
-+ real-hit calibration
++ conservative confidence and fallback
++ real conversion measurement
 ```
 
 The gun should answer:
@@ -39,7 +46,7 @@ which historical guess factor looked most common?
 ## Core Assumptions
 
 The plan depends on these assumptions. Each one should be verified or made
-explicit in telemetry before live selection.
+explicit in telemetry before dedicated production use.
 
 ### Physics Assumptions
 
@@ -65,20 +72,53 @@ explicit in telemetry before live selection.
   merely moving; it is choosing movement based on its estimate of our danger.
 - Some enemies change phase during the battle. The model should separate early
   sparse evidence, mature evidence, and recent pressure states.
-- No regime should be trusted forever. Recent misses and calibration error must
-  be able to reduce confidence.
+- No regime should be trusted forever. Poor observation fit and repeated real
+  misses must be able to reduce diagnostic confidence or increase fallback use.
 
 ### Gun-System Assumptions
 
-- `particle_flow` is one `GunComponent` under `bot_core.gun.guns`.
-- It must produce a normal `GunBearing` so existing virtual gun scoring can
-  compare it with `dynamic_cluster`, `traditional_gf`, `linear`, and other
-  guns.
-- It should be eval-only first, force-testable second, and live-selectable only
-  after virtual score, real-hit calibration, and runtime cost are acceptable.
-- `dynamic_cluster` remains the primary KNN-GF gun during development.
-  `particle_flow` should be added as a competing expert, not as an immediate
-  replacement.
+- `particle_flow` lives under `bot_core.gun.guns`, but it is invoked through a
+  dedicated controller path rather than registered in the normal always-on
+  virtual-gun set.
+- The predictor may still produce a normal `GunBearing` so shared bearing,
+  wave, fire-context, and telemetry helpers remain reusable.
+- Controller choice is explicit and sticky for at least one complete round.
+  Normal production defaults continue to use the existing virtual-gun system.
+- When the dedicated controller is active, it computes only Particle Flow and
+  its internal fallback. It does not compute `dynamic_cluster`,
+  `traditional_gf`, `displacement`, or the other virtual bearings every tick.
+- `dynamic_cluster` remains the production baseline. Particle Flow is compared
+  with it through separate forced-controller A/B runs using the same firepower
+  policy, not through continuous live selector competition.
+
+## Dedicated Sticky Execution
+
+The initial controller switch is explicit:
+
+```text
+ROBOCODE_ADAPTIVE_GUN_CONTROLLER=virtual
+ROBOCODE_ADAPTIVE_GUN_CONTROLLER=particle_flow
+```
+
+`virtual` remains the default. With `particle_flow` selected:
+
+```text
+start round
+  -> construct or retain Particle Flow battle learning
+  -> keep Particle Flow as the round's aim controller
+  -> use particle aim when confidence and runtime gates pass
+  -> otherwise use the controller's internal linear fallback
+  -> never invoke the normal virtual-gun selector during the round
+```
+
+The fallback is an implementation detail of the dedicated controller, not a
+selector switch. Telemetry must distinguish `particle_flow` from
+`particle_flow_fallback_linear`, while real-shot attribution remains attached
+to the dedicated controller experiment.
+
+Battle-level stickiness may be tested after round-level behavior is stable.
+Automatic opponent classification or mid-round controller switching is outside
+this plan.
 
 ## High-Level Algorithm
 
@@ -91,8 +131,8 @@ Per aim opportunity:
 4. Roll out physically reachable future paths until bullet-intercept horizon.
 5. Convert path mass into candidate bearing / guess-factor hit probability.
 6. Apply surfer-aware soft-minimax scoring when surfer confidence is high.
-7. Apply real-hit calibration correction and confidence shrinkage.
-8. Return the best bearing plus diagnostics.
+7. Apply conservative confidence and runtime gates.
+8. Return the best bearing, or the internal linear fallback, plus diagnostics.
 ```
 
 The first implementation may use endpoint GF density for speed, but the target
@@ -125,9 +165,9 @@ time since velocity change
 time since reversal
 recent reversal interval estimate
 recent hit/miss pressure
-recent selected gun mode
 recent fired guess factors
 recent hit guess factors
+recent particle/fallback aim source
 ```
 
 The state should prefer existing `AimContext`, `FireContext`, target history,
@@ -136,18 +176,23 @@ the existing shared context is missing a required value.
 
 ## Latent Regimes
 
-Initial regimes:
+Phase 1 starts with a deliberately small regime set:
 
 ```text
 orbit_continue
 orbit_reverse
-wall_bend
-wall_escape
-corner_escape
 stop_go
+wall_bend_or_escape
+flat_exploration
+```
+
+Defer finer regimes until recorded-path evidence shows that the small set
+cannot represent an important motion family:
+
+```text
+corner_escape
 accelerate_through
 decelerate_or_stop
-flat_random
 surfer_valley_seek
 surfer_edge_bias
 surfer_reverse_soon
@@ -273,7 +318,6 @@ score(angle) =
     * hit_kernel(distance from bullet path to particle path)
     * time_alignment_weight
     * regime_confidence_weight
-    * calibration_weight
 ```
 
 Path-intersection scoring matters because a bullet can hit a likely path even
@@ -291,10 +335,9 @@ Inputs:
 
 ```text
 our recent fired guess factors
-our recent selected gun modes
 our recent hit guess factors
 our recent miss guess factors
-current virtual-gun density if available
+recent confirmed-shot aim-pressure density
 enemy wall margin
 enemy escape-angle asymmetry
 enemy reversal timing after our shots
@@ -344,57 +387,46 @@ score(angle) =
 
 This is more useful than hard minimax. Hard minimax assumes the enemy always
 chooses the perfect dodge with perfect knowledge, which makes the gun too
-pessimistic. Soft-minimax assumes the enemy is biased toward safer paths but
-still constrained by its movement style and imperfect policy.
+pessimistic. The proposed formula is technically a Boltzmann or quantal-response
+reweighting rather than strict minimax; `soft-minimax` is retained as the plan's
+short label. It assumes the enemy is biased toward safer paths but still
+constrained by its movement style and imperfect policy.
 
-## Real-Hit Calibration
+## Real Conversion Measurement
 
-Virtual score alone is not enough for this gun. The selector should not trust
-beautiful particle distributions until real bullets confirm them.
+The dedicated controller does not need a high-cardinality online calibration
+system before it can be force-tested. Real shots are too sparse to support a
+cross-product of regime, wall, entropy, peak, flight-time, and GF buckets.
 
-Calibration buckets:
+Record coarse, attributable evidence instead:
 
 ```text
 target id
-gun mode = particle_flow
+controller = particle_flow
+aim source = particle_flow | particle_flow_fallback_linear
 top regime
-surfer confidence bucket
-distance bucket
-wall margin bucket
-entropy bucket
-peak probability bucket
-flight time bucket
-selected GF side/magnitude bucket
-```
-
-Record:
-
-```text
+coarse distance bucket
+coarse wall bucket
 opportunities
 real shots
 real hits
-virtual score sum
-real hit rate
+damage
+fired energy
+virtual or wave score when available
 signed GF error sum
 absolute GF error sum
 last updated turn
 ```
 
-Use calibration to:
-
-```text
-shrink confidence when real conversion is poor
-apply small residual GF correction when signed error is persistent
-block live selection in contexts with bad real conversion
-reduce firepower when entropy is high or calibration is weak
-```
-
-Residual correction must be capped and shrunk toward zero until enough real
-shots exist. Global uncapped residual correction is not allowed.
+Use this evidence offline to compare complete dedicated-controller runs with
+the Dynamic Cluster control. Do not apply residual GF correction in the first
+implementation. If later evidence supports online calibration, use hierarchical
+shrinkage or the shared selector-calibration work rather than introducing a
+Particle-Flow-specific sparse calibrator.
 
 ## Confidence
 
-Expose confidence as a diagnostic and selector input:
+Expose confidence as a diagnostic and internal fallback gate:
 
 ```text
 confidence =
@@ -402,7 +434,7 @@ confidence =
   * low_entropy_factor
   * top_regime_stability
   * particle_survival_factor
-  * calibration_factor
+  * observation_fit_factor
   * cache_freshness_factor
 ```
 
@@ -416,11 +448,13 @@ particle_flow_top_regime
 particle_flow_top_regime_probability
 particle_flow_surfer_confidence
 particle_flow_soft_minimax_enabled
-particle_flow_calibration_factor
+particle_flow_observation_fit
+particle_flow_aim_source
 ```
 
-Confidence should be conservative. A low-confidence particle result is still
-valuable for eval telemetry, but should not receive live shots by default.
+Confidence should be conservative. A low-confidence particle result remains
+valuable for diagnostics, but the dedicated controller should use its internal
+linear fallback for the real shot.
 
 ## Cache Policy
 
@@ -461,7 +495,9 @@ regime distribution changes materially
 ```
 
 The cache should store both the selected bearing and the full diagnostic
-summary needed for telemetry.
+summary needed for telemetry. Dedicated mode must measure cache hit rate and
+incremental aim time. Caching is an optimization, not permission to evaluate
+all normal virtual guns alongside Particle Flow.
 
 ## Component Structure
 
@@ -476,13 +512,13 @@ Suggested files:
 ```text
 __init__.py
 config.py
+controller.py
 gun.py
 models.py
 regimes.py
 rollout.py
 density.py
 surfer_model.py
-calibration.py
 ```
 
 Responsibilities:
@@ -490,10 +526,14 @@ Responsibilities:
 ```text
 config.py:
   particle counts, rollout limits, cache limits, confidence thresholds,
-  selector policy, and feature gates
+  fallback policy, runtime budget, and feature gates
+
+controller.py:
+  sticky lifecycle, exclusive execution, shared context/wave integration,
+  runtime gate, cache ownership, and internal linear fallback
 
 gun.py:
-  GunComponent implementation and orchestration
+  particle predictor orchestration and GunBearing construction
 
 models.py:
   tactical state, particle state, rollout result, aim result
@@ -509,27 +549,33 @@ density.py:
 
 surfer_model.py:
   surfer danger approximation and soft-minimax path weighting
-
-calibration.py:
-  real-hit bucket stats, confidence shrinkage, residual correction
 ```
 
-Shared integration should be minimal:
+Shared integration should be minimal and must avoid duplicating existing
+feature, wave, fire-gate, or telemetry logic:
 
 ```text
-bots/bot_core/gun/factory.py:
-  register ParticleFlowGun as an optional component
+Adaptive controller wiring:
+  choose virtual or particle_flow before the sticky interval begins
 
-bot configs:
-  allow force mode and eval mode before live selection
+shared gun helpers:
+  build AimContext / FireContext and attribute confirmed shots and wave visits
 
-VirtualGunSystem:
-  no structural change expected
+normal GunRegistry:
+  do not register or evaluate Particle Flow in normal virtual mode
+
+dedicated particle_flow mode:
+  do not calculate normal virtual-gun bearings
 ```
+
+If clean reuse requires extracting a public context or wave helper from
+`VirtualGunSystem`, do that narrowly. Do not create a second implementation of
+guess-factor math, wall-limited escape, fire gating, or wave resolution.
 
 ## Telemetry
 
-Add component diagnostics to `gun.wave_visit` and `gun.eval_wave_visit`:
+Add dedicated-controller diagnostics to `gun.wave_visit` and the sampled
+`gun.particle_flow` event:
 
 ```text
 particle_flow_confidence
@@ -547,71 +593,87 @@ particle_flow_cache_hit
 particle_flow_cache_age
 particle_flow_surfer_confidence
 particle_flow_soft_minimax_enabled
-particle_flow_calibration_factor
-particle_flow_residual_correction
+particle_flow_observation_fit
+particle_flow_aim_source
+particle_flow_fallback_reason
 particle_flow_aim_ms
 ```
 
-Optionally emit a sampled component event:
+Emit a sampled controller event:
 
 ```text
 gun.particle_flow
 ```
 
-This event should be sampled or emitted only when useful, because per-tick
-particle telemetry can become noisy.
+This event should be sampled or emitted on meaningful state changes because
+per-tick particle telemetry can become noisy and expensive. Existing
+`bot.turn_timing` and `bot.skipped_turn` events are mandatory runtime evidence
+for dedicated-controller validation.
 
 ## Rollout Plan
 
 ### Phase 0: Predictor Foundation
 
-Before live use:
+Before dedicated use:
 
 ```text
-verify Tank Royale movement prediction against known engine behavior
-add focused unit tests for speed update, turn limit, wall clipping, and GF math
+audit the existing Tank Royale movement predictor and tests
+add only missing parity cases needed by particle actions
+replay recorded target motion against simple candidate regimes
+measure path coverage and observation likelihood, not only endpoint error
 ```
 
-The gun can be prototyped with the current predictor, but it should remain
-eval-only until predictor fidelity is trusted.
+The existing shared predictor already covers speed update, speed-limited turn,
+wall clipping, and wall-stop behavior. Particle Flow should reuse it rather
+than building another physics implementation.
 
-### Phase 1: Eval-Only Particle Density
+### Phase 1: Small Predictor And Sampled Shadow Density
 
 Implement:
 
 ```text
-regime filter
-deterministic particle allocation
+four or five initial regimes, not the full regime catalog
+32-64 deterministic paths before any larger particle budget
 physics rollout
-endpoint GF KDE
+continuous wave-crossing endpoint GF KDE
 confidence and entropy diagnostics
 cache
-eval-only bearing
+sampled shadow bearing without controlling real shots
 ```
 
 Success:
 
 ```text
-aim latency stays within budget
-entropy and confidence correlate with virtual score
+actual target paths retain useful probability mass
+wall and reversal contexts improve over simple continuation prediction
+incremental p95 aim cost stays within the configured experimental budget
+no additional skipped turns are attributable to the shadow predictor
 selected GF distribution is explainable in telemetry
 ```
 
-### Phase 2: Force-Testable Gun
+Stop here if the generated probability distribution is not behaviorally useful.
+Physics-valid paths alone are not enough.
+
+### Phase 2: Dedicated Sticky Controller
 
 Allow:
 
 ```text
-ROBOCODE_ADAPTIVE_GUN_MODE=particle_flow
+ROBOCODE_ADAPTIVE_GUN_CONTROLLER=particle_flow
 ```
 
-Still keep it outside normal live selection.
+Run Particle Flow exclusively for the full configured sticky interval. Keep the
+normal virtual registry inactive and use the internal linear fallback when
+confidence, freshness, or runtime gates fail.
 
 Success:
 
 ```text
-forced score does not collapse against local bots
-forced hit rate is competitive with dynamic_cluster on at least one surfer
+dedicated score does not collapse against local bots
+hit rate and damage per fired energy are competitive with a separate
+dynamic_cluster control on at least one surfer
+fallback rate is understandable and not dominant
+no added skipped-turn or control-loop instability
 telemetry shows whether misses are model, physics, or confidence failures
 ```
 
@@ -622,9 +684,10 @@ Replace endpoint-only selection with path-intersection candidate scoring.
 Success:
 
 ```text
-virtual score improves in wall and reversal contexts
-confidence remains calibrated
+wave score or real conversion improves in wall and reversal contexts
+confidence remains conservative
 aim does not collapse to center in multi-modal distributions
+runtime remains inside the dedicated-controller budget
 ```
 
 ### Phase 4: Surfer Soft-Minimax
@@ -639,26 +702,28 @@ post-hit enemy adaptation is reflected in regime/surfer diagnostics
 non-surfer targets do not regress significantly
 ```
 
-### Phase 5: Calibrated Live Selection
+### Phase 5: Dedicated Production Consideration
 
-Make `particle_flow` live-selectable only when:
+Consider an opt-in dedicated production preset only when:
 
 ```text
-mode has enough virtual visits
-real-hit calibration is not negative
-confidence is above threshold
-entropy is below threshold
-aim latency is stable
-selector score beats current gun after calibration
+repeated whole-controller A/Bs beat or complement dynamic_cluster
+coarse real conversion is positive across more than one opponent type
+fallback and confidence behavior remain stable
+p95/p99 aim latency and skipped-turn counts are acceptable
 ```
 
 Success:
 
 ```text
-selector chooses particle_flow rarely but profitably
-post-switch real hit rate beats switch-time prediction floor
+explicit particle_flow runs are profitable and repeatable
+the virtual controller remains the normal default unless evidence supports a
+deliberate default change
 no battle timeout or measurable control-loop instability
 ```
+
+This phase does not add automatic live selection. A future meta-controller or
+opponent-specific controller choice requires its own evidence and plan.
 
 ## Validation
 
@@ -671,27 +736,34 @@ Minimum checks:
 unit tests:
   regime update normalization
   particle allocation floors
+  deterministic rollout reproducibility
+  internal fallback gates
   density peak selection
   path-intersection scoring
-  calibration shrinkage and capped residual correction
 
-telemetry battle:
-  eval-only Adaptive vs local bot
-  eval-only Adaptive vs Python BasicGFSurfer port
+sampled shadow battle:
+  Adaptive virtual controller plus sampled Particle Flow vs local bot
+  Adaptive virtual controller plus sampled Particle Flow vs Python
+  BasicGFSurfer port
   telemetry audit
+  aim-time distribution and skipped-turn comparison
 
-forced battle:
-  Adaptive forced particle_flow vs local bot
-  Adaptive forced particle_flow vs Python BasicGFSurfer port
+dedicated battle:
+  Adaptive particle_flow controller vs local bot
+  Adaptive particle_flow controller vs Python BasicGFSurfer port
 
 A/B:
-  dynamic_cluster baseline vs particle_flow candidate
+  separate forced dynamic_cluster control vs dedicated particle_flow candidate
+  identical firepower and fire-gate policy on both sides
   raw combat-economics summary against Python BasicGFSurfer port
+  at least 24 rounds x 3 repeats before promotion
 ```
 
 Promotion should require evidence against more than one opponent type. A gun
 that only exploits one broken or stuck surfer scenario should not become a
-default live gun.
+production controller. Runtime promotion also requires no material increase in
+skipped turns and no unacceptable p95/p99 decision-time regression relative to
+the matching control.
 
 ## Failure Modes
 
@@ -700,11 +772,12 @@ Expected failure modes:
 ```text
 confident wrong regime:
   misses cluster under one top regime
-  mitigation: calibration shrinkage, regime floor, phase split
+  mitigation: observation-fit penalty, regime floor, internal fallback,
+  phase split
 
 flat distribution:
   entropy high and peak weak
-  mitigation: eval-only or low firepower, do not live-select
+  mitigation: internal linear fallback, retain diagnostic evidence
 
 physics mismatch:
   endpoint paths look plausible but real visits drift
@@ -712,11 +785,13 @@ physics mismatch:
 
 surfer over-modeling:
   soft-minimax avoids the real target and aims too defensively
-  mitigation: temperature tuning, calibration, disable surfer weighting
+  mitigation: compare with surfer weighting disabled, tune temperature only
+  after the physical predictor wins
 
 performance instability:
   aim_ms spikes or cache misses near gun-ready ticks
-  mitigation: lower particle count, stricter cache, eval interval
+  mitigation: lower path count, stricter cache, gun-ready scheduling,
+  internal fallback
 ```
 
 ## Design Constraints
@@ -724,23 +799,31 @@ performance instability:
 - Keep formulas canonical in `docs/bot-core-data-structures.md` if they become
   shared math.
 - Keep particle-flow-specific behavior inside the `particle_flow` package.
-- Do not add concrete `particle_flow` branches to `AimModeSelector`; use
-  `GunModePolicy`, traits, diagnostics, and generic decision context.
-- Do not make it live by default from virtual score alone.
-- Do not promote global residual correction. Correction must be contextual,
-  capped, and evidence-gated.
+- Keep controller selection outside `AimModeSelector`; Particle Flow is not a
+  continuously competing virtual-gun mode in this plan.
+- Do not register Particle Flow in the normal `GunRegistry` merely to reuse the
+  component interface.
+- Do not compute normal virtual-gun bearings while the dedicated controller is
+  active.
+- Reuse shared context, physics, wave, fire-gate, and telemetry helpers.
+- Do not add residual GF correction in the initial implementation.
+- Do not make Particle Flow the default controller from shadow or virtual score
+  alone.
 
 ## Bottom Line
 
-`particle_flow` should be treated as a high-upside experimental expert:
+`particle_flow` should be treated as a high-upside dedicated experiment:
 
 ```text
-first, a physically plausible probability-density gun
-then, a path-intersection gun
-then, a surfer-aware soft-minimax gun
-finally, a calibrated live expert
+first, a small physically plausible probability-density predictor
+then, an exclusive round-sticky controller with an internal fallback
+then, a path-intersection controller
+then, a surfer-aware soft-minimax controller
+finally, an opt-in production controller if repeated A/B evidence supports it
 ```
 
-The valuable version is not just particles plus KDE. The valuable version is
-particles plus behavior weighting, surfer response modeling, path-intersection
-scoring, and real-hit calibration.
+The first valuable result is not the full architecture. It is evidence that a
+small deterministic physical distribution predicts real movement and converts
+to competitive shots within the turn budget. Path-intersection and surfer
+response modeling are independent follow-up experiments, not prerequisites for
+testing that foundation.
