@@ -10,3 +10,4 @@ README files.
 | [Core combat economics](adaptive-combat-economics-plan.md) | Plan to make repo bots choose better fights through shared opponent pressure profiling, expected-value firepower, damage-aware gun use, and enemy-gun-aware movement. |
 | [Markov Tactician bot implementation](markov-tactician-bot-implementation-plan.md) | Plan for a new bot variant using a battle-persistent MDL-bounded Markov tactical automaton. |
 | [Particle-flow gun V2](particle-flow-gun-v2.md) | Plan for a physics-based particle, regime, soft-minimax, and real-hit-calibrated experimental gun. |
+| [Dynamic Cluster Python-surfer revalidation](dynamic-cluster-python-surfer-revalidation-plan.md) | Forced-gun plan to rebuild KNN model and power-policy evidence against the native Python surfer. |

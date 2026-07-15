@@ -66,6 +66,11 @@ decision context keep selector logic role-aware without hard-coding concrete
 gun classes. `gun.switch_decision` is the main telemetry event for explaining
 selected, blocked, unavailable, or superseded candidates.
 
+When shot policy changes firepower after selection, `VirtualGunSystem` can
+re-aim the already selected mode without invoking or mutating the selector a
+second time. The re-aim preserves committed switch metadata while updating the
+bearing, features, fire context, and diagnostics for the actual power.
+
 Temporary gun overrides:
 
 ```text

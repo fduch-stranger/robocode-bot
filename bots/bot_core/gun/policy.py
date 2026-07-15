@@ -44,6 +44,7 @@ class SharedGunPolicyDefaults:
 
 SHARED_GUN_POLICY_DEFAULTS = SharedGunPolicyDefaults()
 DYNAMIC_CLUSTER_DEFAULTS = DynamicClusterGunConfig()
+DYNAMIC_CLUSTER_EXPERIMENT_PRESETS = frozenset({"current", "simple_knn"})
 
 
 def _env_flag(name: str) -> bool:
@@ -60,6 +61,16 @@ def _env_int(name: str, default: int, *, minimum: int = 1) -> int:
         return default
 
 
+def _env_optional_int(name: str, *, minimum: int = 1) -> int | None:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return None
+    try:
+        return max(minimum, int(raw))
+    except ValueError:
+        return None
+
+
 def _env_float(name: str, default: float, *, minimum: float | None = None, maximum: float | None = None) -> float:
     raw = os.environ.get(name, "").strip()
     if not raw:
@@ -73,6 +84,28 @@ def _env_float(name: str, default: float, *, minimum: float | None = None, maxim
     if maximum is not None:
         value = min(maximum, value)
     return value
+
+
+def _dynamic_cluster_experiment_defaults(prefix: str) -> tuple[str, DynamicClusterGunConfig]:
+    preset = os.environ.get(f"{prefix}_DYNAMIC_PRESET", "").strip() or "current"
+    if preset not in DYNAMIC_CLUSTER_EXPERIMENT_PRESETS:
+        raise ValueError(
+            f"Invalid {prefix}_DYNAMIC_PRESET={preset!r}; "
+            f"expected one of {sorted(DYNAMIC_CLUSTER_EXPERIMENT_PRESETS)}"
+        )
+    if preset == "simple_knn":
+        return preset, DynamicClusterGunConfig(
+            bandwidth=0.18,
+            bandwidth_min=0.18,
+            bandwidth_max=0.18,
+            bandwidth_hit_width_scale=0.0,
+            centroid_window_bandwidth_scale=0.0,
+            centroid_window_bin_scale=0.0,
+            ambiguous_peak_centering_factor=1.0,
+            context_weighting_enabled=False,
+            shot_quality_enabled=False,
+        )
+    return preset, DYNAMIC_CLUSTER_DEFAULTS
 
 
 def gun_mode_from_env(prefix: str, allowed_modes: frozenset[str]) -> str | None:
@@ -111,16 +144,25 @@ def default_gun_mode_for(selectable_modes: frozenset[str]) -> str:
 
 
 def gun_policy_status_fields(policy: object, force_modes: frozenset[str]) -> dict[str, object]:
+    dynamic = getattr(policy, "dynamic_cluster", None)
     return {
         "selectable_guns": sorted(getattr(policy, "selectable_modes", ())),
         "force_guns": sorted(force_modes),
         "forced_gun": getattr(policy, "forced_mode", None),
         "eval_waves": bool(getattr(policy, "eval_waves_enabled", False)),
+        "dynamic_cluster_preset": getattr(dynamic, "experiment_preset", "current"),
     }
 
 
 @dataclass(frozen=True)
 class DynamicClusterPolicy:
+    experiment_preset: str = "current"
+    min_samples: int | None = None
+    blend_samples: int = DYNAMIC_CLUSTER_DEFAULTS.blend_samples
+    neighbors: int = DYNAMIC_CLUSTER_DEFAULTS.neighbors
+    decay_half_life: float = DYNAMIC_CLUSTER_DEFAULTS.decay_half_life
+    min_effective_samples: float = DYNAMIC_CLUSTER_DEFAULTS.min_effective_samples
+    guess_factor_bins: int = DYNAMIC_CLUSTER_DEFAULTS.guess_factor_bins
     bandwidth: float = DYNAMIC_CLUSTER_DEFAULTS.bandwidth
     bandwidth_min: float = DYNAMIC_CLUSTER_DEFAULTS.bandwidth_min
     bandwidth_max: float = DYNAMIC_CLUSTER_DEFAULTS.bandwidth_max
@@ -149,126 +191,150 @@ class DynamicClusterPolicy:
 
     @classmethod
     def from_env(cls, prefix: str) -> "DynamicClusterPolicy":
+        preset, defaults = _dynamic_cluster_experiment_defaults(prefix)
         return cls(
-            bandwidth=_env_float(f"{prefix}_DYNAMIC_BANDWIDTH", DYNAMIC_CLUSTER_DEFAULTS.bandwidth, minimum=0.001),
+            experiment_preset=preset,
+            min_samples=_env_optional_int(f"{prefix}_DYNAMIC_MIN_SAMPLES", minimum=1),
+            blend_samples=_env_int(
+                f"{prefix}_DYNAMIC_BLEND_SAMPLES", defaults.blend_samples, minimum=1
+            ),
+            neighbors=_env_int(f"{prefix}_DYNAMIC_NEIGHBORS", defaults.neighbors, minimum=1),
+            decay_half_life=_env_float(
+                f"{prefix}_DYNAMIC_DECAY_HALF_LIFE", defaults.decay_half_life, minimum=0.0
+            ),
+            min_effective_samples=_env_float(
+                f"{prefix}_DYNAMIC_MIN_EFFECTIVE_SAMPLES",
+                defaults.min_effective_samples,
+                minimum=0.0,
+            ),
+            guess_factor_bins=_env_int(
+                f"{prefix}_DYNAMIC_GUESS_FACTOR_BINS", defaults.guess_factor_bins, minimum=3
+            ),
+            bandwidth=_env_float(f"{prefix}_DYNAMIC_BANDWIDTH", defaults.bandwidth, minimum=0.001),
             bandwidth_min=_env_float(
                 f"{prefix}_DYNAMIC_BANDWIDTH_MIN",
-                DYNAMIC_CLUSTER_DEFAULTS.bandwidth_min,
+                defaults.bandwidth_min,
                 minimum=0.001,
             ),
             bandwidth_max=_env_float(
                 f"{prefix}_DYNAMIC_BANDWIDTH_MAX",
-                DYNAMIC_CLUSTER_DEFAULTS.bandwidth_max,
+                defaults.bandwidth_max,
                 minimum=0.001,
             ),
             bandwidth_hit_width_scale=_env_float(
                 f"{prefix}_DYNAMIC_BANDWIDTH_HIT_WIDTH_SCALE",
-                DYNAMIC_CLUSTER_DEFAULTS.bandwidth_hit_width_scale,
+                defaults.bandwidth_hit_width_scale,
                 minimum=0.0,
             ),
             second_peak_suppression_bandwidth_scale=_env_float(
                 f"{prefix}_DYNAMIC_SECOND_PEAK_SUPPRESSION_BANDWIDTH_SCALE",
-                DYNAMIC_CLUSTER_DEFAULTS.second_peak_suppression_bandwidth_scale,
+                defaults.second_peak_suppression_bandwidth_scale,
                 minimum=0.0,
             ),
             second_peak_suppression_bin_scale=_env_float(
                 f"{prefix}_DYNAMIC_SECOND_PEAK_SUPPRESSION_BIN_SCALE",
-                DYNAMIC_CLUSTER_DEFAULTS.second_peak_suppression_bin_scale,
+                defaults.second_peak_suppression_bin_scale,
                 minimum=0.0,
             ),
             centroid_window_bandwidth_scale=_env_float(
                 f"{prefix}_DYNAMIC_CENTROID_WINDOW_BANDWIDTH_SCALE",
-                DYNAMIC_CLUSTER_DEFAULTS.centroid_window_bandwidth_scale,
+                defaults.centroid_window_bandwidth_scale,
                 minimum=0.0,
             ),
             centroid_window_bin_scale=_env_float(
                 f"{prefix}_DYNAMIC_CENTROID_WINDOW_BIN_SCALE",
-                DYNAMIC_CLUSTER_DEFAULTS.centroid_window_bin_scale,
+                defaults.centroid_window_bin_scale,
                 minimum=0.0,
             ),
             ambiguous_peak_score_ratio=_env_float(
                 f"{prefix}_DYNAMIC_AMBIGUOUS_PEAK_SCORE_RATIO",
-                DYNAMIC_CLUSTER_DEFAULTS.ambiguous_peak_score_ratio,
+                defaults.ambiguous_peak_score_ratio,
                 minimum=0.0,
                 maximum=1.0,
             ),
             ambiguous_peak_centering_factor=_env_float(
                 f"{prefix}_DYNAMIC_AMBIGUOUS_PEAK_CENTERING_FACTOR",
-                DYNAMIC_CLUSTER_DEFAULTS.ambiguous_peak_centering_factor,
+                defaults.ambiguous_peak_centering_factor,
                 minimum=0.0,
                 maximum=1.0,
             ),
             confidence_mature_samples=_env_int(
                 f"{prefix}_DYNAMIC_CONFIDENCE_MATURE_SAMPLES",
-                DYNAMIC_CLUSTER_DEFAULTS.confidence_mature_samples,
+                defaults.confidence_mature_samples,
                 minimum=1,
             ),
             confidence_max_neighbor_distance=_env_float(
                 f"{prefix}_DYNAMIC_CONFIDENCE_MAX_NEIGHBOR_DISTANCE",
-                DYNAMIC_CLUSTER_DEFAULTS.confidence_max_neighbor_distance,
+                defaults.confidence_max_neighbor_distance,
                 minimum=0.001,
             ),
             confidence_peak_margin_reference=_env_float(
                 f"{prefix}_DYNAMIC_CONFIDENCE_PEAK_MARGIN_REFERENCE",
-                DYNAMIC_CLUSTER_DEFAULTS.confidence_peak_margin_reference,
+                defaults.confidence_peak_margin_reference,
                 minimum=0.001,
             ),
-            context_weighting_enabled=not _env_flag(f"{prefix}_DYNAMIC_CONTEXT_WEIGHTING_DISABLED"),
+            context_weighting_enabled=(
+                defaults.context_weighting_enabled
+                and not _env_flag(f"{prefix}_DYNAMIC_CONTEXT_WEIGHTING_DISABLED")
+            ),
             tag_match_bonus=_env_float(
                 f"{prefix}_DYNAMIC_TAG_MATCH_BONUS",
-                DYNAMIC_CLUSTER_DEFAULTS.tag_match_bonus,
+                defaults.tag_match_bonus,
                 minimum=0.0,
             ),
             flight_time_mismatch_penalty=_env_float(
                 f"{prefix}_DYNAMIC_FLIGHT_TIME_MISMATCH_PENALTY",
-                DYNAMIC_CLUSTER_DEFAULTS.flight_time_mismatch_penalty,
+                defaults.flight_time_mismatch_penalty,
                 minimum=0.0,
                 maximum=1.0,
             ),
             wall_escape_mismatch_penalty=_env_float(
                 f"{prefix}_DYNAMIC_WALL_ESCAPE_MISMATCH_PENALTY",
-                DYNAMIC_CLUSTER_DEFAULTS.wall_escape_mismatch_penalty,
+                defaults.wall_escape_mismatch_penalty,
                 minimum=0.0,
                 maximum=1.0,
             ),
             lateral_confidence_penalty=_env_float(
                 f"{prefix}_DYNAMIC_LATERAL_CONFIDENCE_PENALTY",
-                DYNAMIC_CLUSTER_DEFAULTS.lateral_confidence_penalty,
+                defaults.lateral_confidence_penalty,
                 minimum=0.0,
                 maximum=1.0,
             ),
             context_weight_min=_env_float(
                 f"{prefix}_DYNAMIC_CONTEXT_WEIGHT_MIN",
-                DYNAMIC_CLUSTER_DEFAULTS.context_weight_min,
+                defaults.context_weight_min,
                 minimum=0.0,
             ),
             context_weight_max=_env_float(
                 f"{prefix}_DYNAMIC_CONTEXT_WEIGHT_MAX",
-                DYNAMIC_CLUSTER_DEFAULTS.context_weight_max,
+                defaults.context_weight_max,
                 minimum=0.0,
             ),
-            shot_quality_enabled=not _env_flag(f"{prefix}_DYNAMIC_SHOT_QUALITY_DISABLED"),
+            shot_quality_enabled=(
+                defaults.shot_quality_enabled
+                and not _env_flag(f"{prefix}_DYNAMIC_SHOT_QUALITY_DISABLED")
+            ),
             shot_quality_good_threshold=_env_float(
                 f"{prefix}_DYNAMIC_SHOT_QUALITY_GOOD_THRESHOLD",
-                DYNAMIC_CLUSTER_DEFAULTS.shot_quality_good_threshold,
+                defaults.shot_quality_good_threshold,
                 minimum=0.0,
                 maximum=1.0,
             ),
             shot_quality_weak_threshold=_env_float(
                 f"{prefix}_DYNAMIC_SHOT_QUALITY_WEAK_THRESHOLD",
-                DYNAMIC_CLUSTER_DEFAULTS.shot_quality_weak_threshold,
+                defaults.shot_quality_weak_threshold,
                 minimum=0.0,
                 maximum=1.0,
             ),
             shot_quality_medium_power_scale=_env_float(
                 f"{prefix}_DYNAMIC_SHOT_QUALITY_MEDIUM_POWER_SCALE",
-                DYNAMIC_CLUSTER_DEFAULTS.shot_quality_medium_power_scale,
+                defaults.shot_quality_medium_power_scale,
                 minimum=0.0,
                 maximum=1.0,
             ),
             shot_quality_low_power_scale=_env_float(
                 f"{prefix}_DYNAMIC_SHOT_QUALITY_LOW_POWER_SCALE",
-                DYNAMIC_CLUSTER_DEFAULTS.shot_quality_low_power_scale,
+                defaults.shot_quality_low_power_scale,
                 minimum=0.0,
                 maximum=1.0,
             ),
@@ -305,7 +371,16 @@ def dynamic_cluster_config_from_policy(policy: object) -> DynamicClusterGunConfi
     defaults = SHARED_GUN_POLICY_DEFAULTS
     dynamic = getattr(policy, "dynamic_cluster", DynamicClusterPolicy())
     return DynamicClusterGunConfig(
-        min_samples=getattr(policy, "knn_min_samples", defaults.knn_min_samples),
+        min_samples=(
+            dynamic.min_samples
+            if dynamic.min_samples is not None
+            else getattr(policy, "knn_min_samples", defaults.knn_min_samples)
+        ),
+        blend_samples=dynamic.blend_samples,
+        neighbors=dynamic.neighbors,
+        decay_half_life=dynamic.decay_half_life,
+        min_effective_samples=dynamic.min_effective_samples,
+        guess_factor_bins=dynamic.guess_factor_bins,
         min_switch_visits=getattr(policy, "min_visits", defaults.min_visits),
         min_switch_score=getattr(policy, "min_switch_score", defaults.min_switch_score),
         bandwidth=dynamic.bandwidth,

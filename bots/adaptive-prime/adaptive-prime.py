@@ -35,7 +35,6 @@ from bot_core.gun import (
 )
 from bot_core.gun.factory import standard_runtime_config
 from bot_core.gun.guns.anti_surfer.config import AntiSurferGunConfig
-from bot_core.gun.guns.traditional_gf.config import TraditionalGfGunConfig
 from bot_core.movement import (
     FlatteningDecision,
     MinimumRiskConfig,
@@ -68,6 +67,7 @@ from adaptive_config import (
     RADAR_CONFIG,
     RADAR_POLICY,
     TARGET_POLICY,
+    traditional_gf_config_from_policy,
 )
 
 
@@ -121,21 +121,7 @@ class AdaptivePrime(Bot):
                 min_switch_score=GUN_POLICY.min_switch_score,
                 displacement=displacement_config_from_policy(GUN_POLICY),
                 dynamic_cluster=dynamic_cluster_config_from_policy(GUN_POLICY),
-                traditional_gf=TraditionalGfGunConfig(
-                    min_samples=traditional_gf_policy.min_samples,
-                    min_switch_visits=traditional_gf_policy.min_switch_visits,
-                    min_switch_score=traditional_gf_policy.min_switch_score,
-                    global_source_min_switch_visits=traditional_gf_policy.global_source_min_switch_visits,
-                    global_source_min_switch_score=traditional_gf_policy.global_source_min_switch_score,
-                    trusted_source_min_switch_visits=traditional_gf_policy.trusted_source_min_switch_visits,
-                    trusted_source_min_switch_score=traditional_gf_policy.trusted_source_min_switch_score,
-                    global_source_centering_factor=traditional_gf_policy.global_source_centering_factor,
-                    coarse_source_centering_factor=traditional_gf_policy.coarse_source_centering_factor,
-                    coarse_blend_source_centering_factor=traditional_gf_policy.coarse_blend_source_centering_factor,
-                    coarse_segment_min_samples=traditional_gf_policy.coarse_segment_min_samples,
-                    coarse_segment_full_weight_samples=traditional_gf_policy.coarse_segment_full_weight_samples,
-                    peak_selection=traditional_gf_policy.peak_selection,
-                ),
+                traditional_gf=traditional_gf_config_from_policy(traditional_gf_policy),
                 anti_surfer=AntiSurferGunConfig(
                     min_switch_visits=GUN_POLICY.anti_surfer_min_switch_visits,
                     min_switch_score=GUN_POLICY.anti_surfer_min_switch_score,
@@ -455,18 +441,16 @@ class AdaptivePrime(Bot):
         adjusted_firepower = max(0.1, min(firepower, firepower * power_scale))
         if abs(adjusted_firepower - firepower) < 0.01:
             return firepower, aim
-        adjusted_aim = self._gun.aim(
+        adjusted_aim = self._gun.reaim_selected_mode(
             self,
             target,
             distance,
             adjusted_firepower,
             self._target_motion(target),
             MOVEMENT_POLICY.field_margin,
+            selection=aim,
             disabled_modes=frozenset() if use_segmented_gun_stats else frozenset({"traditional_gf"}),
-            allow_segmented_stats=use_segmented_gun_stats,
         )
-        if adjusted_aim.mode != "dynamic_cluster":
-            return firepower, aim
         return adjusted_firepower, adjusted_aim
 
     @staticmethod

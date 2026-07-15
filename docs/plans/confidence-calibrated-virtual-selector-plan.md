@@ -179,8 +179,6 @@ Source type examples:
 ```text
 traditional_gf_global
 traditional_gf_blend
-traditional_gf_coarse_blend
-traditional_gf_coarse
 traditional_gf_segment
 dynamic_cluster
 linear
@@ -376,10 +374,10 @@ Traditional GF:
 global source:
   high skepticism
 
-blend / coarse_blend:
+blend:
   skepticism proportional to low blend weight
 
-coarse / segment:
+segment:
   normal trust if real conversion is acceptable
 ```
 

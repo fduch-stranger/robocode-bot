@@ -403,7 +403,7 @@ class AimModeSelector:
         if candidate_context is None:
             return False
         source = candidate_context.data.get("source")
-        return source in {"segment", "coarse", "blend", "coarse_blend"} or bool(self._context_tags(candidate_context))
+        return source in {"segment", "blend"} or bool(self._context_tags(candidate_context))
 
     def _situational_current_degraded(
         self,

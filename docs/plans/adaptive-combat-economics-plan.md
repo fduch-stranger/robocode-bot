@@ -370,7 +370,7 @@ use the same regime differently:
 | System | First use |
 | --- | --- |
 | Dynamic Cluster | Soft neighbor bonus for same distance/speed/last-speed/lateral/flight-time regime. |
-| Traditional GF | Experimental profile source keyed by a compact regime subset. |
+| Traditional GF | Established adapter keyed by flight time, absolute lateral speed, and wall margin. |
 | Displacement | Replay candidate bonus for same speed/last-speed/lateral/wall/flight-time regime. |
 | Anti-surfer | Detect repeated post-fire movement responses by regime. |
 | Movement | Record enemy-hit danger by own-risk regime. |
@@ -381,8 +381,9 @@ Start with telemetry-only regime emission, then enable one consumer at a time.
 The first behavior consumer should be movement hit-danger lookup, because the
 wave-evidence split depends on own-risk regimes and directly addresses the
 surfer damage leak. Displacement or Dynamic Cluster can consume the same regime
-next as soft candidate-similarity bonuses. Traditional GF should consume the
-same regime object later rather than inventing a private surfer-shaped key.
+next as soft candidate-similarity bonuses. Traditional GF already has its
+established three-axis adapter; shared regime work may supply those inputs but
+must preserve the fixed key instead of adding an alternate profile model.
 
 ### Telemetry
 

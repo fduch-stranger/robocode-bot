@@ -54,6 +54,15 @@ knobs through its own prefix: `ROBOCODE_ADAPTIVE_DYNAMIC_*`,
 result as a shared default promotion until filtered 20+ round surfer results or
 matching bot-specific evidence support it.
 
+`<PREFIX>_DYNAMIC_PRESET` accepts `current` or `simple_knn`. The opt-in
+`simple_knn` control uses fixed `0.18` bandwidth, best-bin aim without centroid
+refinement, no ambiguity centering, no context weighting, and no shot-quality
+power scaling. It is an experiment control, not a production default. Geometry
+experiments can also set `<PREFIX>_DYNAMIC_MIN_SAMPLES`,
+`_BLEND_SAMPLES`, `_NEIGHBORS`, `_DECAY_HALF_LIFE`,
+`_MIN_EFFECTIVE_SAMPLES`, and `_GUESS_FACTOR_BINS`. Explicit knob values
+override the selected preset.
+
 The component handles warmup and availability itself. The facade only asks for a
 `GunBearing` and publishes visits back through the component contract.
 

@@ -1,4 +1,5 @@
 import math
+import os
 import unittest
 from collections import Counter
 from types import SimpleNamespace
@@ -38,7 +39,7 @@ from bot_core.gun import (
 )
 from bot_core.gun.context import build_gun_features
 from bot_core.gun.factory import standard_runtime_config
-from bot_core.gun.policy import selector_config_from_policy
+from bot_core.gun.policy import DynamicClusterPolicy, selector_config_from_policy
 from bot_core.gun.guns.anti_surfer.config import AntiSurferGunConfig
 from bot_core.gun.guns.anti_surfer.gun import AntiSurferGun
 from bot_core.gun.guns.displacement.config import DisplacementGunConfig
@@ -210,6 +211,44 @@ class GunStatsTest(unittest.TestCase):
         self.assertEqual(0.85, config.ambiguous_peak_score_ratio)
         self.assertEqual(0.8, config.ambiguous_peak_centering_factor)
 
+    def test_dynamic_cluster_simple_knn_preset_and_geometry_overrides(self) -> None:
+        names = {
+            "ROBOCODE_TEST_DYNAMIC_PRESET": "simple_knn",
+            "ROBOCODE_TEST_DYNAMIC_MIN_SAMPLES": "44",
+            "ROBOCODE_TEST_DYNAMIC_BLEND_SAMPLES": "120",
+            "ROBOCODE_TEST_DYNAMIC_NEIGHBORS": "25",
+            "ROBOCODE_TEST_DYNAMIC_DECAY_HALF_LIFE": "900",
+            "ROBOCODE_TEST_DYNAMIC_MIN_EFFECTIVE_SAMPLES": "18.5",
+            "ROBOCODE_TEST_DYNAMIC_GUESS_FACTOR_BINS": "41",
+        }
+        previous = {name: os.environ.get(name) for name in names}
+        try:
+            os.environ.update(names)
+            dynamic = DynamicClusterPolicy.from_env("ROBOCODE_TEST")
+            config = dynamic_cluster_config_from_policy(SimpleNamespace(dynamic_cluster=dynamic))
+        finally:
+            for name, value in previous.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
+
+        self.assertEqual("simple_knn", dynamic.experiment_preset)
+        self.assertEqual(44, config.min_samples)
+        self.assertEqual(120, config.blend_samples)
+        self.assertEqual(25, config.neighbors)
+        self.assertEqual(900.0, config.decay_half_life)
+        self.assertEqual(18.5, config.min_effective_samples)
+        self.assertEqual(41, config.guess_factor_bins)
+        self.assertEqual(0.18, config.bandwidth_min)
+        self.assertEqual(0.18, config.bandwidth_max)
+        self.assertEqual(0.0, config.bandwidth_hit_width_scale)
+        self.assertEqual(0.0, config.centroid_window_bandwidth_scale)
+        self.assertEqual(0.0, config.centroid_window_bin_scale)
+        self.assertEqual(1.0, config.ambiguous_peak_centering_factor)
+        self.assertFalse(config.context_weighting_enabled)
+        self.assertFalse(config.shot_quality_enabled)
+
     def test_displacement_config_from_policy_uses_shared_live_defaults(self) -> None:
         config = displacement_config_from_policy(SimpleNamespace())
 
@@ -265,17 +304,13 @@ class GunStatsTest(unittest.TestCase):
 
         self.assertIsInstance(traditional_gf, TraditionalGfGunConfig)
         self.assertEqual(12, traditional_gf.min_samples)
-        self.assertEqual(12, traditional_gf.segment_min_samples)
-        self.assertEqual(48, traditional_gf.segment_full_weight_samples)
-        self.assertEqual(12, traditional_gf.coarse_segment_min_samples)
-        self.assertEqual(48, traditional_gf.coarse_segment_full_weight_samples)
-        self.assertEqual("density", traditional_gf.peak_selection)
-        self.assertAlmostEqual(0.8, traditional_gf.global_source_centering_factor)
-        self.assertAlmostEqual(0.7, traditional_gf.coarse_source_centering_factor)
-        self.assertAlmostEqual(0.8, traditional_gf.coarse_blend_source_centering_factor)
+        self.assertEqual(8, traditional_gf.segment_min_samples)
+        self.assertEqual(36, traditional_gf.segment_full_weight_samples)
+        self.assertEqual(31, traditional_gf.guess_factor_bins)
+        self.assertAlmostEqual(1.25, traditional_gf.smoothing_bins)
+        self.assertAlmostEqual(0.985, traditional_gf.decay)
         self.assertAlmostEqual(0.10, traditional_gf.global_source_penalty)
         self.assertAlmostEqual(0.06, traditional_gf.blend_source_penalty)
-        self.assertAlmostEqual(0.04, traditional_gf.coarse_blend_source_penalty)
 
     def test_gun_feature_tuple_contract_stays_seven_values(self) -> None:
         bot = fake_bot(x=100.0, y=100.0, arena_width=800.0, arena_height=600.0)
@@ -344,6 +379,48 @@ class GunStatsTest(unittest.TestCase):
         self.assertIn(LINEAR_WALL_AWARE_MODE, aim.gun_diagnostics)
         self.assertIn("wall_hit", aim.gun_diagnostics[LINEAR_WALL_AWARE_MODE])
         self.assertNotIn(LINEAR_WALL_AWARE_MODE, runtime.selector.selectable_modes)
+
+    def test_reaim_selected_mode_preserves_selector_state_and_switch_metadata(self) -> None:
+        runtime = runtime_config(
+            selector=GunSelectorConfig(
+                forced_mode=LINEAR_WALL_AWARE_MODE,
+                selectable_modes=frozenset({LINEAR_MODE, "dynamic_cluster"}),
+            )
+        )
+        gun = VirtualGunSystem(runtime)
+        bot = SimpleNamespace(
+            x=100.0,
+            y=100.0,
+            gun_direction=0.0,
+            arena_width=800.0,
+            arena_height=600.0,
+        )
+        target = TargetSnapshot(1, 100.0, 300.0, 100.0, 0.0, 8.0, 1)
+        aim = gun.aim(
+            bot,
+            target,
+            distance=200.0,
+            firepower=1.0,
+            motion=TargetMotion(acceleration=-1.0, velocity_change_age=0),
+            field_margin=18.0,
+        )
+        active_modes_before = dict(gun._aim_selector.active_modes)
+
+        adjusted = gun.reaim_selected_mode(
+            bot,
+            target,
+            distance=200.0,
+            firepower=0.5,
+            motion=TargetMotion(acceleration=-1.0, velocity_change_age=0),
+            field_margin=18.0,
+            selection=aim,
+        )
+
+        self.assertEqual(LINEAR_WALL_AWARE_MODE, adjusted.mode)
+        self.assertEqual(aim.previous_mode, adjusted.previous_mode)
+        self.assertEqual(aim.mode_changed, adjusted.mode_changed)
+        self.assertEqual(aim.switch_candidates, adjusted.switch_candidates)
+        self.assertEqual(active_modes_before, gun._aim_selector.active_modes)
 
     def test_linear_variant_visit_diagnostics_read_wave_metadata(self) -> None:
         runtime = runtime_config()
@@ -488,84 +565,15 @@ class GunStatsTest(unittest.TestCase):
         self.assertAlmostEqual(0.25, signed_error)
         self.assertAlmostEqual(0.25, abs_error)
 
-    def test_traditional_gf_centering_factor_shrinks_selected_guess_factor(self) -> None:
-        gun = TraditionalGfGun(TraditionalGfGunConfig(centering_factor=0.6))
 
-        self.assertAlmostEqual(0.3, gun.center_guess_factor(0.5))
-        self.assertAlmostEqual(-0.3, gun.center_guess_factor(-0.5))
 
-    def test_traditional_gf_source_centering_factor_shrinks_only_matching_source(self) -> None:
-        gun = TraditionalGfGun(
-            TraditionalGfGunConfig(
-                centering_factor=1.0,
-                global_source_centering_factor=0.75,
-                coarse_source_centering_factor=0.9,
-            )
-        )
 
-        self.assertAlmostEqual(0.375, gun.center_guess_factor(0.5, "global"))
-        self.assertAlmostEqual(0.45, gun.center_guess_factor(0.5, "coarse"))
-        self.assertAlmostEqual(0.5, gun.center_guess_factor(0.5, "blend"))
 
-    def test_traditional_gf_uses_coarse_segment_when_exact_segment_is_sparse(self) -> None:
-        config = TraditionalGfGunConfig(
-            min_samples=1,
-            segment_min_samples=4,
-            coarse_segment_min_samples=2,
-            coarse_segment_full_weight_samples=4,
-            coarse_source_centering_factor=1.0,
-        )
-        gun = TraditionalGfGun(config)
-        target_id = 1
-        segment_key = (0, 1, 2, 0, 1, 2)
-        global_profile = GuessFactorProfile(visits=4, effective_weight=4.0, bins=[0.0] * config.guess_factor_bins)
-        global_profile.bins[config.guess_factor_bins // 2] = 4.0
-        coarse_profile = GuessFactorProfile(visits=4, effective_weight=4.0, bins=[0.0] * config.guess_factor_bins)
-        coarse_profile.bins[-1] = 4.0
-        gun.profiles[target_id] = global_profile
-        gun.coarse_segment_profiles[(target_id, gun.coarse_segment_key(segment_key))] = coarse_profile
 
-        diagnostics = gun.diagnostics(target_id, segment_key)
 
-        self.assertIsNotNone(diagnostics)
-        self.assertEqual("coarse", diagnostics.source)
-        self.assertAlmostEqual(1.0, diagnostics.selected_guess_factor or 0.0)
-        self.assertEqual(4.0, diagnostics.segment_weight)
 
-    def test_traditional_gf_ignores_coarse_profile_when_segmentation_disabled(self) -> None:
-        config = TraditionalGfGunConfig(
-            min_samples=1,
-            segment_min_samples=0,
-            coarse_segment_min_samples=2,
-        )
-        gun = TraditionalGfGun(config)
-        target_id = 1
-        segment_key = (0, 1, 2, 0, 1, 2)
-        global_profile = GuessFactorProfile(visits=4, effective_weight=4.0, bins=[0.0] * config.guess_factor_bins)
-        global_profile.bins[config.guess_factor_bins // 2] = 4.0
-        coarse_profile = GuessFactorProfile(visits=4, effective_weight=4.0, bins=[0.0] * config.guess_factor_bins)
-        coarse_profile.bins[-1] = 4.0
-        gun.profiles[target_id] = global_profile
-        gun.coarse_segment_profiles[(target_id, gun.coarse_segment_key(segment_key))] = coarse_profile
 
-        diagnostics = gun.diagnostics(target_id, segment_key)
 
-        self.assertIsNotNone(diagnostics)
-        self.assertEqual("global", diagnostics.source)
-        self.assertAlmostEqual(0.0, diagnostics.selected_guess_factor or 0.0)
-
-    def test_traditional_gf_does_not_record_coarse_profile_when_segmentation_disabled(self) -> None:
-        gun = TraditionalGfGun(
-            TraditionalGfGunConfig(
-                segment_min_samples=0,
-                coarse_segment_min_samples=2,
-            )
-        )
-
-        gun.record(1, 0.5, (0, 1, 2, 0, 1, 2))
-
-        self.assertEqual({}, gun.segment_profiles)
-        self.assertEqual({}, gun.coarse_segment_profiles)
 
     def test_aim_mode_selector_respects_visit_and_score_thresholds(self) -> None:
         config = runtime_config(
@@ -763,7 +771,6 @@ class GunStatsTest(unittest.TestCase):
                 min_switch_visits=1,
                 min_switch_score=0.1,
                 blend_source_penalty=0.10,
-                coarse_blend_source_penalty=0.20,
             ),
         )
         stats = {
@@ -784,18 +791,6 @@ class GunStatsTest(unittest.TestCase):
         self.assertAlmostEqual(0.025, by_mode["traditional_gf"].source_penalty)
         self.assertAlmostEqual(0.255, by_mode["traditional_gf"].score)
         self.assertEqual("blend", by_mode["traditional_gf"].decision_source)
-
-        _, _, _, candidates = selector.select_with_diagnostics(
-            1,
-            {"linear": 0.0, "traditional_gf": 0.5},
-            None,
-            {"traditional_gf": GunDecisionContext("traditional_gf", {"source": "coarse_blend", "blend": 0.75})},
-        )
-
-        by_mode = {candidate.mode: candidate for candidate in candidates}
-        self.assertAlmostEqual(0.05, by_mode["traditional_gf"].source_penalty)
-        self.assertAlmostEqual(0.23, by_mode["traditional_gf"].score)
-        self.assertEqual("coarse_blend", by_mode["traditional_gf"].decision_source)
 
     def test_aim_mode_selector_uses_source_aware_traditional_gf_gates(self) -> None:
         config = runtime_config(
@@ -1026,7 +1021,7 @@ class GunStatsTest(unittest.TestCase):
             {
                 "traditional_gf": GunDecisionContext(
                     "traditional_gf",
-                    {"source": "coarse_blend", "blend": 1.0, "context_tags": frozenset({"stable_pattern"})},
+                    {"source": "blend", "blend": 1.0, "context_tags": frozenset({"stable_pattern"})},
                 )
             },
         )
@@ -1038,7 +1033,7 @@ class GunStatsTest(unittest.TestCase):
         self.assertAlmostEqual(0.025, by_mode["traditional_gf"].margin)
 
     def test_aim_mode_selector_uses_segment_score_for_primary_slump(self) -> None:
-        segment_key = (1, 1, 1, 1, 1, 1)
+        segment_key = (1, 1, 1)
         config = runtime_config(
             selector=GunSelectorConfig(
                 selectable_modes=frozenset({"dynamic_cluster", "traditional_gf"}),
@@ -1078,7 +1073,7 @@ class GunStatsTest(unittest.TestCase):
             {
                 "traditional_gf": GunDecisionContext(
                     "traditional_gf",
-                    {"source": "coarse_blend", "blend": 1.0, "context_tags": frozenset({"stable_pattern"})},
+                    {"source": "blend", "blend": 1.0, "context_tags": frozenset({"stable_pattern"})},
                 )
             },
         )
@@ -2249,7 +2244,7 @@ class GunStatsTest(unittest.TestCase):
                 smoothing_bins=0.75,
             )
         )
-        segment_key = (1, 1, 1, 1, 1, 1)
+        segment_key = (1, 1, 1)
 
         for _ in range(5):
             gun.record(1, 1.0)
@@ -2267,8 +2262,8 @@ class GunStatsTest(unittest.TestCase):
                 smoothing_bins=0.75,
             )
         )
-        left_segment = (1, 1, 1, 1, 1, 1)
-        right_segment = (2, 1, 1, 1, 1, 1)
+        left_segment = (1, 1, 1)
+        right_segment = (2, 1, 1)
 
         for _ in range(4):
             gun.record(1, 1.0, left_segment)
@@ -2287,7 +2282,7 @@ class GunStatsTest(unittest.TestCase):
                 smoothing_bins=0.75,
             )
         )
-        segment_key = (1, 1, 1, 1, 1, 1)
+        segment_key = (1, 1, 1)
 
         for _ in range(4):
             gun.record(1, 1.0)
@@ -2310,34 +2305,69 @@ class GunStatsTest(unittest.TestCase):
         self.assertLess(segmented.segment_guess_factor, 0.0)
         self.assertGreater(segmented.blend, 0.0)
 
-    def test_traditional_gf_coarse_segment_key_uses_distance_lateral_wall(self) -> None:
-        segment_key = (0, 1, 2, 3, 4, 5)
 
-        self.assertEqual(
-            (0, 2, 5),
-            TraditionalGfGun.coarse_segment_key(segment_key),
-        )
 
-    def test_traditional_gf_density_peak_prefers_supported_peak(self) -> None:
-        profile = GuessFactorProfile(
-            visits=20,
-            effective_weight=20.0,
-            bins=[0.0, 0.0, 5.0, 6.0, 5.0, 0.0, 10.0],
-        )
 
-        max_bin_gun = TraditionalGfGun(
-            TraditionalGfGunConfig(guess_factor_bins=7, peak_selection="max")
-        )
-        density_gun = TraditionalGfGun(
+
+    def test_traditional_gf_visit_trains_the_same_gun_local_key_used_for_aiming(self) -> None:
+        gun = TraditionalGfGun(
             TraditionalGfGunConfig(
-                guess_factor_bins=7,
-                peak_selection="density",
-                peak_support_radius=1,
+                min_samples=1,
+                segment_min_samples=1,
+                segment_full_weight_samples=1,
             )
         )
+        fire_context = FireContext(
+            bullet_flight_time=28.0,
+            lateral_speed_signed=6.0,
+            wall_margin=0.08,
+        )
+        expected_key = gun.profile_segment_key(fire_context)
+        self.assertEqual((1, 2, 0), expected_key)
+        wave = make_wave(aim_mode="traditional_gf")
+        wave.fire_context = fire_context
 
-        self.assertAlmostEqual(1.0, max_bin_gun.profile_guess_factor(profile))
-        self.assertAlmostEqual(0.0, density_gun.profile_guess_factor(profile))
+        for _ in range(3):
+            gun.observe_visit(
+                GunVisit(
+                    wave=wave,
+                    actual_bearing=0.0,
+                    target_distance=300.0,
+                    guess_factor=0.6,
+                    segment_key=(9, 9, 9),
+                )
+            )
+
+        self.assertIn((wave.target_id, expected_key), gun.segment_profiles)
+        diagnostics = gun.diagnostics(wave.target_id, expected_key)
+        self.assertIsNotNone(diagnostics)
+        assert diagnostics is not None
+        self.assertEqual(expected_key, diagnostics.profile_key)
+        self.assertEqual("segment", diagnostics.source)
+
+    def test_traditional_gf_profile_key_bucket_boundaries(self) -> None:
+        gun = TraditionalGfGun(TraditionalGfGunConfig())
+        cases = (
+            (19.999, 1.999, 0.1199, (0, 0, 0)),
+            (20.0, 2.0, 0.12, (1, 1, 1)),
+            (34.999, -5.599, 0.2499, (1, 1, 1)),
+            (35.0, -5.6, 0.25, (2, 2, 2)),
+        )
+
+        for flight_time, lateral_speed, wall_margin, expected in cases:
+            with self.subTest(
+                flight_time=flight_time,
+                lateral_speed=lateral_speed,
+                wall_margin=wall_margin,
+            ):
+                context = FireContext(
+                    bullet_flight_time=flight_time,
+                    lateral_speed_signed=lateral_speed,
+                    wall_margin=wall_margin,
+                )
+                self.assertEqual(expected, gun.profile_segment_key(context))
+
+
 
     def test_anti_surfer_guess_factor_targets_under_visited_valley(self) -> None:
         gun = AntiSurferGun(

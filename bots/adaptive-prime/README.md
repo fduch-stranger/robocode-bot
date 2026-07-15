@@ -70,17 +70,27 @@ Selector roles:
 | --- | --- |
 | `dynamic_cluster` | Primary learning gun. |
 | `displacement` | Situational history-replay gun. |
-| `traditional_gf` | Situational profile gun with source-aware gates. |
+| `traditional_gf` | Situational profile gun with source-aware gates and a flight/lateral/wall-margin profile. |
 | `linear` | Early/simple-motion fallback. |
 
 Adaptive keeps bot-specific selector gates around the shared selector:
 
 - KNN can warm up earlier than in shared defaults.
-- Trusted Traditional GF exact/coarse sources can challenge early.
+- Gun changes require a `0.08` score margin to limit context-driven oscillation.
+- Trusted Traditional GF segment sources can challenge early.
 - Global or weak blended Traditional GF sources are penalized more heavily.
 - Situational guns need context/source evidence or a KNN slump to displace KNN.
 - Eval waves can add capped selector-only evidence without training production
   learners.
+
+Adaptive's default Traditional GF model uses a gun-local key of flight time,
+absolute lateral speed, and wall margin. It starts blending a segment after 8
+effective visits and reaches full segment weight at 36 visits. The model uses
+31 bins, smoothing `1.25`, decay `0.985`, and maximum-bin peak selection. This
+configuration beat the former global-only control in all three 24-round Python
+BasicGFSurfer repeats (`11.93%` versus `10.39%` hit rate). Superseded
+Traditional-GF presets and tuning environment variables are intentionally not
+supported.
 
 For isolated gun testing:
 

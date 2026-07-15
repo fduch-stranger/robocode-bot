@@ -200,6 +200,77 @@ class GunEvalSummaryTest(unittest.TestCase):
         self.assertEqual(18.0, by_source["blend"]["averages"]["segment_weight"])  # type: ignore[index]
         self.assertEqual(0.5, by_source["blend"]["averages"]["blend"])  # type: ignore[index]
 
+    def test_profile_diagnostics_take_precedence_over_track_sampling(self) -> None:
+        summary = summarize_events(
+            [
+                {
+                    "event": "track",
+                    "fields": {
+                        "traditional_gf_source": "global",
+                        "traditional_gf_global": 0.9,
+                    },
+                },
+                {
+                    "event": "gun.traditional_gf_profile",
+                    "fields": {
+                        "source": "segment",
+                        "global_guess_factor": 0.2,
+                    },
+                },
+            ]
+        )
+
+        diagnostics = summary["traditional_gf_diagnostics"]  # type: ignore[assignment]
+        self.assertEqual({"segment": 1}, diagnostics["source_counts"])
+        self.assertEqual(0.2, diagnostics["averages"]["global_guess_factor"])
+
+    def test_summarizes_traditional_gf_profile_key_occupancy(self) -> None:
+        summary = summarize_events(
+            [
+                {
+                    "event": "gun.wave_visit",
+                    "fields": {
+                        "selected_gun": "traditional_gf",
+                        "virtual_scores": {"traditional_gf": 0.2},
+                        "traditional_gf_profile_key": [1, 2, 0],
+                        "traditional_gf_source": "blend",
+                        "traditional_gf_segment_weight": 18.0,
+                        "traditional_gf_abs_error": 0.3,
+                    },
+                },
+                {
+                    "event": "gun.wave_visit",
+                    "fields": {
+                        "selected_gun": "traditional_gf",
+                        "virtual_scores": {"traditional_gf": 0.3},
+                        "traditional_gf_profile_key": [1, 2, 0],
+                        "traditional_gf_source": "segment",
+                        "traditional_gf_segment_weight": 36.0,
+                        "traditional_gf_abs_error": 0.5,
+                    },
+                },
+                {
+                    "event": "gun.wave_visit",
+                    "fields": {
+                        "selected_gun": "traditional_gf",
+                        "virtual_scores": {"traditional_gf": 0.1},
+                        "traditional_gf_profile_key": [2, 1, 2],
+                        "traditional_gf_source": "global",
+                        "traditional_gf_segment_weight": 2.0,
+                        "traditional_gf_abs_error": 0.7,
+                    },
+                },
+            ]
+        )
+
+        profile_keys = summary["traditional_gf_profile_keys"]  # type: ignore[assignment]
+        self.assertEqual(2, profile_keys["unique_keys"])
+        cells = profile_keys["cells"]
+        self.assertEqual(2, cells["1,2,0"]["visits"])
+        self.assertEqual({"blend": 1, "segment": 1}, cells["1,2,0"]["source_counts"])
+        self.assertEqual(27.0, cells["1,2,0"]["avg_segment_weight"])
+        self.assertEqual(0.4, cells["1,2,0"]["avg_abs_error"])
+
     def test_summarizes_traditional_gf_real_hits_by_source(self) -> None:
         summary = summarize_events(
             [
@@ -210,15 +281,15 @@ class GunEvalSummaryTest(unittest.TestCase):
                 {"event": "bullet.hit_bot", "fields": {"bullet_id": 1}},
                 {
                     "event": "bullet.fired",
-                    "fields": {"bullet_id": 2, "aim_mode": "traditional_gf", "traditional_gf_source": "coarse"},
+                    "fields": {"bullet_id": 2, "aim_mode": "traditional_gf", "traditional_gf_source": "segment"},
                 },
             ]
         )
 
         by_source = summary["traditional_gf_source_real"]  # type: ignore[assignment]
-        self.assertEqual({"coarse": 1, "global": 1}, by_source["fired"])  # type: ignore[index]
+        self.assertEqual({"global": 1, "segment": 1}, by_source["fired"])  # type: ignore[index]
         self.assertEqual({"global": 1}, by_source["hits"])  # type: ignore[index]
-        self.assertEqual({"coarse": 0.0, "global": 1.0}, by_source["hit_rate"])  # type: ignore[index]
+        self.assertEqual({"global": 1.0, "segment": 0.0}, by_source["hit_rate"])  # type: ignore[index]
 
     def test_traditional_gf_source_hits_do_not_cross_round_reset(self) -> None:
         summary = summarize_events(
@@ -243,15 +314,15 @@ class GunEvalSummaryTest(unittest.TestCase):
                 {"event": "bullet.hit_bot", "fields": {"bullet_id": 9}},
                 {
                     "event": "bullet.fired",
-                    "fields": {"bullet_id": 9, "aim_mode": "traditional_gf", "traditional_gf_source": "coarse_blend"},
+                    "fields": {"bullet_id": 9, "aim_mode": "traditional_gf", "traditional_gf_source": "blend"},
                 },
             ]
         )
 
         by_source = summary["traditional_gf_source_real"]  # type: ignore[assignment]
-        self.assertEqual({"coarse_blend": 1}, by_source["fired"])  # type: ignore[index]
-        self.assertEqual({"coarse_blend": 1}, by_source["hits"])  # type: ignore[index]
-        self.assertEqual({"coarse_blend": 1.0}, by_source["hit_rate"])  # type: ignore[index]
+        self.assertEqual({"blend": 1}, by_source["fired"])  # type: ignore[index]
+        self.assertEqual({"blend": 1}, by_source["hits"])  # type: ignore[index]
+        self.assertEqual({"blend": 1.0}, by_source["hit_rate"])  # type: ignore[index]
 
     def test_summarizes_traditional_gf_error(self) -> None:
         summary = summarize_events(
@@ -275,7 +346,7 @@ class GunEvalSummaryTest(unittest.TestCase):
                         "traditional_gf_guess_factor": 0.2,
                         "traditional_gf_error": -0.3,
                         "traditional_gf_abs_error": 0.3,
-                        "traditional_gf_source": "coarse_blend",
+                        "traditional_gf_source": "blend",
                     },
                 },
                 {
@@ -286,7 +357,7 @@ class GunEvalSummaryTest(unittest.TestCase):
                         "traditional_gf_guess_factor": 0.0,
                         "traditional_gf_error": 0.1,
                         "traditional_gf_abs_error": 0.1,
-                        "traditional_gf_source": "coarse",
+                        "traditional_gf_source": "segment",
                     },
                 },
             ]
@@ -305,10 +376,10 @@ class GunEvalSummaryTest(unittest.TestCase):
         by_source = summary["traditional_gf_error_by_source"]  # type: ignore[assignment]
         self.assertEqual(1, by_source["production"]["global"]["count"])  # type: ignore[index]
         self.assertEqual(0.3, by_source["production"]["global"]["avg_abs_error"])  # type: ignore[index]
-        self.assertEqual(1, by_source["production_selected"]["coarse_blend"]["count"])  # type: ignore[index]
-        self.assertEqual(-0.3, by_source["production_selected"]["coarse_blend"]["avg_error"])  # type: ignore[index]
-        self.assertEqual(1, by_source["eval_selected"]["coarse"]["count"])  # type: ignore[index]
-        self.assertEqual(0.1, by_source["eval_selected"]["coarse"]["avg_abs_error"])  # type: ignore[index]
+        self.assertEqual(1, by_source["production_selected"]["blend"]["count"])  # type: ignore[index]
+        self.assertEqual(-0.3, by_source["production_selected"]["blend"]["avg_error"])  # type: ignore[index]
+        self.assertEqual(1, by_source["eval_selected"]["segment"]["count"])  # type: ignore[index]
+        self.assertEqual(0.1, by_source["eval_selected"]["segment"]["avg_abs_error"])  # type: ignore[index]
 
     def test_print_summary_includes_selected_counts(self) -> None:
         stream = StringIO()
@@ -329,6 +400,7 @@ class GunEvalSummaryTest(unittest.TestCase):
             "traditional_gf_diagnostics": {},
             "traditional_gf_diagnostics_by_source": {},
             "traditional_gf_source_real": {},
+            "traditional_gf_profile_keys": {},
             "traditional_gf_error": {},
             "traditional_gf_error_by_source": {},
             "calibration": {"2": {"linear": {"post_switch_hit_rate": 0.5}}},

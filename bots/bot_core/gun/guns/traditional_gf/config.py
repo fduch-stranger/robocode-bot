@@ -8,18 +8,8 @@ class TraditionalGfGunConfig:
     min_samples: int = 12
     smoothing_bins: float = 1.25
     decay: float = 0.985
-    centering_factor: float = 1.0
-    global_source_centering_factor: float = 0.8
-    blend_source_centering_factor: float = 1.0
-    segment_source_centering_factor: float = 1.0
-    coarse_source_centering_factor: float = 0.7
-    coarse_blend_source_centering_factor: float = 0.8
-    segment_min_samples: int = 12
-    segment_full_weight_samples: int = 48
-    coarse_segment_min_samples: int = 12
-    coarse_segment_full_weight_samples: int = 48
-    peak_selection: str = "density"
-    peak_support_radius: int = 1
+    segment_min_samples: int = 8
+    segment_full_weight_samples: int = 36
     guess_factor_bins: int = 31
     min_switch_visits: int = 260
     min_switch_score: float = 0.42
@@ -29,7 +19,6 @@ class TraditionalGfGunConfig:
     trusted_source_min_switch_score: float | None = None
     global_source_penalty: float = 0.10
     blend_source_penalty: float = 0.06
-    coarse_blend_source_penalty: float = 0.04
 
     def decision_score_penalty(self, context: GunDecisionContext | None) -> tuple[float, str | None]:
         if context is None or context.mode != "traditional_gf":
@@ -39,8 +28,6 @@ class TraditionalGfGunConfig:
             return self.global_source_penalty, "global"
         if source == "blend":
             return self.blend_source_penalty * (1.0 - self._blend(context)), "blend"
-        if source == "coarse_blend":
-            return self.coarse_blend_source_penalty * (1.0 - self._blend(context)), "coarse_blend"
         return 0.0, source if isinstance(source, str) else None
 
     @staticmethod
@@ -54,9 +41,9 @@ class TraditionalGfGunConfig:
         source = context.data.get("source")
         if source == "global":
             return self._global_source_min_switch_visits()
-        if source in {"segment", "coarse"}:
+        if source == "segment":
             return self._trusted_source_min_switch_visits()
-        if source in {"blend", "coarse_blend"}:
+        if source == "blend":
             return self._blended_min_switch_visits(context)
         return self.min_switch_visits
 
@@ -66,9 +53,9 @@ class TraditionalGfGunConfig:
         source = context.data.get("source")
         if source == "global":
             return self._global_source_min_switch_score()
-        if source in {"segment", "coarse"}:
+        if source == "segment":
             return self._trusted_source_min_switch_score()
-        if source in {"blend", "coarse_blend"}:
+        if source == "blend":
             return self._blended_min_switch_score(context)
         return self.min_switch_score
 

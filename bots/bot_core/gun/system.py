@@ -8,6 +8,7 @@ from bot_core.gun.aim import AimModeSelector
 from bot_core.gun.config import GunDecisionContext, GunRuntimeConfig, GunScoringConfig, GunSelectorConfig, GunSystemConfig
 from bot_core.gun.context import (
     AimContext,
+    GunBearing,
     GunVisit,
     TargetHistoryStore,
     build_fire_context,
@@ -107,14 +108,66 @@ class VirtualGunSystem:
             for mode, bearing in bearings.items()
             if bearing.decision_context is not None
         }
-        gun_diagnostics = self._gun_diagnostics_from_bearings(bearings)
-
         mode, previous_mode, mode_changed, switch_candidates = self._select_aim_mode(
             target.bot_id,
             virtual_bearings,
             scoring_segment,
             decision_contexts,
         )
+        return self._aim_solution(
+            bot,
+            distance,
+            field_margin,
+            context,
+            bearings,
+            mode,
+            previous_mode,
+            mode_changed,
+            switch_candidates,
+        )
+
+    def reaim_selected_mode(
+        self,
+        bot: Bot,
+        target: TargetSnapshot,
+        distance: float,
+        firepower: float,
+        motion: TargetMotion,
+        field_margin: float,
+        selection: AimSolution,
+        disabled_modes: frozenset[str] | None = None,
+    ) -> AimSolution:
+        """Recompute the selected gun at new shot inputs without running the selector."""
+        context = self._aim_context(bot, target, distance, firepower, motion, field_margin, disabled_modes)
+        bearings = self._registry.bearings(context)
+        if selection.mode not in bearings:
+            raise ValueError(f"Selected gun {selection.mode!r} is unavailable during re-aim")
+        return self._aim_solution(
+            bot,
+            distance,
+            field_margin,
+            context,
+            bearings,
+            selection.mode,
+            selection.previous_mode,
+            selection.mode_changed,
+            selection.switch_candidates,
+        )
+
+    def _aim_solution(
+        self,
+        bot: Bot,
+        distance: float,
+        field_margin: float,
+        context: AimContext,
+        bearings: dict[str, GunBearing],
+        mode: str,
+        previous_mode: str | None,
+        mode_changed: bool,
+        switch_candidates: tuple[GunSwitchCandidate, ...],
+    ) -> AimSolution:
+        virtual_bearings = {bearing_mode: bearing.absolute_bearing for bearing_mode, bearing in bearings.items()}
+        gun_diagnostics = self._gun_diagnostics_from_bearings(bearings)
         aim_bearing = virtual_bearings[mode]
         predicted_x, predicted_y = point_on_bearing(bot, aim_bearing, distance, field_margin)
         return AimSolution(

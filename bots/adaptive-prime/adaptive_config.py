@@ -16,8 +16,6 @@ from bot_core.radar import RadarLockConfig
 
 ADAPTIVE_SELECTABLE_GUN_MODES = DEFAULT_LIVE_GUN_MODES
 ADAPTIVE_FORCE_GUN_MODES = STANDARD_FORCE_GUN_MODES
-TRADITIONAL_GF_PEAK_SELECTIONS = frozenset({"max", "density"})
-TRADITIONAL_GF_DEFAULTS = TraditionalGfGunConfig()
 ADAPTIVE_DYNAMIC_CLUSTER_POLICY = DynamicClusterPolicy.from_env("ROBOCODE_ADAPTIVE")
 
 
@@ -38,26 +36,6 @@ def _env_int(name: str, default: int, *, minimum: int = 1) -> int:
         return default
 
 
-def _env_float(name: str, default: float, *, minimum: float | None = None, maximum: float | None = None) -> float:
-    raw = os.environ.get(name, "").strip()
-    if not raw:
-        return default
-    try:
-        value = float(raw)
-    except ValueError:
-        return default
-    if minimum is not None:
-        value = max(minimum, value)
-    if maximum is not None:
-        value = min(maximum, value)
-    return value
-
-
-def _env_choice(name: str, default: str, choices: frozenset[str]) -> str:
-    raw = os.environ.get(name, "").strip()
-    return raw if raw in choices else default
-
-
 def _selectable_gun_modes() -> frozenset[str]:
     return gun_modes_from_env("ROBOCODE_ADAPTIVE", ADAPTIVE_SELECTABLE_GUN_MODES, ADAPTIVE_FORCE_GUN_MODES)
 
@@ -74,43 +52,16 @@ class TraditionalGfPolicy:
     global_source_min_switch_score: float = 0.16
     trusted_source_min_switch_visits: int = 32
     trusted_source_min_switch_score: float = 0.08
-    min_samples: int = _env_int(
-        "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_MIN_SAMPLES",
-        TRADITIONAL_GF_DEFAULTS.min_samples,
-        minimum=1,
-    )
-    global_source_centering_factor: float = _env_float(
-        "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_GLOBAL_SOURCE_CENTERING_FACTOR",
-        TRADITIONAL_GF_DEFAULTS.global_source_centering_factor,
-        minimum=0.0,
-        maximum=1.0,
-    )
-    coarse_source_centering_factor: float = _env_float(
-        "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_COARSE_SOURCE_CENTERING_FACTOR",
-        TRADITIONAL_GF_DEFAULTS.coarse_source_centering_factor,
-        minimum=0.0,
-        maximum=1.0,
-    )
-    coarse_blend_source_centering_factor: float = _env_float(
-        "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_COARSE_BLEND_SOURCE_CENTERING_FACTOR",
-        TRADITIONAL_GF_DEFAULTS.coarse_blend_source_centering_factor,
-        minimum=0.0,
-        maximum=1.0,
-    )
-    coarse_segment_min_samples: int = _env_int(
-        "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_COARSE_SEGMENT_MIN_SAMPLES",
-        TRADITIONAL_GF_DEFAULTS.coarse_segment_min_samples,
-        minimum=0,
-    )
-    coarse_segment_full_weight_samples: int = _env_int(
-        "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_COARSE_SEGMENT_FULL_WEIGHT_SAMPLES",
-        TRADITIONAL_GF_DEFAULTS.coarse_segment_full_weight_samples,
-        minimum=0,
-    )
-    peak_selection: str = _env_choice(
-        "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_PEAK_SELECTION",
-        TRADITIONAL_GF_DEFAULTS.peak_selection,
-        TRADITIONAL_GF_PEAK_SELECTIONS,
+
+
+def traditional_gf_config_from_policy(policy: TraditionalGfPolicy) -> TraditionalGfGunConfig:
+    return TraditionalGfGunConfig(
+        min_switch_visits=policy.min_switch_visits,
+        min_switch_score=policy.min_switch_score,
+        global_source_min_switch_visits=policy.global_source_min_switch_visits,
+        global_source_min_switch_score=policy.global_source_min_switch_score,
+        trusted_source_min_switch_visits=policy.trusted_source_min_switch_visits,
+        trusted_source_min_switch_score=policy.trusted_source_min_switch_score,
     )
 
 
@@ -122,7 +73,7 @@ class GunPolicy:
     eval_wave_min_interval: int = _env_int("ROBOCODE_ADAPTIVE_GUN_EVAL_INTERVAL", 8)
     knn_min_samples: int = SHARED_GUN_POLICY_DEFAULTS.knn_min_samples
     min_visits: int = SHARED_GUN_POLICY_DEFAULTS.min_visits
-    switch_margin: float = 0.035
+    switch_margin: float = 0.08
     primary_over_fallback_margin: float = SHARED_GUN_POLICY_DEFAULTS.primary_over_fallback_margin
     situational_over_primary_margin: float = SHARED_GUN_POLICY_DEFAULTS.situational_over_primary_margin
     primary_slump_visits: int = SHARED_GUN_POLICY_DEFAULTS.primary_slump_visits

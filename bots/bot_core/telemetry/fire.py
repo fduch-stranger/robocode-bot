@@ -223,7 +223,6 @@ def _track_base_fields(
                 "traditional_gf_segment": rounded(getattr(traditional_gf, "segment_guess_factor", None), 3),
                 "traditional_gf_segment_weight": round(getattr(traditional_gf, "segment_weight", 0.0), 1),
                 "traditional_gf_blend": round(getattr(traditional_gf, "blend", 0.0), 3),
-                "traditional_gf_raw": rounded(getattr(traditional_gf, "raw_guess_factor", None), 3),
                 "traditional_gf_selected": rounded(getattr(traditional_gf, "selected_guess_factor", None), 3),
                 "traditional_gf_source": getattr(traditional_gf, "source", None),
             }
@@ -316,9 +315,9 @@ def _traditional_gf_profile_fields(target_id: int, aim: AimSolution) -> dict[str
         "segment_guess_factor": rounded(getattr(traditional_gf, "segment_guess_factor", None), 3),
         "segment_weight": round(getattr(traditional_gf, "segment_weight", 0.0), 1),
         "blend": round(getattr(traditional_gf, "blend", 0.0), 3),
-        "raw_guess_factor": rounded(getattr(traditional_gf, "raw_guess_factor", None), 3),
         "selected_guess_factor": rounded(getattr(traditional_gf, "selected_guess_factor", None), 3),
         "source": getattr(traditional_gf, "source", None),
+        "profile_key": list(getattr(traditional_gf, "profile_key", ())),
     }
 
 
@@ -536,20 +535,23 @@ def _wave_visit_fields(visit: WaveVisit) -> dict[str, object]:
         fields["dynamic_cluster_recommended_power_scale"] = round(dynamic_recommended_power_scale, 3)
     traditional_gf = visit.gun_diagnostics.get("traditional_gf", {})
     aim_guess_factor = _diagnostic_float(traditional_gf, "aim_guess_factor")
-    raw_guess_factor = _diagnostic_float(traditional_gf, "raw_guess_factor")
     error = _diagnostic_float(traditional_gf, "error")
     abs_error = _diagnostic_float(traditional_gf, "abs_error")
     source = _diagnostic_str(traditional_gf, "source")
+    profile_key = traditional_gf.get("profile_key") if isinstance(traditional_gf, dict) else None
+    segment_weight = _diagnostic_float(traditional_gf, "segment_weight")
     if aim_guess_factor is not None:
         fields["traditional_gf_guess_factor"] = round(aim_guess_factor, 3)
-    if raw_guess_factor is not None:
-        fields["traditional_gf_raw_guess_factor"] = round(raw_guess_factor, 3)
     if error is not None:
         fields["traditional_gf_error"] = round(error, 3)
     if abs_error is not None:
         fields["traditional_gf_abs_error"] = round(abs_error, 3)
     if source is not None:
         fields["traditional_gf_source"] = source
+    if isinstance(profile_key, tuple | list):
+        fields["traditional_gf_profile_key"] = list(profile_key)
+    if segment_weight is not None:
+        fields["traditional_gf_segment_weight"] = round(segment_weight, 3)
     traditional_context_flight_time = _diagnostic_float(traditional_gf, "context_flight_time")
     traditional_context_wall_escape_balance = _diagnostic_float(traditional_gf, "context_wall_escape_balance")
     traditional_context_lateral_confidence = _diagnostic_float(traditional_gf, "context_lateral_confidence")

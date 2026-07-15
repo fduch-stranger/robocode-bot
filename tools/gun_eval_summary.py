@@ -79,6 +79,14 @@ def summarize_events(events: list[dict[str, Any]], *, post_switch_shots: int = 6
     traditional_gf_sources: Counter[str] = Counter()
     traditional_gf_values: dict[str, list[float]] = defaultdict(list)
     traditional_gf_values_by_source: dict[str, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
+    traditional_gf_track_sources: Counter[str] = Counter()
+    traditional_gf_track_values: dict[str, list[float]] = defaultdict(list)
+    traditional_gf_track_values_by_source: dict[str, dict[str, list[float]]] = defaultdict(
+        lambda: defaultdict(list)
+    )
+    traditional_gf_profile_cells: dict[str, dict[str, Any]] = defaultdict(
+        lambda: {"visits": 0, "sources": Counter(), "segment_weights": [], "abs_errors": []}
+    )
     traditional_gf_error_values: dict[str, dict[str, list[float]]] = {
         "production": defaultdict(list),
         "production_selected": defaultdict(list),
@@ -168,6 +176,10 @@ def summarize_events(events: list[dict[str, Any]], *, post_switch_shots: int = 6
             if fields.get("selected_gun") == "traditional_gf":
                 _record_traditional_gf_error(fields, traditional_gf_error_values["production_selected"])
                 _record_traditional_gf_source_error(fields, traditional_gf_error_values_by_source["production_selected"])
+            _record_traditional_gf_profile_cell(
+                fields,
+                traditional_gf_profile_cells,
+            )
         elif name == "gun.eval_wave_visit":
             _record_wave(
                 fields,
@@ -183,8 +195,12 @@ def summarize_events(events: list[dict[str, Any]], *, post_switch_shots: int = 6
                 _record_traditional_gf_error(fields, traditional_gf_error_values["eval_selected"])
                 _record_traditional_gf_source_error(fields, traditional_gf_error_values_by_source["eval_selected"])
         elif name == "track" and fields.get("traditional_gf_source"):
-            _record_traditional_gf_diagnostics(fields, traditional_gf_sources, traditional_gf_values)
-            _record_traditional_gf_source_diagnostics(fields, traditional_gf_values_by_source)
+            _record_traditional_gf_diagnostics(
+                fields,
+                traditional_gf_track_sources,
+                traditional_gf_track_values,
+            )
+            _record_traditional_gf_source_diagnostics(fields, traditional_gf_track_values_by_source)
         elif name == "gun.traditional_gf_profile" and fields.get("source"):
             _record_traditional_gf_diagnostics(fields, traditional_gf_sources, traditional_gf_values)
             _record_traditional_gf_source_diagnostics(fields, traditional_gf_values_by_source)
@@ -196,6 +212,11 @@ def summarize_events(events: list[dict[str, Any]], *, post_switch_shots: int = 6
                 switch_windows.append(window)
                 active_switch_window = len(switch_windows) - 1
 
+    diagnostic_sources = traditional_gf_sources or traditional_gf_track_sources
+    diagnostic_values = traditional_gf_values if traditional_gf_sources else traditional_gf_track_values
+    diagnostic_values_by_source = (
+        traditional_gf_values_by_source if traditional_gf_sources else traditional_gf_track_values_by_source
+    )
     return {
         "fired": dict(fired),
         "hits": dict(hits),
@@ -211,17 +232,21 @@ def summarize_events(events: list[dict[str, Any]], *, post_switch_shots: int = 6
         "wave_count": {mode: len(scores) for mode, scores in sorted(wave_scores.items())},
         "eval_count": {mode: len(scores) for mode, scores in sorted(eval_scores.items())},
         "traditional_gf_diagnostics": _traditional_gf_diagnostics_summary(
-            traditional_gf_sources,
-            traditional_gf_values,
+            diagnostic_sources,
+            diagnostic_values,
         ),
         "traditional_gf_diagnostics_by_source": _traditional_gf_source_diagnostics_summary(
-            traditional_gf_sources,
-            traditional_gf_values_by_source,
+            diagnostic_sources,
+            diagnostic_values_by_source,
         ),
         "traditional_gf_source_real": {
             "fired": dict(traditional_gf_source_fired),
             "hits": dict(traditional_gf_source_hits),
             "hit_rate": _rates(traditional_gf_source_hits, traditional_gf_source_fired),
+        },
+        "traditional_gf_profile_keys": {
+            "cells": _traditional_gf_profile_cell_summary(traditional_gf_profile_cells),
+            "unique_keys": len(traditional_gf_profile_cells),
         },
         "traditional_gf_error": _traditional_gf_error_summary(traditional_gf_error_values),
         "traditional_gf_error_by_source": _traditional_gf_error_by_source_summary(
@@ -274,7 +299,6 @@ def _record_traditional_gf_diagnostics(
         "segment_guess_factor": ("segment_guess_factor", "traditional_gf_segment"),
         "segment_weight": ("segment_weight", "traditional_gf_segment_weight"),
         "blend": ("blend", "traditional_gf_blend"),
-        "raw_guess_factor": ("raw_guess_factor", "traditional_gf_raw"),
         "selected_guess_factor": ("selected_guess_factor", "traditional_gf_selected"),
     }.items():
         value = next((_float_or_none(fields.get(field)) for field in field_names if field in fields), None)
@@ -314,6 +338,39 @@ def _record_traditional_gf_source_error(
     if source is None:
         return
     _record_traditional_gf_error(fields, values_by_source[str(source)])
+
+
+def _record_traditional_gf_profile_cell(
+    fields: dict[str, Any],
+    cells: dict[str, dict[str, Any]],
+) -> None:
+    profile_key = fields.get("traditional_gf_profile_key")
+    if not isinstance(profile_key, list):
+        return
+    key = ",".join(str(value) for value in profile_key)
+    cell = cells[key]
+    cell["visits"] += 1
+    source = fields.get("traditional_gf_source")
+    if isinstance(source, str):
+        cell["sources"][source] += 1
+    segment_weight = _float_or_none(fields.get("traditional_gf_segment_weight"))
+    if segment_weight is not None:
+        cell["segment_weights"].append(segment_weight)
+    abs_error = _float_or_none(fields.get("traditional_gf_abs_error"))
+    if abs_error is not None:
+        cell["abs_errors"].append(abs_error)
+
+
+def _traditional_gf_profile_cell_summary(cells: dict[str, dict[str, Any]]) -> dict[str, object]:
+    return {
+        key: {
+            "visits": int(cell["visits"]),
+            "source_counts": dict(cell["sources"]),
+            "avg_segment_weight": _average_values(cell["segment_weights"]),
+            "avg_abs_error": _average_values(cell["abs_errors"]),
+        }
+        for key, cell in sorted(cells.items())
+    }
 
 
 def _traditional_gf_error_summary(
@@ -509,6 +566,7 @@ def _print_summary(summary: dict[str, object]) -> None:
         "traditional_gf_diagnostics",
         "traditional_gf_diagnostics_by_source",
         "traditional_gf_source_real",
+        "traditional_gf_profile_keys",
         "traditional_gf_error",
         "traditional_gf_error_by_source",
         "calibration",

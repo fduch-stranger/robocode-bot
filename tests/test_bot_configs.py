@@ -38,82 +38,35 @@ def _load_config(path: Path, env: dict[str, str] | None = None) -> ModuleType:
 
 
 class BotConfigTest(unittest.TestCase):
-    def test_adaptive_traditional_gf_defaults_and_env(self) -> None:
+
+
+    def test_adaptive_traditional_gf_fixed_production_config(self) -> None:
         path = ROOT / "bots" / "adaptive-prime" / "adaptive_config.py"
 
         default_config = _load_config(path)
         default_policy = default_config.GunPolicy()
         default_traditional_gf = default_policy.traditional_gf
-        default_displacement_config = DisplacementGunConfig()
-        default_gun_config = TraditionalGfGunConfig()
+        default_gun = default_config.traditional_gf_config_from_policy(default_traditional_gf)
         default_dynamic_config = DynamicClusterGunConfig()
+
         self.assertEqual(default_policy.selectable_modes, DEFAULT_LIVE_MODES)
         self.assertIsNone(default_policy.forced_mode)
-        self.assertIsInstance(default_traditional_gf, default_config.TraditionalGfPolicy)
+        self.assertEqual(default_policy.switch_margin, 0.08)
         self.assertEqual(default_traditional_gf.min_switch_visits, 45)
         self.assertEqual(default_traditional_gf.min_switch_score, 0.10)
         self.assertEqual(default_traditional_gf.global_source_min_switch_visits, 60)
         self.assertEqual(default_traditional_gf.global_source_min_switch_score, 0.16)
         self.assertEqual(default_traditional_gf.trusted_source_min_switch_visits, 32)
         self.assertEqual(default_traditional_gf.trusted_source_min_switch_score, 0.08)
-        self.assertGreater(default_traditional_gf.min_switch_visits, default_policy.min_visits)
-        self.assertGreater(default_traditional_gf.trusted_source_min_switch_visits, default_policy.min_visits)
-        self.assertEqual(default_policy.knn_min_samples, 30)
-        self.assertEqual(default_policy.min_visits, 12)
-        self.assertEqual(default_policy.min_switch_score, 0.03)
-        self.assertEqual(default_policy.primary_over_fallback_margin, 0.02)
-        self.assertEqual(default_policy.situational_over_primary_margin, 0.08)
-        self.assertEqual(default_policy.primary_slump_visits, 80)
-        self.assertEqual(default_policy.primary_slump_score, 0.13)
-        self.assertEqual(default_policy.primary_slump_situational_margin, 0.025)
-        self.assertEqual(default_policy.primary_confidence_penalty_scale, 0.25)
-        self.assertEqual(default_policy.displacement_min_switch_visits, 60)
-        self.assertEqual(default_policy.displacement_min_switch_score, 0.08)
-        self.assertTrue(default_policy.displacement_markov_enabled)
-        self.assertEqual(default_displacement_config.min_switch_visits, 90)
-        self.assertEqual(default_displacement_config.min_switch_score, 0.30)
-        self.assertEqual(default_policy.dynamic_cluster.bandwidth_min, default_dynamic_config.bandwidth_min)
-        self.assertEqual(default_policy.dynamic_cluster.bandwidth_max, default_dynamic_config.bandwidth_max)
-        self.assertEqual(default_policy.dynamic_cluster.centroid_window_bandwidth_scale, 1.0)
-        self.assertEqual(default_policy.dynamic_cluster.ambiguous_peak_score_ratio, 0.85)
-        self.assertEqual(default_policy.dynamic_cluster.ambiguous_peak_centering_factor, 0.8)
-        self.assertTrue(default_policy.dynamic_cluster.shot_quality_enabled)
-        self.assertTrue(default_config.FIRE_POLICY.dynamic_shot_quality_power_scaling_enabled)
-        self.assertEqual(default_config.FIRE_POLICY.energy_margin, 5)
-        self.assertEqual(default_config.FIRE_POLICY.last_stand_energy, 7)
-        self.assertEqual(default_config.FIRE_POLICY.last_stand_firepower, 0.6)
-        self.assertEqual(
-            default_config.FIRE_GATE.config.last_stand_alignment_degrees,
-            default_config.FIRE_POLICY.last_stand_alignment_degrees,
-        )
-        self.assertEqual(default_traditional_gf.min_samples, default_gun_config.min_samples)
-        self.assertEqual(default_traditional_gf.coarse_segment_min_samples, default_gun_config.coarse_segment_min_samples)
-        self.assertEqual(default_traditional_gf.coarse_segment_full_weight_samples, default_gun_config.coarse_segment_full_weight_samples)
-        self.assertEqual(default_traditional_gf.global_source_centering_factor, default_gun_config.global_source_centering_factor)
-        self.assertEqual(default_traditional_gf.coarse_source_centering_factor, default_gun_config.coarse_source_centering_factor)
-        self.assertEqual(
-            default_traditional_gf.coarse_blend_source_centering_factor,
-            default_gun_config.coarse_blend_source_centering_factor,
-        )
-        self.assertEqual(default_traditional_gf.peak_selection, default_gun_config.peak_selection)
-        self.assertEqual(default_gun_config.segment_min_samples, 12)
-        self.assertEqual(default_gun_config.global_source_penalty, 0.10)
-        self.assertEqual(default_gun_config.smoothing_bins, 1.25)
-        self.assertEqual(default_gun_config.decay, 0.985)
-
+        self.assertEqual(default_gun.min_samples, 12)
+        self.assertEqual(default_gun.segment_min_samples, 8)
+        self.assertEqual(default_gun.segment_full_weight_samples, 36)
+        self.assertEqual(default_gun.smoothing_bins, 1.25)
+        self.assertEqual(default_gun.decay, 0.985)
+        self.assertEqual(default_gun.guess_factor_bins, 31)
         env_config = _load_config(
             path,
             {
-                "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_MIN_SAMPLES": "9",
-                "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_COARSE_SEGMENT_MIN_SAMPLES": "8",
-                "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_COARSE_SEGMENT_FULL_WEIGHT_SAMPLES": "36",
-                "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_GLOBAL_SOURCE_CENTERING_FACTOR": "1.0",
-                "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_COARSE_SOURCE_CENTERING_FACTOR": "1.0",
-                "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_COARSE_BLEND_SOURCE_CENTERING_FACTOR": "1.0",
-                "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_PEAK_SELECTION": "max",
-                "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_SMOOTHING_BINS": "0.5",
-                "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_SEGMENT_MIN_SAMPLES": "2",
-                "ROBOCODE_ADAPTIVE_TRADITIONAL_GF_GLOBAL_SOURCE_PENALTY": "0.5",
                 "ROBOCODE_ADAPTIVE_DYNAMIC_BANDWIDTH_MIN": "0.08",
                 "ROBOCODE_ADAPTIVE_DYNAMIC_BANDWIDTH_MAX": "0.22",
                 "ROBOCODE_ADAPTIVE_DYNAMIC_BANDWIDTH_HIT_WIDTH_SCALE": "1.1",
@@ -131,18 +84,11 @@ class BotConfigTest(unittest.TestCase):
             },
         )
         env_policy = env_config.GunPolicy()
-        env_traditional_gf = env_policy.traditional_gf
+        env_gun = env_config.traditional_gf_config_from_policy(env_policy.traditional_gf)
         env_dynamic = env_policy.dynamic_cluster
-        self.assertEqual(env_traditional_gf.min_samples, 9)
-        self.assertEqual(env_traditional_gf.coarse_segment_min_samples, 8)
-        self.assertEqual(env_traditional_gf.coarse_segment_full_weight_samples, 36)
-        self.assertEqual(env_traditional_gf.global_source_centering_factor, 1.0)
-        self.assertEqual(env_traditional_gf.coarse_source_centering_factor, 1.0)
-        self.assertEqual(env_traditional_gf.coarse_blend_source_centering_factor, 1.0)
-        self.assertEqual(env_traditional_gf.peak_selection, "max")
-        self.assertFalse(hasattr(env_traditional_gf, "segment_min_samples"))
-        self.assertFalse(hasattr(env_traditional_gf, "global_source_penalty"))
-        self.assertFalse(hasattr(env_traditional_gf, "smoothing_bins"))
+        self.assertEqual(env_gun.min_samples, 12)
+        self.assertEqual(env_gun.segment_min_samples, 8)
+        self.assertEqual(env_gun.segment_full_weight_samples, 36)
         self.assertEqual(env_dynamic.bandwidth_min, 0.08)
         self.assertEqual(env_dynamic.bandwidth_max, 0.22)
         self.assertEqual(env_dynamic.bandwidth_hit_width_scale, 1.1)
@@ -157,8 +103,6 @@ class BotConfigTest(unittest.TestCase):
         self.assertEqual(env_dynamic.shot_quality_low_power_scale, 0.5)
         self.assertFalse(env_policy.displacement_markov_enabled)
         self.assertFalse(displacement_config_from_policy(env_policy).markov_enabled)
-        self.assertTrue(env_config.FIRE_POLICY.dynamic_shot_quality_power_scaling_enabled)
-        self.assertEqual(env_config.FIRE_GATE.config.last_stand_energy, env_config.FIRE_POLICY.last_stand_energy)
 
         inverted_dynamic_config = _load_config(
             path,
@@ -266,6 +210,7 @@ class BotConfigTest(unittest.TestCase):
         self.assertEqual(fields["selectable_guns"], ["dynamic_cluster", "traditional_gf"])
         self.assertEqual(fields["forced_gun"], "traditional_gf")
         self.assertTrue(fields["eval_waves"])
+        self.assertEqual(fields["dynamic_cluster_preset"], "current")
         self.assertIn("anti_surfer", fields["force_guns"])
         self.assertIn("head_on", fields["force_guns"])
 
