@@ -26,7 +26,10 @@ apply mode policy without importing this package.
 
 Global profile aiming is the fallback. A segment begins blending after eight
 effective visits and reaches full weight at 36. Both profiles use 31 bins,
-maximum-bin selection, smoothing `1.25`, and decay `0.985`.
+maximum-bin selection, smoothing `1.25`, and decay `0.985`. Training retains
+the full `[-1, 1]` escape range, but the selected firing guess factor is bounded
+to `[-0.87, 0.87]` so a single extreme profile bin cannot produce the observed
+low-conversion tail shots.
 
 Bots may optionally configure source-aware selector gates. When enabled,
 global, blended, and trusted segment sources can report different

@@ -74,6 +74,7 @@ class GunSelectorConfig:
     selectable_modes: frozenset[str] = frozenset({"linear", "traditional_gf", "dynamic_cluster", "displacement"})
     switch_margin: float = 0.08
     primary_over_fallback_margin: float = 0.0
+    fallback_over_primary_margin: float = 0.0
     situational_over_primary_margin: float = 0.0
     primary_slump_visits: int = 0
     primary_slump_score: float = 0.0

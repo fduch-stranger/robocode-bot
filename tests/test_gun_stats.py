@@ -157,6 +157,7 @@ class GunStatsTest(unittest.TestCase):
             forced_mode="traditional_gf",
             switch_margin=0.04,
             primary_over_fallback_margin=0.01,
+            fallback_over_primary_margin=0.12,
             situational_over_primary_margin=0.07,
             primary_slump_visits=42,
             primary_slump_score=0.11,
@@ -181,6 +182,7 @@ class GunStatsTest(unittest.TestCase):
         self.assertEqual(policy.selectable_modes, config.selectable_modes)
         self.assertEqual(policy.forced_mode, config.forced_mode)
         self.assertAlmostEqual(policy.switch_margin, config.switch_margin)
+        self.assertAlmostEqual(policy.fallback_over_primary_margin, config.fallback_over_primary_margin)
         self.assertAlmostEqual(policy.primary_role_bonus, config.primary_role_bonus)
         self.assertAlmostEqual(policy.fallback_role_penalty, config.fallback_role_penalty)
         self.assertAlmostEqual(policy.experimental_role_penalty, config.experimental_role_penalty)
@@ -946,6 +948,53 @@ class GunStatsTest(unittest.TestCase):
         self.assertEqual("selected", by_mode["dynamic_cluster"].reason)
         self.assertAlmostEqual(0.02, by_mode["dynamic_cluster"].margin)
         self.assertAlmostEqual(0.0225, by_mode["dynamic_cluster"].confidence_penalty)
+
+    def test_aim_mode_selector_requires_extra_margin_for_fallback_over_primary(self) -> None:
+        config = runtime_config(
+            selector=GunSelectorConfig(
+                selectable_modes=frozenset({"linear", "dynamic_cluster"}),
+                switch_margin=0.08,
+                fallback_over_primary_margin=0.18,
+            ),
+            min_visits=1,
+            min_switch_score=0.03,
+            dynamic_cluster=DynamicClusterGunConfig(min_switch_visits=1, min_switch_score=0.03),
+        )
+        stats = {
+            (1, "linear"): GunStats(visits=136, hits=20, rolling_score=0.40),
+            (1, "dynamic_cluster"): GunStats(visits=106, hits=16, rolling_score=0.05),
+        }
+        scorer = VirtualGunScorer(scoring_config(config), stats, {})
+        selector = make_selector(config, scorer, {1: "dynamic_cluster"}, stats)
+
+        selected, _, changed, candidates = selector.select_with_diagnostics(
+            1,
+            {"linear": 0.0, "dynamic_cluster": 0.5},
+            None,
+        )
+
+        by_mode = {candidate.mode: candidate for candidate in candidates}
+        self.assertEqual("dynamic_cluster", selected)
+        self.assertFalse(changed)
+        self.assertEqual("margin", by_mode["linear"].reason)
+        self.assertAlmostEqual(0.18, by_mode["linear"].margin)
+        score_advantage = by_mode["linear"].score - by_mode["linear"].current_score
+        self.assertGreater(score_advantage, 0.08)
+        self.assertLess(score_advantage, 0.18)
+
+        stats[(1, "linear")].rolling_score = 0.50
+        selector = make_selector(config, scorer, {1: "dynamic_cluster"}, stats)
+        selected, _, changed, candidates = selector.select_with_diagnostics(
+            1,
+            {"linear": 0.0, "dynamic_cluster": 0.5},
+            None,
+        )
+
+        by_mode = {candidate.mode: candidate for candidate in candidates}
+        self.assertEqual("linear", selected)
+        self.assertTrue(changed)
+        self.assertEqual("selected", by_mode["linear"].reason)
+        self.assertGreater(by_mode["linear"].score - by_mode["linear"].current_score, 0.18)
 
     def test_aim_mode_selector_requires_extra_margin_for_situational_over_primary(self) -> None:
         config = runtime_config(
@@ -2251,6 +2300,28 @@ class GunStatsTest(unittest.TestCase):
 
         self.assertGreater(gun.guess_factor(1, left_segment), 0.0)
         self.assertLess(gun.guess_factor(1, right_segment), 0.0)
+
+    def test_traditional_guess_factor_limits_extreme_aim_tail(self) -> None:
+        gun = TraditionalGfGun(
+            TraditionalGfGunConfig(
+                min_samples=1,
+                segment_min_samples=0,
+                max_aim_guess_factor=0.87,
+            )
+        )
+        gun.record(1, 1.0)
+        gun.record(2, -1.0)
+
+        positive = gun.diagnostics(1)
+        negative = gun.diagnostics(2)
+        self.assertIsNotNone(positive)
+        self.assertIsNotNone(negative)
+        assert positive is not None
+        assert negative is not None
+        self.assertAlmostEqual(1.0, positive.global_guess_factor)
+        self.assertAlmostEqual(0.87, positive.selected_guess_factor)
+        self.assertAlmostEqual(-1.0, negative.global_guess_factor)
+        self.assertAlmostEqual(-0.87, negative.selected_guess_factor)
 
     def test_traditional_guess_factor_reports_segment_diagnostics(self) -> None:
         gun = TraditionalGfGun(

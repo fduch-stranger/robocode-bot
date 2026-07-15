@@ -61,10 +61,12 @@ Force-testable modes also include `head_on`, `linear_wall_aware`, and
 `anti_surfer`.
 
 Selection is sticky. A candidate must be available, meet visit and score floors,
-and beat the current mode by the configured margin. `GunModeTraits` and generic
-decision context keep selector logic role-aware without hard-coding concrete
-gun classes. `gun.switch_decision` is the main telemetry event for explaining
-selected, blocked, unavailable, or superseded candidates.
+and beat the current mode by the configured margin. Role-specific margins can
+make primary warm-up easier while requiring stronger evidence before a fallback
+replaces an active primary. `GunModeTraits` and generic decision context keep
+selector logic role-aware without hard-coding concrete gun classes.
+`gun.switch_decision` is the main telemetry event for explaining selected,
+blocked, unavailable, or superseded candidates.
 
 When shot policy changes firepower after selection, `VirtualGunSystem` can
 re-aim the already selected mode without invoking or mutating the selector a

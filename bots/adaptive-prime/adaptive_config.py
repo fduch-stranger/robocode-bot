@@ -75,6 +75,7 @@ class GunPolicy:
     min_visits: int = SHARED_GUN_POLICY_DEFAULTS.min_visits
     switch_margin: float = 0.08
     primary_over_fallback_margin: float = SHARED_GUN_POLICY_DEFAULTS.primary_over_fallback_margin
+    fallback_over_primary_margin: float = 0.18
     situational_over_primary_margin: float = SHARED_GUN_POLICY_DEFAULTS.situational_over_primary_margin
     primary_slump_visits: int = SHARED_GUN_POLICY_DEFAULTS.primary_slump_visits
     primary_slump_score: float = SHARED_GUN_POLICY_DEFAULTS.primary_slump_score

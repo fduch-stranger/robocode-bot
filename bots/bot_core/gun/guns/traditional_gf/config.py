@@ -11,6 +11,7 @@ class TraditionalGfGunConfig:
     segment_min_samples: int = 8
     segment_full_weight_samples: int = 36
     guess_factor_bins: int = 31
+    max_aim_guess_factor: float = 0.87
     min_switch_visits: int = 260
     min_switch_score: float = 0.42
     global_source_min_switch_visits: int | None = None

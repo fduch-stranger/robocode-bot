@@ -77,6 +77,7 @@ Adaptive keeps bot-specific selector gates around the shared selector:
 
 - KNN can warm up earlier than in shared defaults.
 - Gun changes require a `0.08` score margin to limit context-driven oscillation.
+- A fallback needs a `0.18` score margin to replace an active primary gun.
 - Trusted Traditional GF segment sources can challenge early.
 - Global or weak blended Traditional GF sources are penalized more heavily.
 - Situational guns need context/source evidence or a KNN slump to displace KNN.
@@ -90,7 +91,8 @@ effective visits and reaches full segment weight at 36 visits. The model uses
 configuration beat the former global-only control in all three 24-round Python
 BasicGFSurfer repeats (`11.93%` versus `10.39%` hit rate). Superseded
 Traditional-GF presets and tuning environment variables are intentionally not
-supported.
+supported. Profile learning still records the full escape range, while firing
+is bounded to `|GF| <= 0.87` to exclude the unproductive extreme tail.
 
 For isolated gun testing:
 

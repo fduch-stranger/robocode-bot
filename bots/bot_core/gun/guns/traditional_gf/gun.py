@@ -153,7 +153,7 @@ class TraditionalGfGun:
             return TraditionalGfDiagnostics(
                 global_guess_factor=global_guess_factor,
                 global_weight=profile.effective_weight,
-                selected_guess_factor=global_guess_factor,
+                selected_guess_factor=self._bounded_aim_guess_factor(global_guess_factor),
                 source="global",
                 profile_key=segment_key or (),
             )
@@ -167,7 +167,7 @@ class TraditionalGfGun:
                 global_guess_factor=global_guess_factor,
                 global_weight=profile.effective_weight,
                 segment_weight=segment_profile.effective_weight if segment_profile is not None else 0.0,
-                selected_guess_factor=global_guess_factor,
+                selected_guess_factor=self._bounded_aim_guess_factor(global_guess_factor),
                 source="global",
                 profile_key=segment_key,
             )
@@ -187,7 +187,7 @@ class TraditionalGfGun:
             segment_guess_factor=segment_guess_factor,
             segment_weight=segment_profile.effective_weight,
             blend=blend,
-            selected_guess_factor=blended_guess_factor,
+            selected_guess_factor=self._bounded_aim_guess_factor(blended_guess_factor),
             source=source,
             profile_key=segment_key,
         )
@@ -195,6 +195,10 @@ class TraditionalGfGun:
     def profile_guess_factor(self, profile: GuessFactorProfile) -> float:
         best_index = max(range(len(profile.bins)), key=lambda index: profile.bins[index])
         return bin_to_guess_factor(best_index, self.config.guess_factor_bins)
+
+    def _bounded_aim_guess_factor(self, guess_factor: float) -> float:
+        limit = clamp(self.config.max_aim_guess_factor, 0.0, 1.0)
+        return clamp(guess_factor, -limit, limit)
 
     def blended_profile_guess_factor(
         self,

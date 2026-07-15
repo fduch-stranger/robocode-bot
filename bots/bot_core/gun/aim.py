@@ -370,6 +370,12 @@ class AimModeSelector:
             and self.config.primary_over_fallback_margin > 0
         ):
             return min(margin, self.config.primary_over_fallback_margin)
+        if (
+            current_role == "primary"
+            and candidate_role == "fallback"
+            and self.config.fallback_over_primary_margin > 0
+        ):
+            return max(margin, self.config.fallback_over_primary_margin)
         if current_role == "primary" and candidate_role == "situational" and self.config.situational_over_primary_margin > 0:
             if self._primary_slump_allows_situational(target_id, current, candidate, segment_key, decision_contexts):
                 return min(
