@@ -71,7 +71,6 @@ Useful knobs:
 
 ```sh
 ROBOCODE_CIRCLE_GUN_SET=linear,dynamic_cluster,traditional_gf,displacement
-ROBOCODE_CIRCLE_DISPLACEMENT_MARKOV=0
 ROBOCODE_CIRCLE_GUN_EVAL=1
 ROBOCODE_CIRCLE_GUN_EVAL_INTERVAL=1
 ```

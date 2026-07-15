@@ -13,19 +13,15 @@ rather than owning a private learner.
 
 - `gun.py`: `DisplacementGun`, the concrete `GunComponent`.
 - `config.py`: `DisplacementGunConfig`, including sample count and selector
-  policy thresholds. `markov_enabled` defaults to `True` and can be disabled
-  by bot wiring for density-only validation runs.
+  policy thresholds.
 
 ## Runtime Behavior
 
 `DisplacementGun` reads `TargetHistoryStore` from the runtime context. For a
 target, it ranks historical start snapshots by similarity to the current enemy
 state: speed, observed lateral speed, observed advancing speed, observed wall
-margin, observed flight-time bucket, and recent heading-change bucket. Absolute
-heading difference is a small tie-breaker because replay steps are rotated into
-the current heading frame. A small order-2 symbolic Markov model adds soft
-weighting for candidates whose recent movement rhythm matches the current
-target rhythm.
+margin, and recent heading change. Absolute heading difference is a small
+tie-breaker because replay steps are rotated into the current heading frame.
 
 For each usable candidate, the gun replays subsequent historical movement from
 the current enemy position until bullet travel catches the replayed position.
@@ -48,8 +44,7 @@ flowchart TD
     B --> C{"enough target history?"}
     C -- "no" --> D["return unavailable"]
     C -- "yes" --> E["rank similar historical starts"]
-    E --> F["apply soft Markov replay weights"]
-    F --> G["replay following movement from current position"]
+    E --> G["replay following movement from current position"]
     G --> H{"enough usable replays?"}
     H -- "no" --> D
     H -- "yes" --> I["choose density-best bearing cluster"]
@@ -62,13 +57,20 @@ Displacement has no private hit learner. It is scored by the shared virtual-gun
 wave scorer and appears in `gun.wave_visit`, `gun.switch_decision`, and
 `aim_mode` when selected. Its `GunBearing.metadata` and wave diagnostics expose
 replay quality signals such as replay count, best candidate score, peak density,
-peak share, bearing spread, distance bucket, Markov order, Markov match count,
-Markov confidence, Markov entropy, and best next movement symbol.
+peak share, bearing spread, and distance bucket.
 
 ## Validation Notes
 
-The July 2026 forced BasicGFSurfer check kept Markov weighting enabled by
-default. A same-size density-only run (`markov_enabled=False`) had similar
-filtered displacement hit rate but worse raw and filtered score/first-place
-results, so Markov remains a soft default-on ranking signal rather than a
-separate gun mode.
+The July 2026 forced check against the Python BasicGFSurfer port compared two
+independent 12-round Markov-on/off pairs. Across 24 rounds per configuration,
+density-only replay improved Adaptive Prime score from 1699 to 1856, PIF hit
+rate from 12.0% to 12.7%, and PIF damage per shot from 0.618 to 0.675. Markov
+weighting and its experiment surface were removed because their earlier
+validation used the converted legacy surfer and did not hold against the port.
+
+A follow-up test isolated the discrete coarse-match bonus that duplicated the
+continuous candidate-distance inputs. Across two more independent 12-round
+pairs, removing it improved score from 1857 to 1994, PIF hit rate from 11.8% to
+12.5%, and PIF damage per shot from 0.680 to 0.720. The bonus and its now-unused
+bucket helpers were removed; continuous similarity and heading-change distance
+remain.

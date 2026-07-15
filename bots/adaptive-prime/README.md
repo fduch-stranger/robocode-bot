@@ -106,7 +106,6 @@ Useful experiment knobs:
 
 ```sh
 ROBOCODE_ADAPTIVE_GUN_SET=linear,dynamic_cluster,traditional_gf,displacement
-ROBOCODE_ADAPTIVE_DISPLACEMENT_MARKOV=0
 ROBOCODE_ADAPTIVE_GUN_EVAL=1
 ROBOCODE_ADAPTIVE_GUN_EVAL_INTERVAL=1
 ```

@@ -584,11 +584,6 @@ def _wave_visit_fields(visit: WaveVisit) -> dict[str, object]:
     displacement_peak_share = _diagnostic_float(displacement, "displacement_peak_share")
     displacement_bearing_spread = _diagnostic_float(displacement, "displacement_bearing_spread")
     displacement_distance_bucket = _diagnostic_int(displacement, "displacement_distance_bucket")
-    displacement_markov_order = _diagnostic_int(displacement, "displacement_markov_order")
-    displacement_markov_match_count = _diagnostic_int(displacement, "displacement_markov_match_count")
-    displacement_markov_confidence = _diagnostic_float(displacement, "displacement_markov_confidence")
-    displacement_markov_entropy = _diagnostic_float(displacement, "displacement_markov_entropy")
-    displacement_markov_best_next_symbol = _diagnostic_str(displacement, "displacement_markov_best_next_symbol")
     if displacement_flight_time is not None:
         fields["displacement_context_flight_time"] = round(displacement_flight_time, 2)
     if displacement_wall_escape_balance is not None:
@@ -607,16 +602,6 @@ def _wave_visit_fields(visit: WaveVisit) -> dict[str, object]:
         fields["displacement_bearing_spread"] = round(displacement_bearing_spread, 3)
     if displacement_distance_bucket is not None:
         fields["displacement_distance_bucket"] = displacement_distance_bucket
-    if displacement_markov_order is not None:
-        fields["displacement_markov_order"] = displacement_markov_order
-    if displacement_markov_match_count is not None:
-        fields["displacement_markov_match_count"] = displacement_markov_match_count
-    if displacement_markov_confidence is not None:
-        fields["displacement_markov_confidence"] = round(displacement_markov_confidence, 3)
-    if displacement_markov_entropy is not None:
-        fields["displacement_markov_entropy"] = round(displacement_markov_entropy, 3)
-    if displacement_markov_best_next_symbol is not None:
-        fields["displacement_markov_best_next_symbol"] = displacement_markov_best_next_symbol
     linear = visit.gun_diagnostics.get("linear", {})
     if not linear:
         linear = visit.gun_diagnostics.get("linear_wall_aware", {})

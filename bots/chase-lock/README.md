@@ -74,7 +74,6 @@ Useful knobs:
 
 ```sh
 ROBOCODE_CHASE_GUN_SET=linear,dynamic_cluster,traditional_gf,displacement
-ROBOCODE_CHASE_DISPLACEMENT_MARKOV=0
 ROBOCODE_CHASE_GUN_EVAL=1
 ROBOCODE_CHASE_GUN_EVAL_INTERVAL=1
 ```

@@ -39,7 +39,6 @@ class SharedGunPolicyDefaults:
     traditional_gf_min_switch_score: float = 0.10
     displacement_min_switch_visits: int = 60
     displacement_min_switch_score: float = 0.08
-    displacement_markov_enabled: bool = True
 
 
 SHARED_GUN_POLICY_DEFAULTS = SharedGunPolicyDefaults()
@@ -391,10 +390,5 @@ def displacement_config_from_policy(policy: object) -> DisplacementGunConfig:
             policy,
             "displacement_min_switch_score",
             defaults.displacement_min_switch_score,
-        ),
-        markov_enabled=getattr(
-            policy,
-            "displacement_markov_enabled",
-            defaults.displacement_markov_enabled,
         ),
     )

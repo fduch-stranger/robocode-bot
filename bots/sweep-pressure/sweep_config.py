@@ -62,7 +62,6 @@ class GunPolicy:
     traditional_gf_min_switch_score: float = SHARED_GUN_POLICY_DEFAULTS.traditional_gf_min_switch_score
     displacement_min_switch_visits: int = SHARED_GUN_POLICY_DEFAULTS.displacement_min_switch_visits
     displacement_min_switch_score: float = SHARED_GUN_POLICY_DEFAULTS.displacement_min_switch_score
-    displacement_markov_enabled: bool = _env_flag("ROBOCODE_SWEEP_DISPLACEMENT_MARKOV", True)
     switch_diagnostics_interval: int = 24
     dynamic_cluster: DynamicClusterPolicy = SWEEP_DYNAMIC_CLUSTER_POLICY
 

@@ -1,5 +1,4 @@
 import math
-from collections import Counter
 from dataclasses import dataclass
 
 from bot_core.geometry.angles import absolute_bearing_between, relative_bearing
@@ -12,20 +11,6 @@ from bot_core.physics import bullet_speed_for_power
 
 
 _DENSITY_WINDOW_DEGREES = 8.0
-_MARKOV_ORDER = 2
-_MARKOV_MIN_OBSERVATIONS = 3
-_MARKOV_TARGET_OBSERVATIONS = 8
-
-
-@dataclass(frozen=True)
-class _MarkovSignal:
-    weight: float = 1.0
-    confidence: float = 0.0
-    entropy: float = 0.0
-    match_count: int = 0
-    observations: int = 0
-    next_symbol: str = ""
-    best_next_symbol: str = ""
 
 
 @dataclass(frozen=True)
@@ -34,7 +19,6 @@ class _ReplayBearing:
     offset: float
     candidate_score: float
     candidate_weight: float
-    markov: _MarkovSignal
 
 
 @dataclass(frozen=True)
@@ -44,7 +28,6 @@ class _DensitySelection:
     peak_density: float
     peak_share: float
     bearing_spread: float
-    markov: _MarkovSignal
 
 
 class DisplacementGun:
@@ -134,13 +117,11 @@ class DisplacementGun:
             observed_wall_margin=context.fire_context.wall_margin,
             observed_distance=distance,
         )
-        symbols, transitions = self._markov_model(context, history) if self.config.markov_enabled else ([], {})
-        current_state = self._current_markov_state(context, current, history, symbols) if symbols else None
-        candidates = self._ranked_candidates(context, current, history, symbols, transitions, current_state)
+        candidates = self._ranked_candidates(context, current, history)
         replay_limit = max(self.config.min_samples * 4, 12)
         replay_bearings: list[_ReplayBearing] = []
         for ranked in candidates:
-            _rank_score, index, candidate_score, candidate_weight, markov = ranked
+            _rank_score, index, candidate_score, candidate_weight = ranked
             endpoint = self._replay_from_candidate(
                 context,
                 history,
@@ -162,7 +143,6 @@ class DisplacementGun:
                     offset=relative_bearing(bearing, head_on_bearing),
                     candidate_score=candidate_score,
                     candidate_weight=candidate_weight,
-                    markov=markov,
                 )
             )
             if len(replay_bearings) >= replay_limit:
@@ -180,19 +160,14 @@ class DisplacementGun:
         context: AimContext,
         current: TargetPosition,
         history: list[TargetPosition],
-        symbols: list[str],
-        transitions: dict[tuple[str, ...], Counter[str]],
-        current_state: tuple[str, ...] | None,
-    ) -> list[tuple[float, int, float, float, _MarkovSignal]]:
-        ranked: list[tuple[float, int, float, float, _MarkovSignal]] = []
+    ) -> list[tuple[float, int, float, float]]:
+        ranked: list[tuple[float, int, float, float]] = []
         for index, _past in enumerate(history[:-1]):
             if index + 1 >= len(history):
                 continue
             candidate_score = self._candidate_score_for_index(context, current, history, index)
-            markov = self._markov_signal(symbols, transitions, current_state, index)
-            candidate_weight = (1.0 / (1.0 + max(candidate_score, 0.0))) * markov.weight
-            rank_score = candidate_score / max(markov.weight, 0.25)
-            ranked.append((rank_score, index, candidate_score, candidate_weight, markov))
+            candidate_weight = 1.0 / (1.0 + max(candidate_score, 0.0))
+            ranked.append((candidate_score, index, candidate_score, candidate_weight))
         return sorted(ranked, key=lambda candidate: candidate[0])
 
     def _candidate_score_for_index(
@@ -205,7 +180,6 @@ class DisplacementGun:
         past = history[index]
         score = self._candidate_score(context, current, past)
         score += self._heading_change_distance(history, index) * 0.55
-        score -= self._coarse_match_bonus(context, current, history, index)
         return max(0.0, score)
 
     def _candidate_score(self, context: AimContext, current: TargetPosition, past: TargetPosition) -> float:
@@ -219,29 +193,6 @@ class DisplacementGun:
             + abs((past_advancing / 8.0) - current_advancing) * 0.8
             + abs(past_wall_margin - current_wall_margin) * 0.7
         )
-
-    def _coarse_match_bonus(
-        self,
-        context: AimContext,
-        current: TargetPosition,
-        history: list[TargetPosition],
-        index: int,
-    ) -> float:
-        past = history[index]
-        current_lateral, current_advancing = self._candidate_velocity_components(context, current)
-        past_lateral, past_advancing = self._candidate_velocity_components(context, past)
-        bonus = 0.0
-        if self._lateral_bucket(current_lateral) == self._lateral_bucket(past_lateral):
-            bonus += 0.22
-        if self._advancing_bucket(current_advancing) == self._advancing_bucket(past_advancing):
-            bonus += 0.12
-        if self._wall_bucket(context.fire_context.wall_margin) == self._wall_bucket(self._candidate_wall_margin(context, past)):
-            bonus += 0.10
-        if self._heading_change_bucket(history, len(history) - 1) == self._heading_change_bucket(history, index):
-            bonus += 0.12
-        if self._flight_time_bucket(context, current) == self._flight_time_bucket(context, past):
-            bonus += 0.08
-        return bonus
 
     def _heading_change_distance(self, history: list[TargetPosition], index: int) -> float:
         current_change = self._heading_change_at(history, len(history) - 1)
@@ -287,7 +238,6 @@ class DisplacementGun:
             peak_density=densities[best_index],
             peak_share=densities[best_index] / total_weight if total_weight > 0.0 else 0.0,
             bearing_spread=self._bearing_spread(replays),
-            markov=peak.markov,
         )
 
     @staticmethod
@@ -305,7 +255,6 @@ class DisplacementGun:
         replays: list[_ReplayBearing],
         selection: _DensitySelection,
     ) -> dict[str, object]:
-        markov = selection.markov
         return {
             "displacement_replay_count": len(replays),
             "displacement_candidate_score": selection.candidate_score,
@@ -313,145 +262,7 @@ class DisplacementGun:
             "displacement_peak_share": selection.peak_share,
             "displacement_bearing_spread": selection.bearing_spread,
             "displacement_distance_bucket": context.fire_context.distance_bucket,
-            "displacement_markov_order": _MARKOV_ORDER if self.config.markov_enabled else 0,
-            "displacement_markov_match_count": markov.match_count,
-            "displacement_markov_confidence": markov.confidence,
-            "displacement_markov_entropy": markov.entropy,
-            "displacement_markov_best_next_symbol": markov.best_next_symbol,
         }
-
-    def _markov_model(
-        self,
-        context: AimContext,
-        history: list[TargetPosition],
-    ) -> tuple[list[str], dict[tuple[str, ...], Counter[str]]]:
-        symbols = [self._movement_symbol(context, history, index) for index in range(len(history))]
-        transitions: dict[tuple[str, ...], Counter[str]] = {}
-        for index in range(_MARKOV_ORDER, len(symbols)):
-            state = tuple(symbols[index - _MARKOV_ORDER : index])
-            transitions.setdefault(state, Counter())[symbols[index]] += 1
-        return symbols, transitions
-
-    def _current_markov_state(
-        self,
-        context: AimContext,
-        current: TargetPosition,
-        history: list[TargetPosition],
-        symbols: list[str],
-    ) -> tuple[str, ...] | None:
-        if len(symbols) >= _MARKOV_ORDER and history[-1].turn == current.turn:
-            return tuple(symbols[-_MARKOV_ORDER:])
-        current_symbol = self._symbol_from_position(context, current, history[-1] if history else None)
-        recent = [*symbols[-(_MARKOV_ORDER - 1) :], current_symbol]
-        return tuple(recent) if len(recent) == _MARKOV_ORDER else None
-
-    def _markov_signal(
-        self,
-        symbols: list[str],
-        transitions: dict[tuple[str, ...], Counter[str]],
-        current_state: tuple[str, ...] | None,
-        index: int,
-    ) -> _MarkovSignal:
-        if current_state is None or index + 1 >= len(symbols) or index < _MARKOV_ORDER - 1:
-            return _MarkovSignal()
-        candidate_state = tuple(symbols[index - _MARKOV_ORDER + 1 : index + 1])
-        next_symbol = symbols[index + 1]
-        match_count = sum(1 for current, candidate in zip(current_state, candidate_state) if current == candidate)
-        sequence_weight = 1.0 + 0.18 * match_count
-        counts = transitions.get(current_state)
-        if not counts:
-            return _MarkovSignal(weight=sequence_weight, match_count=match_count, next_symbol=next_symbol)
-        observations = sum(counts.values())
-        probability = counts.get(next_symbol, 0) / observations
-        best_next_symbol, best_count = counts.most_common(1)[0]
-        entropy = self._normalized_entropy(counts)
-        confidence = max(0.0, 1.0 - entropy) * min(1.0, observations / _MARKOV_TARGET_OBSERVATIONS)
-        probability_weight = 1.0
-        if observations >= _MARKOV_MIN_OBSERVATIONS:
-            probability_weight += confidence * probability
-        return _MarkovSignal(
-            weight=sequence_weight * probability_weight,
-            confidence=confidence,
-            entropy=entropy,
-            match_count=match_count,
-            observations=observations,
-            next_symbol=next_symbol,
-            best_next_symbol=best_next_symbol if best_count > 0 else "",
-        )
-
-    @staticmethod
-    def _normalized_entropy(counts: Counter[str]) -> float:
-        total = sum(counts.values())
-        if total <= 0 or len(counts) <= 1:
-            return 0.0
-        entropy = 0.0
-        for count in counts.values():
-            probability = count / total
-            entropy -= probability * math.log2(probability)
-        return entropy / math.log2(len(counts))
-
-    def _movement_symbol(self, context: AimContext, history: list[TargetPosition], index: int) -> str:
-        previous = history[index - 1] if index > 0 else None
-        return self._symbol_from_position(context, history[index], previous)
-
-    def _symbol_from_position(
-        self,
-        context: AimContext,
-        position: TargetPosition,
-        previous: TargetPosition | None,
-    ) -> str:
-        wall_margin = self._candidate_wall_margin(context, position)
-        if wall_margin < 0.10:
-            return "wall"
-        lateral, _ = self._candidate_velocity_components(context, position)
-        if previous is not None:
-            previous_lateral, _ = self._candidate_velocity_components(context, previous)
-            if abs(lateral) > 1.0 and abs(previous_lateral) > 1.0 and lateral * previous_lateral < 0.0:
-                return "reverse"
-        return self._lateral_bucket(lateral)
-
-    @staticmethod
-    def _lateral_bucket(lateral_speed: float) -> str:
-        if abs(lateral_speed) < 1.0:
-            return "stop"
-        side = "right" if lateral_speed > 0.0 else "left"
-        speed = "fast" if abs(lateral_speed) >= 4.0 else "slow"
-        return f"{speed}_{side}"
-
-    @staticmethod
-    def _advancing_bucket(advancing_speed: float) -> str:
-        if advancing_speed > 1.5:
-            return "closing"
-        if advancing_speed < -1.5:
-            return "retreating"
-        return "neutral"
-
-    @staticmethod
-    def _wall_bucket(wall_margin: float) -> str:
-        if wall_margin < 0.12:
-            return "near_wall"
-        if wall_margin < 0.28:
-            return "mid_wall"
-        return "open"
-
-    def _heading_change_bucket(self, history: list[TargetPosition], index: int) -> str:
-        change = abs(self._heading_change_at(history, index))
-        if change < 2.0:
-            return "straight"
-        if change < 7.0:
-            return "turning"
-        return "hard_turn"
-
-    def _flight_time_bucket(self, context: AimContext, position: TargetPosition) -> str:
-        distance = position.observed_distance
-        if distance is None:
-            distance = math.hypot(position.x - context.bot.x, position.y - context.bot.y)
-        flight_time = distance / bullet_speed_for_power(context.firepower)
-        if flight_time < 22.0:
-            return "short"
-        if flight_time < 45.0:
-            return "mid"
-        return "long"
 
     def _replay_from_candidate(
         self,

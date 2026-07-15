@@ -6,7 +6,6 @@ from bot_core.gun.config import GunModePolicy, GunModeTraits
 @dataclass(frozen=True)
 class DisplacementGunConfig:
     min_samples: int = 4
-    markov_enabled: bool = True
     min_switch_visits: int = 90
     min_switch_score: float = 0.30
 

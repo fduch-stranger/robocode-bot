@@ -78,7 +78,6 @@ Useful knobs:
 
 ```sh
 ROBOCODE_SWEEP_GUN_SET=linear,dynamic_cluster,traditional_gf,displacement
-ROBOCODE_SWEEP_DISPLACEMENT_MARKOV=0
 ROBOCODE_SWEEP_GUN_EVAL=1
 ROBOCODE_SWEEP_GUN_EVAL_INTERVAL=1
 ```
