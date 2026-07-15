@@ -44,7 +44,6 @@ class SharedGunPolicyDefaults:
 
 SHARED_GUN_POLICY_DEFAULTS = SharedGunPolicyDefaults()
 DYNAMIC_CLUSTER_DEFAULTS = DynamicClusterGunConfig()
-DYNAMIC_CLUSTER_EXPERIMENT_PRESETS = frozenset({"current", "simple_knn"})
 
 
 def _env_flag(name: str) -> bool:
@@ -86,28 +85,6 @@ def _env_float(name: str, default: float, *, minimum: float | None = None, maxim
     return value
 
 
-def _dynamic_cluster_experiment_defaults(prefix: str) -> tuple[str, DynamicClusterGunConfig]:
-    preset = os.environ.get(f"{prefix}_DYNAMIC_PRESET", "").strip() or "current"
-    if preset not in DYNAMIC_CLUSTER_EXPERIMENT_PRESETS:
-        raise ValueError(
-            f"Invalid {prefix}_DYNAMIC_PRESET={preset!r}; "
-            f"expected one of {sorted(DYNAMIC_CLUSTER_EXPERIMENT_PRESETS)}"
-        )
-    if preset == "simple_knn":
-        return preset, DynamicClusterGunConfig(
-            bandwidth=0.18,
-            bandwidth_min=0.18,
-            bandwidth_max=0.18,
-            bandwidth_hit_width_scale=0.0,
-            centroid_window_bandwidth_scale=0.0,
-            centroid_window_bin_scale=0.0,
-            ambiguous_peak_centering_factor=1.0,
-            context_weighting_enabled=False,
-            shot_quality_enabled=False,
-        )
-    return preset, DYNAMIC_CLUSTER_DEFAULTS
-
-
 def gun_mode_from_env(prefix: str, allowed_modes: frozenset[str]) -> str | None:
     per_bot_mode = os.environ.get(f"{prefix}_GUN_MODE", "").strip()
     if per_bot_mode:
@@ -144,21 +121,17 @@ def default_gun_mode_for(selectable_modes: frozenset[str]) -> str:
 
 
 def gun_policy_status_fields(policy: object, force_modes: frozenset[str]) -> dict[str, object]:
-    dynamic = getattr(policy, "dynamic_cluster", None)
     return {
         "selectable_guns": sorted(getattr(policy, "selectable_modes", ())),
         "force_guns": sorted(force_modes),
         "forced_gun": getattr(policy, "forced_mode", None),
         "eval_waves": bool(getattr(policy, "eval_waves_enabled", False)),
-        "dynamic_cluster_preset": getattr(dynamic, "experiment_preset", "current"),
     }
 
 
 @dataclass(frozen=True)
 class DynamicClusterPolicy:
-    experiment_preset: str = "current"
     min_samples: int | None = None
-    blend_samples: int = DYNAMIC_CLUSTER_DEFAULTS.blend_samples
     neighbors: int = DYNAMIC_CLUSTER_DEFAULTS.neighbors
     decay_half_life: float = DYNAMIC_CLUSTER_DEFAULTS.decay_half_life
     min_effective_samples: float = DYNAMIC_CLUSTER_DEFAULTS.min_effective_samples
@@ -191,13 +164,9 @@ class DynamicClusterPolicy:
 
     @classmethod
     def from_env(cls, prefix: str) -> "DynamicClusterPolicy":
-        preset, defaults = _dynamic_cluster_experiment_defaults(prefix)
+        defaults = DYNAMIC_CLUSTER_DEFAULTS
         return cls(
-            experiment_preset=preset,
             min_samples=_env_optional_int(f"{prefix}_DYNAMIC_MIN_SAMPLES", minimum=1),
-            blend_samples=_env_int(
-                f"{prefix}_DYNAMIC_BLEND_SAMPLES", defaults.blend_samples, minimum=1
-            ),
             neighbors=_env_int(f"{prefix}_DYNAMIC_NEIGHBORS", defaults.neighbors, minimum=1),
             decay_half_life=_env_float(
                 f"{prefix}_DYNAMIC_DECAY_HALF_LIFE", defaults.decay_half_life, minimum=0.0
@@ -376,7 +345,6 @@ def dynamic_cluster_config_from_policy(policy: object) -> DynamicClusterGunConfi
             if dynamic.min_samples is not None
             else getattr(policy, "knn_min_samples", defaults.knn_min_samples)
         ),
-        blend_samples=dynamic.blend_samples,
         neighbors=dynamic.neighbors,
         decay_half_life=dynamic.decay_half_life,
         min_effective_samples=dynamic.min_effective_samples,

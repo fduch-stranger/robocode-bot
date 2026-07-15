@@ -10,7 +10,7 @@ feature-space samples.
 
 - `gun.py`: `DynamicClusterGun`, the concrete `GunComponent`.
 - `config.py`: `DynamicClusterGunConfig`, including sample caps, neighbor
-  count, bandwidth, decay, warmup, bins, and selector policy thresholds.
+  count, bandwidth, decay, bins, and selector policy thresholds.
 - `memory.py`: `RollingKnnBuffer`, the bounded per-target sample store.
 
 ## Runtime Behavior
@@ -46,6 +46,13 @@ The failed online calibration apply-correction experiment was removed from the
 gun and telemetry. Do not emit telemetry for calibration corrections unless a
 real calibration behavior is reintroduced and validated.
 
+The former effective 30-to-150-sample warm-up blend was also removed. Clean
+Python-surfer tests shortened it to 30-to-60 samples and improved real hit rate
+and damage economics. Production deliberately removes the remaining early
+blend as cleanup rather than retaining a rejected branch. Once `min_samples` is
+reached, the gun uses its selected density aim directly; there is no blend
+threshold or blend diagnostic.
+
 Each live bot exposes experiment-only env overrides for those dynamic-cluster
 knobs through its own prefix: `ROBOCODE_ADAPTIVE_DYNAMIC_*`,
 `ROBOCODE_CHASE_DYNAMIC_*`, `ROBOCODE_CIRCLE_DYNAMIC_*`, or
@@ -54,14 +61,10 @@ knobs through its own prefix: `ROBOCODE_ADAPTIVE_DYNAMIC_*`,
 result as a shared default promotion until filtered 20+ round surfer results or
 matching bot-specific evidence support it.
 
-`<PREFIX>_DYNAMIC_PRESET` accepts `current` or `simple_knn`. The opt-in
-`simple_knn` control uses fixed `0.18` bandwidth, best-bin aim without centroid
-refinement, no ambiguity centering, no context weighting, and no shot-quality
-power scaling. It is an experiment control, not a production default. Geometry
-experiments can also set `<PREFIX>_DYNAMIC_MIN_SAMPLES`,
-`_BLEND_SAMPLES`, `_NEIGHBORS`, `_DECAY_HALF_LIFE`,
+Geometry experiments can set `<PREFIX>_DYNAMIC_MIN_SAMPLES`,
+`_NEIGHBORS`, `_DECAY_HALF_LIFE`,
 `_MIN_EFFECTIVE_SAMPLES`, and `_GUESS_FACTOR_BINS`. Explicit knob values
-override the selected preset.
+override the shared defaults.
 
 The component handles warmup and availability itself. The facade only asks for a
 `GunBearing` and publishes visits back through the component contract.

@@ -211,11 +211,9 @@ class GunStatsTest(unittest.TestCase):
         self.assertEqual(0.85, config.ambiguous_peak_score_ratio)
         self.assertEqual(0.8, config.ambiguous_peak_centering_factor)
 
-    def test_dynamic_cluster_simple_knn_preset_and_geometry_overrides(self) -> None:
+    def test_dynamic_cluster_geometry_overrides(self) -> None:
         names = {
-            "ROBOCODE_TEST_DYNAMIC_PRESET": "simple_knn",
             "ROBOCODE_TEST_DYNAMIC_MIN_SAMPLES": "44",
-            "ROBOCODE_TEST_DYNAMIC_BLEND_SAMPLES": "120",
             "ROBOCODE_TEST_DYNAMIC_NEIGHBORS": "25",
             "ROBOCODE_TEST_DYNAMIC_DECAY_HALF_LIFE": "900",
             "ROBOCODE_TEST_DYNAMIC_MIN_EFFECTIVE_SAMPLES": "18.5",
@@ -233,21 +231,15 @@ class GunStatsTest(unittest.TestCase):
                 else:
                     os.environ[name] = value
 
-        self.assertEqual("simple_knn", dynamic.experiment_preset)
         self.assertEqual(44, config.min_samples)
-        self.assertEqual(120, config.blend_samples)
         self.assertEqual(25, config.neighbors)
         self.assertEqual(900.0, config.decay_half_life)
         self.assertEqual(18.5, config.min_effective_samples)
         self.assertEqual(41, config.guess_factor_bins)
-        self.assertEqual(0.18, config.bandwidth_min)
-        self.assertEqual(0.18, config.bandwidth_max)
-        self.assertEqual(0.0, config.bandwidth_hit_width_scale)
-        self.assertEqual(0.0, config.centroid_window_bandwidth_scale)
-        self.assertEqual(0.0, config.centroid_window_bin_scale)
-        self.assertEqual(1.0, config.ambiguous_peak_centering_factor)
-        self.assertFalse(config.context_weighting_enabled)
-        self.assertFalse(config.shot_quality_enabled)
+        self.assertEqual(DynamicClusterGunConfig().bandwidth_min, config.bandwidth_min)
+        self.assertEqual(DynamicClusterGunConfig().bandwidth_max, config.bandwidth_max)
+        self.assertTrue(config.context_weighting_enabled)
+        self.assertTrue(config.shot_quality_enabled)
 
     def test_displacement_config_from_policy_uses_shared_live_defaults(self) -> None:
         config = displacement_config_from_policy(SimpleNamespace())
@@ -1490,7 +1482,6 @@ class GunStatsTest(unittest.TestCase):
             DynamicClusterGunConfig(
                 min_samples=3,
                 min_effective_samples=2.0,
-                blend_samples=3,
                 decay_half_life=10.0,
             )
         )
@@ -1549,7 +1540,6 @@ class GunStatsTest(unittest.TestCase):
             DynamicClusterGunConfig(
                 min_samples=3,
                 min_effective_samples=0.0,
-                blend_samples=3,
                 neighbors=3,
                 context_weighting_enabled=True,
                 tag_match_bonus=0.5,
@@ -1562,7 +1552,6 @@ class GunStatsTest(unittest.TestCase):
             DynamicClusterGunConfig(
                 min_samples=3,
                 min_effective_samples=0.0,
-                blend_samples=3,
                 neighbors=3,
                 context_weighting_enabled=False,
             )
@@ -1588,7 +1577,6 @@ class GunStatsTest(unittest.TestCase):
             DynamicClusterGunConfig(
                 min_samples=3,
                 min_effective_samples=0.0,
-                blend_samples=3,
                 neighbors=3,
                 guess_factor_bins=11,
                 bandwidth=0.12,
@@ -1628,7 +1616,6 @@ class GunStatsTest(unittest.TestCase):
             DynamicClusterGunConfig(
                 min_samples=3,
                 min_effective_samples=0.0,
-                blend_samples=3,
                 neighbors=3,
                 guess_factor_bins=11,
                 context_weighting_enabled=False,
@@ -1676,7 +1663,6 @@ class GunStatsTest(unittest.TestCase):
             DynamicClusterGunConfig(
                 min_samples=3,
                 min_effective_samples=0.0,
-                blend_samples=3,
                 neighbors=3,
                 context_weighting_enabled=False,
             )
@@ -1709,7 +1695,6 @@ class GunStatsTest(unittest.TestCase):
             DynamicClusterGunConfig(
                 min_samples=5,
                 min_effective_samples=0.0,
-                blend_samples=5,
                 neighbors=5,
                 guess_factor_bins=21,
                 bandwidth=0.12,
@@ -1735,7 +1720,6 @@ class GunStatsTest(unittest.TestCase):
             DynamicClusterGunConfig(
                 min_samples=3,
                 min_effective_samples=0.0,
-                blend_samples=3,
                 neighbors=3,
                 guess_factor_bins=21,
                 bandwidth=0.12,
@@ -1747,7 +1731,6 @@ class GunStatsTest(unittest.TestCase):
             DynamicClusterGunConfig(
                 min_samples=3,
                 min_effective_samples=0.0,
-                blend_samples=3,
                 neighbors=3,
                 guess_factor_bins=21,
                 bandwidth=0.12,
@@ -1777,7 +1760,6 @@ class GunStatsTest(unittest.TestCase):
             DynamicClusterGunConfig(
                 min_samples=4,
                 min_effective_samples=0.0,
-                blend_samples=4,
                 neighbors=4,
                 guess_factor_bins=21,
                 bandwidth=0.12,
@@ -1790,7 +1772,6 @@ class GunStatsTest(unittest.TestCase):
             DynamicClusterGunConfig(
                 min_samples=4,
                 min_effective_samples=0.0,
-                blend_samples=4,
                 neighbors=4,
                 guess_factor_bins=21,
                 bandwidth=0.12,
@@ -1866,7 +1847,6 @@ class GunStatsTest(unittest.TestCase):
             DynamicClusterGunConfig(
                 min_samples=3,
                 min_effective_samples=0.0,
-                blend_samples=3,
                 neighbors=3,
                 guess_factor_bins=21,
                 context_weighting_enabled=False,

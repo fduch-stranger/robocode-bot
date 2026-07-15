@@ -52,7 +52,6 @@ EVENT_SPECS: dict[str, TelemetryEventSpec] = {
             "force_guns",
             "forced_gun",
             "eval_waves",
-            "dynamic_cluster_preset",
         ),
     ),
     "battle.reset": TelemetryEventSpec("lifecycle", optional_fields=("rounds", "game_type")),

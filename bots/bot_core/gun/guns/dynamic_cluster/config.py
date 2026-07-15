@@ -8,7 +8,6 @@ class DynamicClusterGunConfig:
     max_samples: int = 1200
     max_samples_per_target: int = 900
     min_samples: int = 60
-    blend_samples: int = 150
     neighbors: int = 17
     decay_half_life: float = 0.0
     min_effective_samples: float = 0.0

@@ -67,7 +67,6 @@ class DynamicClusterGun:
                 self.mode,
                 {
                     "samples": sample_count,
-                    "blend": self._warmup_blend(sample_count),
                     "context_tags": self._context_tags(context),
                 },
             ),
@@ -164,8 +163,6 @@ class DynamicClusterGun:
         density = self._analyze_density(weighted_neighbors, target_distance, fire_context)
         guess_factor = density.selected_guess_factor
 
-        if sample_count < self.config.blend_samples:
-            guess_factor *= self._warmup_blend(sample_count)
         diagnostics = self._neighbor_diagnostics(features, fire_context, weighted_neighbors, density, sample_count)
         diagnostics["selected_guess_factor"] = clamp(guess_factor, -1.0, 1.0)
         return KnnPrediction(clamp(guess_factor, -1.0, 1.0), diagnostics)
@@ -454,15 +451,6 @@ class DynamicClusterGun:
     @staticmethod
     def _flight_time_delta(left: FireContext, right: FireContext) -> float:
         return abs(left.bullet_flight_time - right.bullet_flight_time) / max(left.bullet_flight_time, 1.0)
-
-    def _warmup_blend(self, sample_count: int) -> float:
-        if sample_count >= self.config.blend_samples:
-            return 1.0
-        return clamp(
-            (sample_count - self.config.min_samples) / max(1, self.config.blend_samples - self.config.min_samples),
-            0.0,
-            1.0,
-        )
 
     def clear_round_state(self) -> None:
         return None

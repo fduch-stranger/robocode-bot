@@ -210,7 +210,6 @@ class BotConfigTest(unittest.TestCase):
         self.assertEqual(fields["selectable_guns"], ["dynamic_cluster", "traditional_gf"])
         self.assertEqual(fields["forced_gun"], "traditional_gf")
         self.assertTrue(fields["eval_waves"])
-        self.assertEqual(fields["dynamic_cluster_preset"], "current")
         self.assertIn("anti_surfer", fields["force_guns"])
         self.assertIn("head_on", fields["force_guns"])
 

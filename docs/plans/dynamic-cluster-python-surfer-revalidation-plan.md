@@ -160,10 +160,10 @@ power `1.26`, `0.465` damage per shot, and mean absolute GF error `0.551`.
 Both telemetry audits passed. This is the current most promising KNN
 configuration, but it remains a screen rather than a promotion result.
 
-The exact control is now reproducible with
-`ROBOCODE_ADAPTIVE_DYNAMIC_PRESET=simple_knn`; production remains `current`.
-Neighbor count, sample thresholds, blend threshold, decay half-life, minimum
-effective samples, and GF bins are exposed as experiment-only env knobs.
+The exact control was reproduced through the temporary `simple_knn` preset.
+That rejected bundle and its preset were removed after confirmation. Neighbor
+count, minimum-sample threshold, decay half-life, minimum effective samples,
+and GF bins remain exposed as independent experiment-only env knobs.
 
 The planned two-repeat confirmation rejected `simple_knn`. Across 24 rounds
 per side with quality power scaling disabled, `current` fired 1,182 Dynamic
@@ -179,8 +179,38 @@ with `25`. The candidate again improved mean absolute GF error (`0.516` versus
 (`7.14%` versus `7.51%`). Both audits passed. Do not advance `25` neighbors on
 this evidence.
 
-Current production KNN therefore remains the most credible configuration:
-`current`, 17 neighbors, and the existing context/density extractor. The next
-aim experiment should retain that geometry and ablate exactly one of context
-weighting, centroid refinement, ambiguity centering, or hit-width bandwidth.
-Do not tune the live selector until the aim model and power policy are frozen.
+One-variable screens then retained ambiguity centering (`368` versus `142`
+score), context weighting (`585` versus `434`), and centroid refinement (`623`
+versus `554`). Fixed `0.18` bandwidth produced only a noisy `+7` score and did
+not advance. Disabling shot-quality power scaling also regressed score (`595`
+to `541`) and Dynamic hit rate (`9.65%` to `8.63%`), so production scaling stays
+enabled even though its confidence calibration remains weak.
+
+The false optimization was the effective 30-to-150-sample warm-up blend that
+multiplied the selected guess factor toward zero. The tested candidate shortened
+that interval to 30-to-60 samples. It won the screen (`345` to `536` score;
+`7.96%` to `10.51%` Dynamic hit rate). Across the two-repeat 24-round
+confirmation with power scaling disabled on both sides, it improved score
+`3029` to `3410`, first places `24` to `28`, hit rate `11.80%` to `12.86%`, and
+damage per fired energy `0.578` to `0.604`.
+
+The production-policy confirmation kept shot-quality power scaling enabled on
+both sides. The candidate again improved score `2787` to `3136`, first places
+`28` to `30`, hit rate `11.92%` to `15.40%`, damage per shot `0.339` to `0.430`,
+and damage per fired energy `0.505` to `0.651`. All four telemetry audits
+passed. Mean absolute GF error moved slightly against the candidate (`0.536`
+to `0.547`), reinforcing that proxy error alone must not decide promotion.
+
+Production now uses the selected KNN density aim immediately once
+`min_samples` is reached. The obsolete warm-up blend, its environment override,
+and decision-context field were removed rather than retained as legacy tuning
+surface. The promoted configuration otherwise remains `current`: 17 neighbors,
+adaptive hit-width bandwidth, local centroid, ambiguity centering, context
+weighting, and shot-quality power scaling. Live selector tuning remains a
+separate follow-up.
+
+This final cleanup deliberately extrapolates the confirmed 30-to-60 candidate
+to direct aiming for samples 30-to-59. The exact no-blend behavior was not run
+through a third production-policy repeat; that deviation from the original
+Phase 6 gate was accepted to avoid retaining a rejected warm-up branch solely
+for compatibility.
