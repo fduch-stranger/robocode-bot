@@ -193,6 +193,11 @@ current tree against a reference bot, use `scripts/run-battle-series.sh`
 instead; invoking A/B without distinct worktrees compares the same dirty tree on
 both sides and is not a meaningful promotion gate.
 
+Adaptive Prime's startup `bot.config` event includes its complete effective
+configuration and a deterministic fingerprint. Record that event when an
+experiment uses environment overrides so results remain attributable even when
+the worktree revision is unchanged.
+
 ## Battle Series
 
 ```sh

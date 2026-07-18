@@ -148,7 +148,7 @@ Telemetry is JSONL. Common events:
 
 | Event | Purpose |
 | --- | --- |
-| `bot.config` | Startup gun/eval configuration. |
+| `bot.config` | Startup gun/eval configuration plus optional bot-specific effective configuration provenance. |
 | `bot.turn_timing` | Per-turn decision elapsed time, remaining turn budget, and pressure severity. |
 | `bot.skipped_turn` | Engine skipped-turn event with the last recorded decision timing context. |
 | `track` | High-level target/radar/aim/movement/fire state. |

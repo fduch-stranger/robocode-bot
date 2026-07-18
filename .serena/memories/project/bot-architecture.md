@@ -25,6 +25,8 @@ Gun architecture:
 - `gun.eval_wave_visit` is selector-only evidence when enabled and must not train production gun models.
 - Adaptive uses side-effect-free same-mode re-aim after Dynamic Cluster power scaling.
 - Adaptive requires a `0.18` adjusted-score margin for fallback-over-primary switches.
+- Adaptive-specific tuning is centralized in `bots/adaptive-prime/adaptive_config.py`, including named firepower, target, radar, movement, movement-flattening, and minimum-risk policies/configs. Behavior methods should not carry independent tuning literals.
+- Adaptive `bot.config` telemetry includes the complete effective configuration, profile name, and deterministic fingerprint. Coarse environment controls cover go-to surfing, flattener direction application, and gun-heat waves.
 
 Validated gun state:
 - Traditional GF uses one global profile plus `(flight time, absolute lateral speed, wall margin)` segments, `8/36` blending, max-bin selection, smoothing `1.25`, decay `0.985`, and 31 bins. Firing is bounded to `|GF| <= 0.87`; training retains the full range.

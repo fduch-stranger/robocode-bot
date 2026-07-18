@@ -10,9 +10,12 @@ Shared references:
 - [Bot Core Data Structures](../../docs/bot-core-data-structures.md)
 - [Tooling](../../docs/tooling.md)
 
-Bot-specific tuning lives in policy dataclasses in `adaptive_prime.py`:
-`GunPolicy`, `TraditionalGfPolicy`, `FirePolicy`, `TargetPolicy`,
-`RadarPolicy`, `MovementPolicy`, and `DuelMovementPolicy`.
+Bot-specific tuning lives in policy dataclasses in `adaptive_config.py`:
+`GunPolicy`, `TraditionalGfPolicy`, `FirePolicy`, `DuelFirepowerPolicy`,
+`MeleeFirepowerPolicy`, `TargetPolicy`, `RadarPolicy`, `MovementPolicy`, and
+`DuelMovementPolicy`. Effective shared-system overrides are also centralized
+there as `MOVEMENT_FLATTENING_CONFIG` and `MINIMUM_RISK_CONFIG`; behavior code
+should not carry independent tuning literals.
 
 ## Behavior
 
@@ -108,7 +111,14 @@ Useful experiment knobs:
 ROBOCODE_ADAPTIVE_GUN_SET=linear,dynamic_cluster,traditional_gf,displacement
 ROBOCODE_ADAPTIVE_GUN_EVAL=1
 ROBOCODE_ADAPTIVE_GUN_EVAL_INTERVAL=1
+ROBOCODE_ADAPTIVE_GOTO_SURFING=0
+ROBOCODE_ADAPTIVE_FLATTENER_DIRECTION_CONTROL=0
+ROBOCODE_ADAPTIVE_GUN_HEAT_WAVES=0
 ```
+
+The movement controls disable go-to destination selection and learned
+direction application independently. Movement-wave learning remains active so
+the controls do not silently change training evidence.
 
 Valid pinned guns are `head_on`, `linear`, `displacement`,
 `traditional_gf`, `dynamic_cluster`, and `anti_surfer`.
@@ -143,6 +153,9 @@ Primary telemetry:
 - `gun.traditional_gf_profile`: Traditional GF source/profile diagnostics.
 - `bot.turn_timing` / `bot.skipped_turn`: decision-time budget and skipped tick
   diagnostics.
+- `bot.config`: the profile name, deterministic configuration fingerprint, and
+  complete effective Adaptive policy/configuration snapshot for experiment
+  provenance.
 
 Preferred surfer check:
 

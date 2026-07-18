@@ -24,6 +24,13 @@ class TelemetrySchemaTest(unittest.TestCase):
             set(CANONICAL_FIELDS),
         )
 
+    def test_bot_config_accepts_effective_configuration_provenance(self) -> None:
+        spec = EVENT_SPECS["bot.config"]
+
+        self.assertIn("config_profile", spec.optional_fields)
+        self.assertIn("config_fingerprint", spec.optional_fields)
+        self.assertIn("effective_config", spec.optional_fields)
+
     def test_aliases_normalize_target_and_reason_without_mutating_raw_names(self) -> None:
         fields = normalize_fields("enemy.fire_detected", {"bot_id": 7, "power": 1.8, "distance": 240.0, "evasion": "active_duel"})
         self.assertEqual(7, fields["bot_id"])
