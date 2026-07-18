@@ -59,7 +59,7 @@ target_age = current_turn - seen_turn
 | `VirtualGunScorer` | Virtual-bearing score updates. |
 | `AimModeSelector` | Sticky mode selection gates. |
 | `RollingKnnBuffer` | Dynamic Cluster sample memory. |
-| `GuessFactorProfile` | Profile-gun histogram. Traditional GF and anti-surfer own package-local profile variants. |
+| `GuessFactorProfile` | Traditional GF package-local histogram. |
 
 Concrete gun packages:
 
@@ -70,7 +70,6 @@ Concrete gun packages:
 | [`displacement`](../bots/bot_core/gun/guns/displacement/README.md) | Reads `TargetHistoryStore`, ranks similar replay candidates, chooses density-supported replay cluster. |
 | [`dynamic_cluster`](../bots/bot_core/gun/guns/dynamic_cluster/README.md) | Owns KNN memory, neighbor weighting, bandwidth/peak diagnostics, and sample insertion. |
 | [`traditional_gf`](../bots/bot_core/gun/guns/traditional_gf/README.md) | Owns global and fixed flight/lateral/wall-margin GF profiles, source-aware selector context, and diagnostics. |
-| [`anti_surfer`](../bots/bot_core/gun/guns/anti_surfer/README.md) | Owns anti-surfer profile bins and valley selection. |
 
 ## Gun Wave Flow
 

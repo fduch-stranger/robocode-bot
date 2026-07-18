@@ -37,8 +37,6 @@ from bot_core.gun import (
 from bot_core.gun.context import build_gun_features
 from bot_core.gun.factory import standard_runtime_config
 from bot_core.gun.policy import DynamicClusterPolicy, selector_config_from_policy
-from bot_core.gun.guns.anti_surfer.config import AntiSurferGunConfig
-from bot_core.gun.guns.anti_surfer.gun import AntiSurferGun
 from bot_core.gun.guns.displacement.config import DisplacementGunConfig
 from bot_core.gun.guns.displacement.gun import DisplacementGun, _ReplayBearing
 from bot_core.gun.guns.dynamic_cluster.config import DynamicClusterGunConfig
@@ -90,7 +88,6 @@ def runtime_config(
     displacement: DisplacementGunConfig | None = None,
     dynamic_cluster: DynamicClusterGunConfig | None = None,
     traditional_gf: TraditionalGfGunConfig | None = None,
-    anti_surfer: AntiSurferGunConfig | None = None,
 ) -> GunRuntimeConfig:
     selector_config = selector or GunSelectorConfig()
     scoring_config = scoring or GunScoringConfig(selectable_modes=selector_config.selectable_modes)
@@ -103,7 +100,6 @@ def runtime_config(
         displacement=displacement,
         dynamic_cluster=dynamic_cluster,
         traditional_gf=traditional_gf,
-        anti_surfer=anti_surfer,
     )
 
 
@@ -1210,7 +1206,7 @@ class GunStatsTest(unittest.TestCase):
         config = runtime_config(
             selector=GunSelectorConfig(
                 default_mode="dynamic_cluster",
-                selectable_modes=frozenset({"anti_surfer", "dynamic_cluster"}),
+                selectable_modes=frozenset({"displacement", "dynamic_cluster"}),
             ),
         )
         scorer = VirtualGunScorer(scoring_config(config), {}, {})
@@ -1230,7 +1226,7 @@ class GunStatsTest(unittest.TestCase):
         config = runtime_config(
             selector=GunSelectorConfig(
                 default_mode="dynamic_cluster",
-                selectable_modes=frozenset({"anti_surfer", "dynamic_cluster"}),
+                selectable_modes=frozenset({"displacement", "dynamic_cluster"}),
             ),
         )
         scorer = VirtualGunScorer(scoring_config(config), {}, {})
@@ -2193,10 +2189,6 @@ class GunStatsTest(unittest.TestCase):
         self.assertLess(segmented.segment_guess_factor, 0.0)
         self.assertGreater(segmented.blend, 0.0)
 
-
-
-
-
     def test_traditional_gf_visit_trains_the_same_gun_local_key_used_for_aiming(self) -> None:
         gun = TraditionalGfGun(
             TraditionalGfGunConfig(
@@ -2254,51 +2246,6 @@ class GunStatsTest(unittest.TestCase):
                     wall_margin=wall_margin,
                 )
                 self.assertEqual(expected, gun.profile_segment_key(context))
-
-
-
-    def test_anti_surfer_guess_factor_targets_under_visited_valley(self) -> None:
-        gun = AntiSurferGun(
-            AntiSurferGunConfig(
-                guess_factor_bins=7,
-                min_samples=1,
-                smoothing_bins=0.75,
-            )
-        )
-
-        for _ in range(8):
-            gun.record(1, 0.0)
-
-        guess_factor = gun.guess_factor(1)
-        self.assertIsNotNone(guess_factor)
-        assert guess_factor is not None
-        self.assertGreater(abs(guess_factor), 0.2)
-
-    def test_anti_surfer_guess_factor_reaches_default_threshold(self) -> None:
-        gun = AntiSurferGun(AntiSurferGunConfig())
-
-        for _ in range(20):
-            gun.record(1, 0.0)
-
-        self.assertIsNotNone(gun.guess_factor(1))
-
-    def test_anti_surfer_guess_factor_uses_rapid_decay(self) -> None:
-        gun = AntiSurferGun(
-            AntiSurferGunConfig(
-                guess_factor_bins=7,
-                min_samples=1,
-                smoothing_bins=0.75,
-                decay=0.5,
-            )
-        )
-
-        for _ in range(5):
-            gun.record(1, -1.0)
-        self.assertGreater(gun.guess_factor(1), -0.9)
-
-        for _ in range(12):
-            gun.record(1, 1.0)
-        self.assertLess(gun.guess_factor(1), 0.9)
 
 
 if __name__ == "__main__":

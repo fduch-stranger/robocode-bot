@@ -26,7 +26,7 @@ Important local variables:
 | `ROBOCODE_LEGACY_BOTS_ROOT` | Optional converted legacy bot root. |
 
 Standard force-testable guns are `head_on`, `linear`, `displacement`,
-`traditional_gf`, `dynamic_cluster`, and `anti_surfer`.
+`traditional_gf`, and `dynamic_cluster`.
 
 ## Battles
 

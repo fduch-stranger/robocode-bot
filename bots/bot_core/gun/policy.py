@@ -8,17 +8,13 @@ from bot_core.gun.guns.dynamic_cluster.config import DynamicClusterGunConfig
 
 
 DEFAULT_LIVE_GUN_MODES = frozenset({"linear", "traditional_gf", "dynamic_cluster", "displacement"})
-STANDARD_FORCE_GUN_MODES = DEFAULT_LIVE_GUN_MODES | frozenset({
-    "anti_surfer",
-    "head_on",
-})
+STANDARD_FORCE_GUN_MODES = DEFAULT_LIVE_GUN_MODES | frozenset({"head_on"})
 DEFAULT_MODE_PRIORITY = (
     "linear",
     "dynamic_cluster",
     "traditional_gf",
     "head_on",
     "displacement",
-    "anti_surfer",
 )
 
 

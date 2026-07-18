@@ -38,7 +38,6 @@ Concrete virtual guns live under `bots/bot_core/gun/guns`.
 | [Displacement](../bots/bot_core/gun/guns/displacement/README.md) | target-history displacement matching |
 | [Dynamic Cluster](../bots/bot_core/gun/guns/dynamic_cluster/README.md) | KNN guess-factor learning |
 | [Traditional GF](../bots/bot_core/gun/guns/traditional_gf/README.md) | global and fixed flight/lateral/wall-margin GF profiles |
-| [Anti-Surfer](../bots/bot_core/gun/guns/anti_surfer/README.md) | low-density profile aiming |
 
 ## Add New Docs
 

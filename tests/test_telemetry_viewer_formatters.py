@@ -152,7 +152,7 @@ class TelemetryViewerFormattersTest(unittest.TestCase):
                   {mode: "linear", available: true, score: 0.12, visits: 80, required_visits: 65, reason: "current"},
                   {mode: "traditional_gf", available: true, score: 0.10, visits: 40, required_visits: 60, reason: "visits"},
                   {mode: "dynamic_cluster", available: true, score: 0.18, visits: 70, required_visits: 65, reason: "margin"},
-                  {mode: "anti_surfer", available: true, score: 0.08, visits: 70, required_visits: 65, reason: "source_degraded"}
+                  {mode: "head_on", available: true, score: 0.08, visits: 70, required_visits: 65, reason: "source_degraded"}
                 ]
               }
             })
@@ -163,7 +163,7 @@ class TelemetryViewerFormattersTest(unittest.TestCase):
         self.assertIn("degraded=1", summary)
         self.assertIn("visits=40/60", summary)
         self.assertIn(
-            "details=[linear current score=0.1 visits=80/65; traditional_gf blocked:visits score=0.1 visits=40/60; dynamic_cluster blocked:margin score=0.2 visits=70/65; anti_surfer source_degraded score=0.1 visits=70/65]",
+            "details=[linear current score=0.1 visits=80/65; traditional_gf blocked:visits score=0.1 visits=40/60; dynamic_cluster blocked:margin score=0.2 visits=70/65; head_on source_degraded score=0.1 visits=70/65]",
             summary,
         )
 
@@ -181,7 +181,7 @@ class TelemetryViewerFormattersTest(unittest.TestCase):
                   {mode: "linear", available: true, score: 0.12, visits: 80, required_visits: 65, reason: "current"},
                   {mode: "traditional_gf", available: true, score: 0.10, visits: 40, required_visits: 60, reason: "visits"},
                   {mode: "dynamic_cluster", available: true, score: 0.18, visits: 70, required_visits: 65, reason: "margin"},
-                  {mode: "anti_surfer", available: false, score: 0.08, visits: 12, required_visits: 65, reason: "unavailable"},
+                  {mode: "head_on", available: false, score: 0.08, visits: 12, required_visits: 65, reason: "unavailable"},
                   {mode: "displacement", available: true, score: 0.06, visits: 90, required_visits: 65, reason: "score_floor"}
                 ]
               }

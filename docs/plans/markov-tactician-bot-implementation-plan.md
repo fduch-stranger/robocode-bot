@@ -188,7 +188,7 @@ enemy_recent_fire           # no, yes
 incoming_wave_bucket        # none, far, medium, imminent
 surf_danger_bucket          # low, medium, high
 gun_confidence_bucket       # low, medium, high
-selected_gun_family         # linear, knn, profile, anti_surfer, fallback
+selected_gun_family         # linear, knn, profile, fallback
 recent_damage_trade_bucket  # losing, neutral, winning
 target_age_bucket           # fresh, stale
 ```
@@ -252,7 +252,6 @@ GUN_LINEAR
 GUN_TRADITIONAL_GF
 GUN_DYNAMIC_CLUSTER
 GUN_DISPLACEMENT
-GUN_ANTI_SURFER
 ```
 
 Firepower actions:

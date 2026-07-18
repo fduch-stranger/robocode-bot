@@ -19,8 +19,8 @@ Current bots:
 Gun architecture:
 - `VirtualGunSystem` builds aim/fire context, evaluates registered components, tracks waves, scores visits, and emits diagnostics.
 - Live modes are `linear`, `traditional_gf`, `dynamic_cluster`, and `displacement`.
-- Force-testable controls additionally include `head_on` and `anti_surfer`.
-- `dynamic_cluster` is the primary KNN GF learner; `traditional_gf`, `displacement`, and `anti_surfer` are situational; `linear` and `head_on` are simple-motion fallbacks.
+- The force-testable-only control is `head_on`.
+- `dynamic_cluster` is the primary KNN GF learner; `traditional_gf` and `displacement` are situational; `linear` and `head_on` are simple-motion fallbacks.
 - `AimModeSelector` is sticky and role-aware. `gun.switch_decision` is the main selector diagnostic.
 - `gun.eval_wave_visit` is selector-only evidence when enabled and must not train production gun models.
 - Adaptive uses side-effect-free same-mode re-aim after Dynamic Cluster power scaling.
@@ -33,7 +33,6 @@ Validated gun state:
 - Dynamic Cluster uses direct density aim after 30 samples, 17 neighbors, context weighting, centroid refinement, ambiguity centering, adaptive hit-width bandwidth, and shot-quality power scaling. The rejected long warm-up blend and its environment/status fields were removed.
 - Displacement uses rotation-normalized replay with continuous speed, lateral, advancing, wall, and heading-change similarity plus density-supported replay clusters. Markov and discrete coarse-match bonuses were removed.
 - Wall-aware Linear was a losing control and has been removed.
-- Anti-surfer remains force-testable for its separate safety-surface research plan.
 
 Movement architecture:
 - Shared movement covers enemy-fire waves, GF danger profiles, flattening, go-to surfing, actual bullet shadows, and minimum-risk movement.
@@ -43,7 +42,7 @@ Movement architecture:
 
 Telemetry and analysis:
 - Key events include `bot.config`, `track`, `gun.switch`, `gun.switch_decision`, `gun.wave_visit`, `gun.eval_wave_visit`, `gun.fire_drift`, `enemy.fire_detected`, `enemy.gun_heat_wave`, `movement.profile_visit`, `movement.flatten`, `movement.goto_surf`, `movement.minimum_risk`, `bullet.fired`, `bullet.hit_bot`, and `hit.bullet`.
-- Use `tools/telemetry_audit.py` for schema and attribution checks, `tools/combat_economics_summary.py` for score/firepower/damage summaries, and `tools/gun_eval_summary.py` for gun/selector diagnostics.
+- Use `tools/telemetry_audit.py` for schema and attribution checks, `tools/combat_economics_summary.py` for score/firepower/damage summaries, `tools/gun_eval_summary.py` for gun/selector diagnostics.
 - The combat-economics movement and fire candidates were rejected. Their ledgers, calibrator, shadow scoring, telemetry, tools, tests, and plans were removed. Production movement, fire gate, and power policy remain unchanged.
 
 Opponent policy:

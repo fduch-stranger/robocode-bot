@@ -78,7 +78,7 @@ class EnvScriptTest(unittest.TestCase):
                 "\n".join(
                     [
                         "ROBOCODE_GUN_MODE=traditional_gf",
-                        "ROBOCODE_GUN_SET=anti_surfer,dynamic_cluster",
+                        "ROBOCODE_GUN_SET=head_on,dynamic_cluster",
                     ]
                 )
                 + "\n",
@@ -107,7 +107,7 @@ class EnvScriptTest(unittest.TestCase):
                 check=True,
             )
 
-        self.assertEqual("head_on|anti_surfer,dynamic_cluster|1", result.stdout.strip())
+        self.assertEqual("head_on|head_on,dynamic_cluster|1", result.stdout.strip())
 
 
 if __name__ == "__main__":

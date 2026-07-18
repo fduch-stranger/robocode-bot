@@ -18,26 +18,12 @@ def _load_adaptive_config() -> ModuleType:
 
 
 class AdaptiveConfigTest(unittest.TestCase):
-    def test_anti_surfer_is_force_testable_but_not_live_selectable(self) -> None:
+    def test_standard_gun_modes_match_the_registered_set(self) -> None:
         config = _load_adaptive_config()
+        live_modes = frozenset({"linear", "traditional_gf", "dynamic_cluster", "displacement"})
 
-        self.assertEqual(
-            frozenset({"linear", "traditional_gf", "dynamic_cluster", "displacement"}),
-            config.ADAPTIVE_SELECTABLE_GUN_MODES,
-        )
-        self.assertEqual(
-            frozenset({
-                "linear",
-                "traditional_gf",
-                "dynamic_cluster",
-                "head_on",
-                "anti_surfer",
-                "displacement",
-            }),
-            config.ADAPTIVE_FORCE_GUN_MODES,
-        )
-        self.assertNotIn("anti_surfer", config.GunPolicy().selectable_modes)
-        self.assertIn("displacement", config.GunPolicy().selectable_modes)
+        self.assertEqual(live_modes, config.ADAPTIVE_SELECTABLE_GUN_MODES)
+        self.assertEqual(live_modes | {"head_on"}, config.ADAPTIVE_FORCE_GUN_MODES)
 
     def test_effective_shared_configs_preserve_adaptive_defaults(self) -> None:
         config = _load_adaptive_config()

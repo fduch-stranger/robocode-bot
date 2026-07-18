@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from bot_core.gun.config import GunRuntimeConfig, GunScoringConfig, GunSelectorConfig, GunSystemConfig
 from bot_core.gun.context import TargetHistoryStore
-from bot_core.gun.guns.anti_surfer.config import AntiSurferGunConfig
-from bot_core.gun.guns.anti_surfer.gun import AntiSurferGun
 from bot_core.gun.guns.displacement.config import DisplacementGunConfig
 from bot_core.gun.guns.displacement.gun import DisplacementGun
 from bot_core.gun.guns.dynamic_cluster.config import DynamicClusterGunConfig
@@ -25,7 +23,6 @@ def standard_runtime_config(
     displacement: DisplacementGunConfig | None = None,
     dynamic_cluster: DynamicClusterGunConfig | None = None,
     traditional_gf: TraditionalGfGunConfig | None = None,
-    anti_surfer: AntiSurferGunConfig | None = None,
 ) -> GunRuntimeConfig:
     system_config = system or GunSystemConfig()
     selector_config = selector or GunSelectorConfig()
@@ -39,7 +36,6 @@ def standard_runtime_config(
         min_switch_score=min_switch_score,
     )
     traditional_gf_config = traditional_gf or TraditionalGfGunConfig()
-    anti_surfer_config = anti_surfer or AntiSurferGunConfig()
 
     def component_factory(history: TargetHistoryStore):
         return [
@@ -47,7 +43,6 @@ def standard_runtime_config(
             LinearGun(min_switch_visits=min_visits, min_switch_score=min_switch_score),
             DisplacementGun(displacement_config, history),
             TraditionalGfGun(traditional_gf_config),
-            AntiSurferGun(anti_surfer_config),
             DynamicClusterGun(dynamic_cluster_config),
         ]
 

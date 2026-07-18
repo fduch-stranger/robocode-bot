@@ -121,7 +121,7 @@ direction application independently. Movement-wave learning remains active so
 the controls do not silently change training evidence.
 
 Valid pinned guns are `head_on`, `linear`, `displacement`,
-`traditional_gf`, `dynamic_cluster`, and `anti_surfer`.
+`traditional_gf`, and `dynamic_cluster`.
 
 ## Firepower
 

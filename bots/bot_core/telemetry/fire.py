@@ -564,16 +564,6 @@ def _wave_visit_fields(visit: WaveVisit) -> dict[str, object]:
         fields["traditional_gf_context_lateral_confidence"] = round(traditional_context_lateral_confidence, 3)
     if traditional_context_tags is not None:
         fields["traditional_gf_context_tags"] = traditional_context_tags
-    anti_surfer = visit.gun_diagnostics.get("anti_surfer", {})
-    anti_surfer_relevance = _diagnostic_float(anti_surfer, "surfer_relevance")
-    anti_surfer_wall_escape_balance = _diagnostic_float(anti_surfer, "wall_escape_balance")
-    anti_surfer_tags = _diagnostic_tags(anti_surfer, "context_tags")
-    if anti_surfer_relevance is not None:
-        fields["anti_surfer_context_relevance"] = round(anti_surfer_relevance, 3)
-    if anti_surfer_wall_escape_balance is not None:
-        fields["anti_surfer_wall_escape_balance"] = round(anti_surfer_wall_escape_balance, 3)
-    if anti_surfer_tags is not None:
-        fields["anti_surfer_context_tags"] = anti_surfer_tags
     displacement = visit.gun_diagnostics.get("displacement", {})
     displacement_flight_time = _diagnostic_float(displacement, "flight_time")
     displacement_wall_escape_balance = _diagnostic_float(displacement, "wall_escape_balance")

@@ -33,7 +33,6 @@ from bot_core.gun import (
     should_log_switch_decision,
 )
 from bot_core.gun.factory import standard_runtime_config
-from bot_core.gun.guns.anti_surfer.config import AntiSurferGunConfig
 from bot_core.movement import (
     FlatteningDecision,
     MinimumRiskMovement,
@@ -121,10 +120,6 @@ class AdaptivePrime(Bot):
                 displacement=displacement_config_from_policy(GUN_POLICY),
                 dynamic_cluster=dynamic_cluster_config_from_policy(GUN_POLICY),
                 traditional_gf=traditional_gf_config_from_policy(traditional_gf_policy),
-                anti_surfer=AntiSurferGunConfig(
-                    min_switch_visits=GUN_POLICY.anti_surfer_min_switch_visits,
-                    min_switch_score=GUN_POLICY.anti_surfer_min_switch_score,
-                ),
             )
         )
         self._movement = MovementFlattener(MOVEMENT_FLATTENING_CONFIG)

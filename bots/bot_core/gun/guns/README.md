@@ -35,7 +35,7 @@ flowchart TD
     E --> F["VirtualGunScorer stores virtual bearing on wave"]
     F --> G["AimModeSelector applies mode policy"]
     G --> H["selected aim_mode"]
-    H --> I["resolved wave returns as GunVisit"]
+    H --> I["production wave resolves as GunVisit"]
     I --> J["component observe_visit and diagnostics"]
 ```
 
@@ -48,7 +48,6 @@ flowchart TD
 | [`displacement`](displacement/README.md) | `displacement` | Reads shared target history, no private learner. |
 | [`dynamic_cluster`](dynamic_cluster/README.md) | `dynamic_cluster` | Owns KNN sample memory. |
 | [`traditional_gf`](traditional_gf/README.md) | `traditional_gf` | Owns global and fixed flight/lateral/wall-margin GF profiles. |
-| [`anti_surfer`](anti_surfer/README.md) | `anti_surfer` | Owns anti-surfer guess-factor profile bins. |
 
 `factory.standard_runtime_config()` wires the standard bot gun set. Add a
 sub-package README whenever a new concrete gun is introduced.

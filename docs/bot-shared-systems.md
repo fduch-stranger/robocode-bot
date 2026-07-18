@@ -57,7 +57,7 @@ Live repo-bot modes:
 | `traditional_gf` | Situational profile guess-factor gun. |
 | `linear` | Early/simple-motion fallback. |
 
-Force-testable modes also include `head_on` and `anti_surfer`.
+The force-testable-only mode is `head_on`.
 
 Selection is sticky. A candidate must be available, meet visit and score floors,
 and beat the current mode by the configured margin. Role-specific margins can

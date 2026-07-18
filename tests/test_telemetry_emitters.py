@@ -474,11 +474,6 @@ class TelemetryEmitterTest(unittest.TestCase):
                         "quality_reason": "weak",
                         "recommended_power_scale": 0.75,
                     },
-                    "anti_surfer": {
-                        "context_tags": frozenset({"surfer"}),
-                        "surfer_relevance": 0.6,
-                        "wall_escape_balance": -0.333,
-                    },
                     "displacement": {
                         "context_tags": frozenset({"nonlinear_mover"}),
                         "flight_time": 14.285,
@@ -517,7 +512,6 @@ class TelemetryEmitterTest(unittest.TestCase):
         self.assertEqual(0.444, fields["dynamic_cluster_shot_quality"])
         self.assertEqual("weak", fields["dynamic_cluster_quality_reason"])
         self.assertEqual(0.75, fields["dynamic_cluster_recommended_power_scale"])
-        self.assertEqual(0.6, fields["anti_surfer_context_relevance"])
         self.assertEqual(["nonlinear_mover"], fields["displacement_context_tags"])
         self.assertTrue(fields["linear_context_short_flight_time"])
         self.assertEqual(["surfer"], fields["traditional_gf_context_tags"])

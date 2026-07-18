@@ -144,13 +144,13 @@ class BotConfigTest(unittest.TestCase):
         self.assertEqual(global_set_policy.selectable_modes, {"dynamic_cluster", "traditional_gf"})
         self.assertEqual(selector_config_from_policy(global_set_policy).default_mode, "dynamic_cluster")
 
-        situational_set_config = _load_config(
+        force_testable_set_config = _load_config(
             adaptive_path,
-            {"ROBOCODE_GUN_SET": "anti_surfer,dynamic_cluster"},
+            {"ROBOCODE_GUN_SET": "head_on,dynamic_cluster"},
         )
-        situational_set_policy = situational_set_config.GunPolicy()
-        self.assertEqual(situational_set_policy.selectable_modes, {"anti_surfer", "dynamic_cluster"})
-        self.assertEqual(selector_config_from_policy(situational_set_policy).default_mode, "dynamic_cluster")
+        force_testable_set_policy = force_testable_set_config.GunPolicy()
+        self.assertEqual(force_testable_set_policy.selectable_modes, {"head_on", "dynamic_cluster"})
+        self.assertEqual(selector_config_from_policy(force_testable_set_policy).default_mode, "dynamic_cluster")
 
         per_bot_set_config = _load_config(
             adaptive_path,
@@ -187,9 +187,9 @@ class BotConfigTest(unittest.TestCase):
 
         forceable_global_set_config = _load_config(
             circle_path,
-            {"ROBOCODE_GUN_SET": "linear,anti_surfer"},
+            {"ROBOCODE_GUN_SET": "linear,head_on"},
         )
-        self.assertEqual(forceable_global_set_config.GunPolicy().selectable_modes, {"linear", "anti_surfer"})
+        self.assertEqual(forceable_global_set_config.GunPolicy().selectable_modes, {"linear", "head_on"})
 
     def test_gun_policy_status_fields_report_effective_gun_setup(self) -> None:
         path = ROOT / "bots" / "adaptive-prime" / "adaptive_config.py"
@@ -207,7 +207,6 @@ class BotConfigTest(unittest.TestCase):
         self.assertEqual(fields["selectable_guns"], ["dynamic_cluster", "traditional_gf"])
         self.assertEqual(fields["forced_gun"], "traditional_gf")
         self.assertTrue(fields["eval_waves"])
-        self.assertIn("anti_surfer", fields["force_guns"])
         self.assertIn("head_on", fields["force_guns"])
 
     def test_all_bots_can_pin_every_standard_gun(self) -> None:
@@ -218,7 +217,6 @@ class BotConfigTest(unittest.TestCase):
             ("sweep-pressure", "sweep_config.py", "ROBOCODE_SWEEP_GUN_MODE", "SWEEP_FORCE_GUN_MODES"),
         )
         expected_modes = {
-            "anti_surfer",
             "displacement",
             "dynamic_cluster",
             "head_on",
@@ -338,14 +336,14 @@ class BotConfigTest(unittest.TestCase):
         env_config = _load_config(
             path,
             {
-                "ROBOCODE_CIRCLE_GUN_MODE": "anti_surfer",
+                "ROBOCODE_CIRCLE_GUN_MODE": "head_on",
                 "ROBOCODE_CIRCLE_GUN_EVAL": "on",
                 "ROBOCODE_CIRCLE_GUN_EVAL_INTERVAL": "bad",
                 "ROBOCODE_CIRCLE_DYNAMIC_BANDWIDTH_MIN": "0.4",
                 "ROBOCODE_CIRCLE_DYNAMIC_BANDWIDTH_MAX": "0.2",
             },
         )
-        self.assertEqual(env_config.GunPolicy().forced_mode, "anti_surfer")
+        self.assertEqual(env_config.GunPolicy().forced_mode, "head_on")
         self.assertTrue(env_config.GunPolicy().eval_waves_enabled)
         self.assertEqual(env_config.GunPolicy().eval_wave_min_interval, 8)
         self.assertEqual(env_config.GunPolicy().dynamic_cluster.bandwidth_min, 0.2)

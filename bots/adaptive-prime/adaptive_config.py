@@ -108,8 +108,6 @@ class GunPolicy:
     displacement_min_switch_visits: int = SHARED_GUN_POLICY_DEFAULTS.displacement_min_switch_visits
     displacement_min_switch_score: float = SHARED_GUN_POLICY_DEFAULTS.displacement_min_switch_score
     traditional_gf: TraditionalGfPolicy = field(default_factory=TraditionalGfPolicy)
-    anti_surfer_min_switch_visits: int = 95
-    anti_surfer_min_switch_score: float = 0.28
     switch_confidence_visits: int = 120
     switch_confidence_penalty: float = 0.04
     primary_confidence_penalty_scale: float = 0.25
