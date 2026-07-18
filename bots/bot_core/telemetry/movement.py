@@ -88,18 +88,6 @@ class MovementTelemetry:
             **_flattening_fields(target_id, flattening, distance, current_direction=current_direction, include_reason=True),
         )
 
-    def sample_evidence_shadow(
-        self,
-        target_id: int,
-        flattening: FlatteningDecision,
-        distance: float,
-        current_direction: int,
-    ) -> None:
-        self._sink.sample(
-            "movement.evidence_shadow",
-            **_evidence_shadow_fields(target_id, flattening, distance, current_direction),
-        )
-
     def record_flattening_shadow(
         self,
         target_id: int,
@@ -218,13 +206,6 @@ def _flattening_fields(
         "alternative_count": round(flattening.alternative_count, 1),
         "distance": round(distance, 1),
     }
-    if flattening.legacy_direction is not None or flattening.shadow_direction is not None:
-        fields.update(
-            score_source=flattening.score_source,
-            legacy_direction=flattening.legacy_direction,
-            selected_current_danger=round(flattening.selected_current_danger, 3),
-            selected_alternative_danger=round(flattening.selected_alternative_danger, 3),
-        )
     if current_direction is not None:
         fields["current_direction"] = current_direction
     if include_reason:
@@ -304,26 +285,6 @@ def _goto_surf_fields(
         "wall_risk": round(decision.wall_risk, 3),
         "distance_risk": round(decision.distance_risk, 3),
         "travel_risk": round(decision.travel_risk, 3),
-        "occupancy_danger": round(decision.occupancy_danger, 3),
-        "hit_danger": round(decision.hit_danger, 3),
-        "hit_profile_support": round(decision.hit_profile_support, 1),
-        "hit_fallback_level": decision.hit_fallback_level,
-        "expected_pressure": round(decision.expected_pressure, 3),
-        "shadow_danger": round(decision.shadow_danger, 3),
-        "shadow_destination_x": round(decision.shadow_x, 1) if decision.shadow_x is not None else None,
-        "shadow_destination_y": round(decision.shadow_y, 1) if decision.shadow_y is not None else None,
-        "shadow_direction": decision.shadow_direction,
-        "shadow_selected_danger": round(decision.shadow_selected_danger, 3)
-        if decision.shadow_selected_danger is not None
-        else None,
-        "live_destination_x": round(decision.live_x, 1) if decision.live_x is not None else None,
-        "live_destination_y": round(decision.live_y, 1) if decision.live_y is not None else None,
-        "live_direction": decision.live_direction,
-        "live_selected_danger": round(decision.live_selected_danger, 3)
-        if decision.live_selected_danger is not None
-        else None,
-        "score_source": decision.score_source,
-        "shadow_differs": decision.shadow_x != decision.live_x or decision.shadow_y != decision.live_y,
         "candidates": decision.candidates,
         "wave_kind": decision.wave_kind,
         "hit_guess_factor": round(decision.hit_guess_factor, 3),
@@ -363,7 +324,7 @@ def _duel_potential_fields(
 
 
 def _profile_visit_fields(visit: MovementProfileVisit) -> dict[str, object]:
-    fields: dict[str, object] = {
+    return {
         "target": visit.target_id,
         "guess_factor": round(visit.guess_factor, 3),
         "bin": visit.bin_index,
@@ -372,42 +333,4 @@ def _profile_visit_fields(visit: MovementProfileVisit) -> dict[str, object]:
         "wave_age": visit.wave_age,
         "ensemble_danger": round(visit.ensemble_danger, 3),
         "ensemble_samples": round(visit.ensemble_samples, 1),
-        "evidence_kind": visit.evidence_kind,
-        "wave_kind": visit.wave_kind,
-        "occupancy_visits": round(visit.occupancy_visits, 1),
-        "hit_profile_support": round(visit.hit_profile_support, 1),
-    }
-    if visit.match_error is not None:
-        fields["match_error"] = round(visit.match_error, 2)
-    return fields
-
-
-def _evidence_shadow_fields(
-    target_id: int,
-    flattening: FlatteningDecision,
-    distance: float,
-    current_direction: int,
-) -> dict[str, object]:
-    return {
-        "target": target_id,
-        "distance": round(distance, 1),
-        "current_direction": current_direction,
-        "live_direction": flattening.legacy_direction,
-        "selected_direction": flattening.direction,
-        "shadow_direction": flattening.shadow_direction,
-        "shadow_differs": flattening.shadow_direction is not None
-        and flattening.shadow_direction != flattening.legacy_direction,
-        "score_source": flattening.score_source,
-        "current_live_danger": round(flattening.current_count, 3),
-        "alternative_live_danger": round(flattening.alternative_count, 3),
-        "current_occupancy": round(flattening.current_occupancy, 3),
-        "alternative_occupancy": round(flattening.alternative_occupancy, 3),
-        "current_hit_danger": round(flattening.current_hit_danger, 3),
-        "alternative_hit_danger": round(flattening.alternative_hit_danger, 3),
-        "current_expected_pressure": round(flattening.current_expected_pressure, 3),
-        "alternative_expected_pressure": round(flattening.alternative_expected_pressure, 3),
-        "current_shadow_danger": round(flattening.current_shadow_danger, 3),
-        "alternative_shadow_danger": round(flattening.alternative_shadow_danger, 3),
-        "hit_profile_support": round(flattening.hit_profile_support, 1),
-        "hit_fallback_level": flattening.hit_fallback_level,
     }

@@ -24,11 +24,7 @@ from bot_core.gun.features import (
     signed_bucket,
 )
 from bot_core.gun.guns.base import GunComponent
-from bot_core.gun.guns.linear import (
-    LINEAR_MODE,
-    LINEAR_VARIANT_MODES,
-    LINEAR_WALL_AWARE_MODE,
-)
+from bot_core.gun.guns.linear import LINEAR_MODE
 from bot_core.gun.guess_factors import bin_to_guess_factor, guess_factor_to_bin
 from bot_core.gun.kinematics import lateral_direction, point_on_bearing
 from bot_core.gun.models import (
@@ -55,10 +51,7 @@ from bot_core.gun.policy import (
     gun_policy_status_fields,
     selector_config_from_policy,
 )
-from bot_core.gun.prediction import (
-    predict_linear_position,
-    predict_wall_aware_linear_position,
-)
+from bot_core.gun.prediction import predict_linear_position
 from bot_core.gun.scoring import VirtualGunScorer
 from bot_core.gun.system import VirtualGunSystem
 from bot_core.gun.waves import GunWaveTracker
@@ -85,8 +78,6 @@ __all__ = [
     "GunWave",
     "GunWaveTracker",
     "LINEAR_MODE",
-    "LINEAR_VARIANT_MODES",
-    "LINEAR_WALL_AWARE_MODE",
     "DEFAULT_LIVE_GUN_MODES",
     "DynamicClusterPolicy",
     "SHARED_GUN_POLICY_DEFAULTS",
@@ -108,7 +99,6 @@ __all__ = [
     "movement_context_tags",
     "point_on_bearing",
     "predict_linear_position",
-    "predict_wall_aware_linear_position",
     "segment_features",
     "displacement_config_from_policy",
     "dynamic_cluster_config_from_policy",

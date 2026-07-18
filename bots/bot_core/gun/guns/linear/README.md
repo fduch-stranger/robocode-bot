@@ -1,11 +1,10 @@
 # Linear Gun
 
-Modes: `linear`, `linear_wall_aware`
+Mode: `linear`
 
-The linear gun family predicts an intercept point from the target's current
-motion. `linear` assumes constant velocity and remains the default practical
-baseline for moving targets. `linear_wall_aware` is a force-testable variant
-for comparing wall-hit-aware prediction against the baseline.
+The linear gun predicts an intercept point from the target's current motion.
+It assumes constant velocity and remains the default practical baseline for
+moving targets.
 
 ## Package Contents
 
@@ -13,10 +12,10 @@ for comparing wall-hit-aware prediction against the baseline.
 
 ## Runtime Behavior
 
-`LinearGun` calls the shared gun predictor for its configured mode with the
-current bot snapshot, target snapshot, firepower, and field margin, then returns
-the absolute bearing to the predicted point. It has no private learner or
-per-target state.
+`LinearGun` calls the shared constant-velocity predictor with the current bot
+snapshot, target snapshot, firepower, and field margin, then returns the
+absolute bearing to the predicted point. It has no private learner or per-target
+state.
 
 Selector thresholds are supplied when the component is constructed. Standard
 runtime wiring uses the shared `min_switch_visits` and `min_switch_score`
@@ -27,11 +26,8 @@ values from `factory.standard_runtime_config()`.
 ```mermaid
 flowchart TD
     A["AimContext"] --> B["read bot and target state"]
-    B --> C{"configured linear mode"}
-    C --> D["constant velocity"]
-    C --> E["wall-aware movement projection"]
+    B --> D["constant velocity"]
     D --> G["absolute bearing to predicted point"]
-    E --> G
     G --> H["return GunBearing"]
     I["GunVisit"] --> J["no private learning"]
 ```

@@ -3,28 +3,15 @@ from robocode_tank_royale.bot_api import Bot, BotInfo, Color
 from robocode_tank_royale.bot_api.events import (
     BotDeathEvent,
     BulletFiredEvent,
-    BulletHitBulletEvent,
     BulletHitBotEvent,
-    BulletHitWallEvent,
-    DeathEvent,
     GameStartedEvent,
     HitBotEvent,
     HitByBulletEvent,
     HitWallEvent,
-    RoundEndedEvent,
     ScannedBotEvent,
     SkippedTurnEvent,
-    WonRoundEvent,
 )
 
-from bot_core.combat import (
-    CombatProfileStore,
-    FireUtilityCalibrator,
-    FireUtilityContext,
-    FireUtilityOpportunity,
-    build_fire_utility_context,
-    inferred_fire_confidence,
-)
 from bot_core.debug import DebugLogger, FiredBulletTracker
 from bot_core.energy import (
     EnemyEnergyCorrectionLedger,
@@ -64,10 +51,8 @@ from bot_core.geometry.position import distance_to
 from bot_core.movement.navigation import drive_to_destination
 from bot_core.target_snapshot import TargetSnapshot, interpolate_target, target_from_hit_bot, target_from_scan
 from bot_core.targeting import TargetMemory, TargetSelector
-from bot_core.telemetry.combat import CombatTelemetry
 from bot_core.telemetry.energy import EnergyTelemetry
 from bot_core.telemetry.fire import FireTelemetry, FireTick
-from bot_core.telemetry.fire_utility import FireUtilityTelemetry
 from bot_core.telemetry.movement import MovementTelemetry
 from bot_core.telemetry.targeting import TargetingTelemetry
 from bot_core.telemetry.timing import TurnTimingTelemetry
@@ -150,9 +135,6 @@ class AdaptivePrime(Bot):
                 goto_expected_wave_min_confidence=0.62,
             )
         )
-        self._combat = CombatProfileStore()
-        self._fire_utility = FireUtilityCalibrator()
-        self._pending_fire_utility: FireUtilityOpportunity | None = None
         self._minimum_risk = MinimumRiskMovement(
             MinimumRiskConfig(
                 candidate_distances=(220.0, 320.0, 430.0, 560.0),
@@ -171,18 +153,12 @@ class AdaptivePrime(Bot):
             )
         )
         self._debug = DebugLogger(self, "adaptive-prime")
-        self._combat_telemetry = CombatTelemetry(self._debug)
         self._energy_telemetry = EnergyTelemetry(self._debug)
         self._fire_telemetry = FireTelemetry(self._debug)
-        self._fire_utility_telemetry = FireUtilityTelemetry(self._debug)
         self._movement_telemetry = MovementTelemetry(self._debug)
         self._targeting_telemetry = TargetingTelemetry(self._debug)
         self._timing_telemetry = TurnTimingTelemetry(self._debug)
-        self._debug.log(
-            "bot.config",
-            **gun_policy_status_fields(GUN_POLICY, ADAPTIVE_FORCE_GUN_MODES),
-            fire_utility_shadow=True,
-        )
+        self._debug.log("bot.config", **gun_policy_status_fields(GUN_POLICY, ADAPTIVE_FORCE_GUN_MODES))
         self._fired_bullets = FiredBulletTracker()
         self._last_gun_decision_log_turn: dict[int, int] = {}
         self._last_traditional_gf_profile_log_turn: dict[int, int] = {}
@@ -283,13 +259,6 @@ class AdaptivePrime(Bot):
             fired_turn=estimated_fire_turn,
             **self._own_motion.movement_wave_kwargs(self.turn_number),
         )
-        detection_confidence = inferred_fire_confidence(scan_gap)
-        self._combat.record_enemy_fire(
-            estimated_fire_turn,
-            event.scanned_bot_id,
-            signal.fire_power or 1.5,
-            detection_confidence,
-        )
         melee_active = self._melee_round or self.enemy_count > 1 or len(self._targets) > 1
         active_evasion = (
             distance >= FIRE_POLICY.enemy_fire_active_evasion_min_distance
@@ -317,7 +286,6 @@ class AdaptivePrime(Bot):
             evade_direction=self._evade_direction,
             known_targets=len(self._targets),
             heat_state=heat_state,
-            detection_confidence=detection_confidence,
             inferred_fire_turn=estimated_fire_turn,
             fire_source_x=fire_source.x,
             fire_source_y=fire_source.y,
@@ -429,16 +397,6 @@ class AdaptivePrime(Bot):
 
         fire_decision = FIRE_GATE.decide(age, distance, aim.gun_bearing, firepower, self.energy)
         self.set_turn_gun_left(aim.gun_bearing)
-        if self.gun_heat <= 0.0:
-            self._record_fire_utility_opportunity(
-                target,
-                distance,
-                firepower,
-                aim,
-                score_segment,
-                can_fire=fire_decision.can_fire,
-                reason=fire_decision.reason,
-            )
         if age <= 2 and self.gun_heat <= 0 and self.energy > firepower:
             self._gun.maybe_add_eval_wave(self, target, firepower, aim)
         self._fire_telemetry.sample_track(
@@ -461,7 +419,6 @@ class AdaptivePrime(Bot):
                 known_targets=len(self._targets),
             )
         )
-        self._combat_telemetry.sample_profile(self._combat.snapshot(target.bot_id, self.turn_number))
         if fire_decision.can_fire:
             self._gun.set_pending_wave(self._gun.make_wave(self, target, firepower, aim))
             self.set_fire(firepower)
@@ -503,82 +460,6 @@ class AdaptivePrime(Bot):
             return default
         value = diagnostics.get(key)
         return float(value) if isinstance(value, (int, float)) else default
-
-    def _record_fire_utility_opportunity(
-        self,
-        target: TargetSnapshot,
-        distance: float,
-        firepower: float,
-        aim: AimSolution,
-        score_segment: tuple[int, ...] | None,
-        *,
-        can_fire: bool,
-        reason: str,
-    ) -> None:
-        context = self._fire_utility_context(target.bot_id, distance, firepower, aim, score_segment)
-        power_band_calibration = self._fire_utility.snapshot_power_bands(context)
-        selected_calibration = next(
-            snapshot
-            for snapshot in power_band_calibration
-            if snapshot.power_band == context.power_band
-        )
-        estimate = self._fire_utility.estimate(
-            context,
-            firepower,
-            cooling_rate=self.gun_cooling_rate,
-            calibration=selected_calibration,
-        )
-        opportunity = FireUtilityOpportunity(
-            target_id=target.bot_id,
-            turn=self.turn_number,
-            action="fire" if can_fire else "hold",
-            reason=reason,
-            estimate=estimate,
-            power_band_calibration=power_band_calibration,
-        )
-        self._fire_utility_telemetry.record_opportunity(opportunity)
-        if can_fire:
-            self._pending_fire_utility = opportunity
-
-    def _fire_utility_context(
-        self,
-        target_id: int,
-        distance: float,
-        firepower: float,
-        aim: AimSolution,
-        score_segment: tuple[int, ...] | None,
-    ) -> FireUtilityContext:
-        mode_score, mode_visits = self._gun.mode_confidence(target_id, aim.mode, score_segment)
-        solution_quality = self._fire_utility_solution_quality(
-            aim.mode,
-            aim.gun_diagnostics,
-            mode_score,
-            mode_visits,
-        )
-        return build_fire_utility_context(
-            aim.mode,
-            distance,
-            firepower,
-            solution_quality=solution_quality,
-            model_support=mode_visits,
-            config=self._fire_utility.config,
-        )
-
-    @staticmethod
-    def _fire_utility_solution_quality(
-        aim_mode: str | None,
-        diagnostics: dict[str, object],
-        mode_score: float,
-        mode_visits: int,
-    ) -> float | None:
-        if aim_mode == "dynamic_cluster":
-            dynamic = diagnostics.get("dynamic_cluster", {})
-            if isinstance(dynamic, dict):
-                quality = dynamic.get("shot_quality")
-                if isinstance(quality, (int, float)):
-                    return clamp(float(quality), 0.0, 1.0)
-            return None
-        return clamp(float(mode_score), 0.0, 1.0) if mode_visits > 0 else None
 
     def _set_adaptive_movement(
         self,
@@ -642,16 +523,9 @@ class AdaptivePrime(Bot):
                 allow_switch=True,
                 use_surfing=True,
             )
-            if flattening.shadow_direction is not None:
-                self._movement_telemetry.sample_evidence_shadow(
-                    target.bot_id,
-                    flattening,
-                    distance,
-                    self._evade_direction,
-                )
             if flattening.changed:
                 self._movement_telemetry.record_duel_flattening(target.bot_id, flattening, distance, self._evade_direction)
-                if MOVEMENT_POLICY.flattener_active and flattening.selected_current_danger >= 2.0:
+                if MOVEMENT_POLICY.flattener_active and flattening.current_count >= 2.0:
                     self._evade_direction = flattening.direction
             if MOVEMENT_POLICY.goto_surfing_active:
                 surf_decision = self._movement.choose_go_to_surf_destination(
@@ -1007,11 +881,6 @@ class AdaptivePrime(Bot):
 
     def _reset_if_new_round(self) -> None:
         if self._last_turn_number >= 0 and self.turn_number < self._last_turn_number:
-            if (
-                self._combat.round_closed_turn is None
-                or self._fire_utility.round_closed_turn is None
-            ):
-                self._close_round_ledgers(self._last_turn_number)
             self._targets.clear()
             self._target_id = None
             self._recent_threat_id = None
@@ -1024,9 +893,6 @@ class AdaptivePrime(Bot):
             self._movement.clear_round_state()
             self._minimum_risk.clear_round_state()
             self._enemy_gun_heat.clear_round_state()
-            self._combat.clear_round_state()
-            self._fire_utility.clear_round_state()
-            self._pending_fire_utility = None
             self._fired_bullets.clear()
             self._last_gun_decision_log_turn.clear()
             self._target_accel.clear()
@@ -1054,9 +920,6 @@ class AdaptivePrime(Bot):
         self._movement.clear_battle_state()
         self._minimum_risk.clear_round_state()
         self._enemy_gun_heat.clear_round_state()
-        self._combat.clear_battle_state()
-        self._fire_utility.clear_battle_state()
-        self._pending_fire_utility = None
         self._fired_bullets.clear()
         self._last_gun_decision_log_turn.clear()
         self._last_traditional_gf_profile_log_turn.clear()
@@ -1198,13 +1061,6 @@ class AdaptivePrime(Bot):
                 event.bullet.owner_id,
                 event.bullet.power,
             )
-        self._combat.record_enemy_hit(
-            self.turn_number,
-            event.bullet.owner_id,
-            event.bullet.power,
-            event.damage,
-            matched_wave=movement_visit is not None,
-        )
         if event.bullet.owner_id in self._targets:
             self._recent_threat_id = event.bullet.owner_id
             self._recent_threat_turn = self.turn_number
@@ -1222,17 +1078,11 @@ class AdaptivePrime(Bot):
             movement_wave_match=movement_visit is not None,
             movement_guess_factor=round(movement_visit.guess_factor, 3) if movement_visit is not None else None,
             movement_bin=movement_visit.bin_index if movement_visit is not None else None,
-            movement_wave_kind=movement_visit.wave_kind if movement_visit is not None else None,
-            movement_wave_match_error=round(movement_visit.match_error, 2)
-            if movement_visit is not None and movement_visit.match_error is not None
-            else None,
-            movement_hit_profile_support=round(movement_visit.hit_profile_support, 1)
-            if movement_visit is not None
-            else None,
         )
 
     def on_bullet_hit(self, event: BulletHitBotEvent) -> None:
         self._record_enemy_energy_correction(event.victim_id, event.damage, "our_bullet_damage")
+        self._movement.remove_shadow_bullet(event.bullet.bullet_id)
         bullet_fields = self._fired_bullets.fields_for(event.bullet.bullet_id)
         self._fire_telemetry.record_bullet_hit_bot(
             event.victim_id,
@@ -1242,15 +1092,6 @@ class AdaptivePrime(Bot):
             event.energy,
             bullet_fields,
         )
-        self._resolve_own_bullet(event.bullet.bullet_id, "hit_bot", damage=event.damage)
-
-    def on_bullet_hit_wall(self, event: BulletHitWallEvent) -> None:
-        self._resolve_own_bullet(event.bullet.bullet_id, "hit_wall")
-
-    def on_bullet_hit_bullet(self, event: BulletHitBulletEvent) -> None:
-        if self._resolve_own_bullet(event.bullet.bullet_id, "hit_bullet"):
-            return
-        self._resolve_own_bullet(event.hit_bullet.bullet_id, "hit_bullet")
 
     def on_hit_bot(self, event: HitBotEvent) -> None:
         self._targets[event.victim_id] = target_from_hit_bot(
@@ -1281,8 +1122,7 @@ class AdaptivePrime(Bot):
 
     def on_bot_death(self, event: BotDeathEvent) -> None:
         self._targets.pop(event.victim_id, None)
-        # BotDeath runs before BulletFired. Keep the staged wave until the
-        # lower-priority acceptance callback can attribute a terminal shot.
+        # BotDeath can run before BulletFired for the terminal shot.
         self._gun.remove_target(event.victim_id, preserve_pending=True)
         self._movement.remove_target(event.victim_id, clear_profile=False)
         self._enemy_fire_detector.remove_target(event.victim_id)
@@ -1321,16 +1161,6 @@ class AdaptivePrime(Bot):
             if wave is not None and wave.aim_mode == "traditional_gf"
             else None,
         )
-        self._combat.record_own_fire(
-            self.turn_number,
-            target_id,
-            event.bullet.bullet_id,
-            event.bullet.power,
-            gun_mode=wave.aim_mode if wave is not None else None,
-            source=str(bullet_fields["traditional_gf_source"])
-            if bullet_fields.get("traditional_gf_source") is not None
-            else None,
-        )
         self._fire_telemetry.record_bullet_fired(
             event.bullet.bullet_id,
             target_id,
@@ -1349,66 +1179,6 @@ class AdaptivePrime(Bot):
             selected_gun_confidence=selected_gun_score,
             selected_gun_confidence_visits=selected_gun_visits,
         )
-        pending_utility = self._pending_fire_utility
-        self._pending_fire_utility = None
-        accepted_mode = wave.aim_mode if wave is not None else None
-        pending_matches = (
-            pending_utility is not None
-            and (pending_utility.target_id == target_id or target_id is None)
-            and (
-                accepted_mode is None
-                or pending_utility.estimate.context.gun_mode == accepted_mode
-            )
-        )
-        if pending_matches:
-            assert pending_utility is not None
-            utility_context = pending_utility.estimate.context
-            utility_estimate = pending_utility.estimate
-            utility_reason = pending_utility.reason
-        else:
-            fallback_distance = (
-                distance_to(self, target.x, target.y)
-                if target is not None
-                else (
-                    wave.fire_context.bullet_flight_time * wave.bullet_speed
-                    if wave is not None
-                    else 0.0
-                )
-            )
-            utility_diagnostics = wave.gun_metadata if wave is not None else {}
-            utility_quality = self._fire_utility_solution_quality(
-                accepted_mode,
-                utility_diagnostics,
-                selected_gun_score,
-                selected_gun_visits,
-            )
-            utility_context = build_fire_utility_context(
-                accepted_mode,
-                fallback_distance,
-                event.bullet.power,
-                solution_quality=utility_quality,
-                model_support=selected_gun_visits,
-                config=self._fire_utility.config,
-            )
-            utility_estimate = None
-            utility_reason = "accepted_unstaged"
-        utility_shot = self._fire_utility.record_accepted_shot(
-            self.turn_number,
-            event.bullet.bullet_id,
-            target_id,
-            utility_context,
-            event.bullet.power,
-            cooling_rate=self.gun_cooling_rate,
-            behavior_reason=utility_reason,
-            estimate=utility_estimate,
-            calibration_snapshots=(
-                pending_utility.power_band_calibration
-                if pending_matches and pending_utility is not None
-                else ()
-            ),
-        )
-        if utility_shot is not None:
-            self._fire_utility_telemetry.record_accepted(utility_shot)
         if wave is not None:
             self._fire_telemetry.record_fire_drift(
                 event.bullet.bullet_id,
@@ -1425,57 +1195,6 @@ class AdaptivePrime(Bot):
                 event.bullet.power,
                 event.bullet.speed,
             )
-        if (
-            self._combat.round_closed_turn is not None
-            or self._fire_utility.round_closed_turn is not None
-        ):
-            self._close_round_ledgers(self.turn_number)
-
-    def on_round_ended(self, event: RoundEndedEvent) -> None:
-        self._close_round_ledgers(event.turn_number)
-
-    def on_death(self, event: DeathEvent) -> None:
-        self._close_round_ledgers(event.turn_number)
-
-    def on_won_round(self, event: WonRoundEvent) -> None:
-        self._close_round_ledgers(event.turn_number)
-
-    def _close_round_ledgers(self, turn: int) -> None:
-        resolutions = self._combat.close_round(turn)
-        utility_outcomes = self._fire_utility.close_round(turn)
-        for target_id in self._combat.target_ids:
-            self._combat_telemetry.record_profile(self._combat.snapshot(target_id, turn))
-        for resolution in resolutions:
-            self._combat_telemetry.record_own_bullet_resolution(resolution)
-        for utility_outcome in utility_outcomes:
-            self._fire_utility_telemetry.record_outcome(utility_outcome)
-
-    def _resolve_own_bullet(self, bullet_id: object, outcome: str, *, damage: float = 0.0) -> bool:
-        utility_outcome = self._fire_utility.resolve_shot(
-            self.turn_number,
-            bullet_id,
-            outcome,
-            damage=damage,
-        )
-        resolution = self._combat.resolve_own_bullet(
-            self.turn_number,
-            bullet_id,
-            outcome,
-            damage=damage,
-        )
-        if utility_outcome is None and resolution is None:
-            return False
-        self._movement.remove_shadow_bullet(bullet_id)
-        if utility_outcome is not None:
-            self._fire_utility_telemetry.record_outcome(utility_outcome)
-        if resolution is not None:
-            self._combat_telemetry.record_own_bullet_resolution(resolution)
-            if resolution.previous_outcome is not None:
-                for target_id in self._combat.target_ids:
-                    self._combat_telemetry.record_profile(
-                        self._combat.snapshot(target_id, self.turn_number)
-                    )
-        return True
 
     def on_skipped_turn(self, event: SkippedTurnEvent) -> None:
         self._timing_telemetry.record_skipped_turn(self, event, **self._timing_fields())

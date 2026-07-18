@@ -9,7 +9,7 @@ from bot_core.gun.guns.displacement.gun import DisplacementGun
 from bot_core.gun.guns.dynamic_cluster.config import DynamicClusterGunConfig
 from bot_core.gun.guns.dynamic_cluster.gun import DynamicClusterGun
 from bot_core.gun.guns.head_on.gun import HeadOnGun
-from bot_core.gun.guns.linear.gun import LINEAR_MODE, LINEAR_WALL_AWARE_MODE, LinearGun
+from bot_core.gun.guns.linear.gun import LinearGun
 from bot_core.gun.guns.traditional_gf.config import TraditionalGfGunConfig
 from bot_core.gun.guns.traditional_gf.gun import TraditionalGfGun
 
@@ -44,8 +44,7 @@ def standard_runtime_config(
     def component_factory(history: TargetHistoryStore):
         return [
             HeadOnGun(min_switch_visits=min_visits, min_switch_score=head_on_min_switch_score),
-            LinearGun(min_switch_visits=min_visits, min_switch_score=min_switch_score, mode=LINEAR_MODE),
-            LinearGun(min_switch_visits=min_visits, min_switch_score=min_switch_score, mode=LINEAR_WALL_AWARE_MODE),
+            LinearGun(min_switch_visits=min_visits, min_switch_score=min_switch_score),
             DisplacementGun(displacement_config, history),
             TraditionalGfGun(traditional_gf_config),
             AntiSurferGun(anti_surfer_config),

@@ -25,7 +25,6 @@ class AdaptiveConfigTest(unittest.TestCase):
         self.assertEqual(
             frozenset({
                 "linear",
-                "linear_wall_aware",
                 "traditional_gf",
                 "dynamic_cluster",
                 "head_on",
@@ -35,8 +34,8 @@ class AdaptiveConfigTest(unittest.TestCase):
             config.ADAPTIVE_FORCE_GUN_MODES,
         )
         self.assertNotIn("anti_surfer", config.GunPolicy().selectable_modes)
-        self.assertNotIn("linear_wall_aware", config.GunPolicy().selectable_modes)
         self.assertIn("displacement", config.GunPolicy().selectable_modes)
+
 
 if __name__ == "__main__":
     unittest.main()

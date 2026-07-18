@@ -1,17 +1,10 @@
 import math
-from dataclasses import replace
 
 from robocode_tank_royale.bot_api import Bot
 
 from bot_core.movement.config import MovementFlatteningConfig
 from bot_core.movement.danger import MovementDangerModel
-from bot_core.movement.decisions import (
-    FlatteningDecision,
-    GoToSurfDecision,
-    MovementDangerBreakdown,
-    MovementEvidenceBreakdown,
-    MovementProfileVisit,
-)
+from bot_core.movement.decisions import FlatteningDecision, GoToSurfDecision, MovementDangerBreakdown, MovementProfileVisit
 from bot_core.movement.profile import MovementProfile
 from bot_core.movement.surfing import SurfingPlanner
 from bot_core.movement.waves import MovementWave, MovementWaveFeatures, MovementWaveStore, ShadowBullet
@@ -25,13 +18,11 @@ class MovementFlattener:
     def __init__(self, config: MovementFlatteningConfig | None = None) -> None:
         self.config = config or MovementFlatteningConfig()
         self._wave_store = MovementWaveStore()
-        self._legacy_behavior_profile = MovementProfile(self.config)
-        self._visit_occupancy_profile = MovementProfile(self.config)
-        self._enemy_hit_profile = MovementProfile(self.config)
-        self._danger_model = MovementDangerModel(self.config, self._legacy_behavior_profile)
+        self._profile_store = MovementProfile(self.config)
+        self._danger_model = MovementDangerModel(self.config, self._profile_store)
         self._surfing = SurfingPlanner(self.config, self._wave_store)
-        self._profile = self._legacy_behavior_profile.profile
-        self._stats_buffers = self._legacy_behavior_profile.stats_buffers
+        self._profile = self._profile_store.profile
+        self._stats_buffers = self._profile_store.stats_buffers
         self._waves = self._wave_store.waves
         self._shadow_bullets: list[ShadowBullet] = []
         self._last_switch_turn: dict[int, int] = {}
@@ -181,11 +172,7 @@ class MovementFlattener:
             guess_factor = self._guess_factor(wave, bot.x, bot.y)
             bin_index = self._bin_index(guess_factor)
             profile_visits = self._record_visit(wave, bin_index, 1.0)
-            occupancy_visits = 0.0
-            if wave.kind == "confirmed":
-                occupancy_visits = self._visit_occupancy_profile.record(wave, bin_index, 1.0)
             danger = self._danger_breakdown(wave, bin_index)
-            evidence = self._evidence_breakdown(wave, bin_index, bot.x, bot.y)
             visits.append(
                 MovementProfileVisit(
                     target_id=wave.target_id,
@@ -196,10 +183,6 @@ class MovementFlattener:
                     wave_age=wave_age,
                     ensemble_danger=danger.ensemble_danger,
                     ensemble_samples=danger.ensemble_samples,
-                    evidence_kind="occupancy" if wave.kind == "confirmed" else "expected_expired",
-                    wave_kind=wave.kind,
-                    occupancy_visits=occupancy_visits,
-                    hit_profile_support=evidence.hit_profile_support,
                 )
             )
         self._wave_store.replace(remaining_waves)
@@ -221,16 +204,13 @@ class MovementFlattener:
             return abs(distance - wave_radius)
 
         wave = min(candidates, key=hit_error)
-        match_error = hit_error(wave)
-        if match_error > self.config.bullet_hit_wave_tolerance:
+        if hit_error(wave) > self.config.bullet_hit_wave_tolerance:
             return None
 
         guess_factor = self._guess_factor(wave, bot.x, bot.y)
         bin_index = self._bin_index(guess_factor)
         visits = self._record_visit(wave, bin_index, self.config.bullet_hit_visit_weight)
-        self._enemy_hit_profile.record(wave, bin_index, 1.0)
         danger = self._danger_breakdown(wave, bin_index)
-        evidence = self._evidence_breakdown(wave, bin_index, bot.x, bot.y)
         self._wave_store.remove(wave)
         return MovementProfileVisit(
             target_id=wave.target_id,
@@ -241,10 +221,6 @@ class MovementFlattener:
             wave_age=max(1, bot.turn_number - wave.fired_turn),
             ensemble_danger=danger.ensemble_danger,
             ensemble_samples=danger.ensemble_samples,
-            evidence_kind="enemy_hit",
-            wave_kind=wave.kind,
-            hit_profile_support=evidence.hit_profile_support,
-            match_error=match_error,
         )
 
     def choose_direction(
@@ -296,70 +272,10 @@ class MovementFlattener:
             alternative,
             use_surfing,
         )
-        current_x, current_y = self._candidate_projection(
-            bot,
-            wave,
-            body_bearing,
-            strafe_offset,
-            move_speed,
-            field_margin,
-            current_direction,
-            use_surfing,
-        )
-        alternative_x, alternative_y = self._candidate_projection(
-            bot,
-            wave,
-            body_bearing,
-            strafe_offset,
-            move_speed,
-            field_margin,
-            alternative,
-            use_surfing,
-        )
-        current_evidence = self._evidence_breakdown(
-            wave,
-            self._bin_index(self._guess_factor(wave, current_x, current_y)),
-            current_x,
-            current_y,
-        )
-        alternative_evidence = self._evidence_breakdown(
-            wave,
-            self._bin_index(self._guess_factor(wave, alternative_x, alternative_y)),
-            alternative_x,
-            alternative_y,
-        )
-        selected_current_danger = current_count
-        selected_alternative_danger = alternative_count
-        legacy_margin = self.config.switch_margin
+        margin = self.config.switch_margin
         if use_surfing and min(current_count, alternative_count) < 1.0:
-            legacy_margin *= 0.35
-        shadow_margin = self.config.switch_margin
-        if use_surfing and min(current_evidence.shadow_danger, alternative_evidence.shadow_danger) < 1.0:
-            shadow_margin *= 0.35
-        legacy_direction = alternative if alternative_count + legacy_margin < current_count else current_direction
-        shadow_direction = (
-            alternative
-            if alternative_evidence.shadow_danger + shadow_margin < current_evidence.shadow_danger
-            else current_direction
-        )
-        evidence_fields = {
-            "shadow_direction": shadow_direction,
-            "current_occupancy": current_evidence.occupancy_danger,
-            "alternative_occupancy": alternative_evidence.occupancy_danger,
-            "current_hit_danger": current_evidence.hit_danger,
-            "alternative_hit_danger": alternative_evidence.hit_danger,
-            "current_expected_pressure": current_evidence.expected_pressure,
-            "alternative_expected_pressure": alternative_evidence.expected_pressure,
-            "current_shadow_danger": current_evidence.shadow_danger,
-            "alternative_shadow_danger": alternative_evidence.shadow_danger,
-            "hit_profile_support": current_evidence.hit_profile_support,
-            "hit_fallback_level": current_evidence.hit_fallback_level,
-            "legacy_direction": legacy_direction,
-            "score_source": "legacy",
-            "selected_current_danger": selected_current_danger,
-            "selected_alternative_danger": selected_alternative_danger,
-        }
-        if selected_alternative_danger + legacy_margin >= selected_current_danger:
+            margin *= 0.35
+        if alternative_count + margin >= current_count:
             return FlatteningDecision(
                 direction=current_direction,
                 changed=False,
@@ -367,7 +283,6 @@ class MovementFlattener:
                 bucket=bucket,
                 current_count=current_count,
                 alternative_count=alternative_count,
-                **evidence_fields,
             )
 
         self._last_switch_turn[target_id] = turn_number
@@ -378,7 +293,6 @@ class MovementFlattener:
             bucket=bucket,
             current_count=current_count,
             alternative_count=alternative_count,
-            **evidence_fields,
         )
 
     def choose_go_to_surf_destination(
@@ -399,7 +313,6 @@ class MovementFlattener:
 
         candidates = self._go_to_candidate_points(bot, target, field_margin)
         best: GoToSurfDecision | None = None
-        shadow_best: GoToSurfDecision | None = None
         for destination_x, destination_y in candidates:
             decision = self._score_go_to_candidate(
                 bot,
@@ -414,24 +327,27 @@ class MovementFlattener:
                 continue
             if best is None or decision.danger < best.danger:
                 best = decision
-            if shadow_best is None or decision.shadow_danger < shadow_best.shadow_danger:
-                shadow_best = decision
 
-        if best is None or shadow_best is None:
+        if best is None:
             return None
 
-        return replace(
-            best,
+        return GoToSurfDecision(
+            x=best.x,
+            y=best.y,
+            danger=best.danger,
             candidates=len(candidates),
-            live_x=best.x,
-            live_y=best.y,
-            live_direction=best.direction,
-            live_selected_danger=best.danger,
-            shadow_x=shadow_best.x,
-            shadow_y=shadow_best.y,
-            shadow_direction=shadow_best.direction,
-            shadow_selected_danger=shadow_best.shadow_danger,
-            score_source="legacy",
+            wave_kind=best.wave_kind,
+            hit_guess_factor=best.hit_guess_factor,
+            hit_bin=best.hit_bin,
+            hit_turn=best.hit_turn,
+            direction=best.direction,
+            profile_danger=best.profile_danger,
+            ensemble_danger=best.ensemble_danger,
+            ensemble_samples=best.ensemble_samples,
+            ensemble_weight=best.ensemble_weight,
+            wall_risk=best.wall_risk,
+            distance_risk=best.distance_risk,
+            travel_risk=best.travel_risk,
         )
 
     def clear_round_state(self) -> None:
@@ -441,13 +357,11 @@ class MovementFlattener:
 
     def clear_battle_state(self) -> None:
         self._wave_store = MovementWaveStore()
-        self._legacy_behavior_profile = MovementProfile(self.config)
-        self._visit_occupancy_profile = MovementProfile(self.config)
-        self._enemy_hit_profile = MovementProfile(self.config)
-        self._danger_model = MovementDangerModel(self.config, self._legacy_behavior_profile)
+        self._profile_store = MovementProfile(self.config)
+        self._danger_model = MovementDangerModel(self.config, self._profile_store)
         self._surfing = SurfingPlanner(self.config, self._wave_store)
-        self._profile = self._legacy_behavior_profile.profile
-        self._stats_buffers = self._legacy_behavior_profile.stats_buffers
+        self._profile = self._profile_store.profile
+        self._stats_buffers = self._profile_store.stats_buffers
         self._waves = self._wave_store.waves
         self._shadow_bullets.clear()
         self._last_switch_turn.clear()
@@ -455,9 +369,7 @@ class MovementFlattener:
     def remove_target(self, target_id: int, clear_profile: bool = True) -> None:
         self._wave_store.remove_target(target_id)
         if clear_profile:
-            self._legacy_behavior_profile.remove_target(target_id)
-            self._visit_occupancy_profile.remove_target(target_id)
-            self._enemy_hit_profile.remove_target(target_id)
+            self._profile_store.remove_target(target_id)
         self._last_switch_turn.pop(target_id, None)
 
     def _decision(
@@ -487,10 +399,10 @@ class MovementFlattener:
         return self._smoothed_count(target_id, bucket, offset_bin)
 
     def _decay_if_needed(self, target_id: int) -> None:
-        self._legacy_behavior_profile.decay_if_needed(target_id)
+        self._profile_store.decay_if_needed(target_id)
 
     def _record_visit(self, wave: MovementWave, bin_index: int, weight: float) -> float:
-        return self._legacy_behavior_profile.record(wave, bin_index, weight)
+        return self._profile_store.record(wave, bin_index, weight)
 
     @staticmethod
     def _wave_features(
@@ -547,35 +459,8 @@ class MovementFlattener:
         direction: int,
         use_surfing: bool,
     ) -> float:
-        projected_x, projected_y = self._candidate_projection(
-            bot,
-            wave,
-            body_bearing,
-            strafe_offset,
-            move_speed,
-            field_margin,
-            direction,
-            use_surfing,
-        )
-        guess_factor = self._guess_factor(wave, projected_x, projected_y)
-        bin_index = self._bin_index(guess_factor)
         if use_surfing:
-            return self._danger(wave, bin_index, bot)
-        return self._smoothed_count(wave.target_id, wave.distance_bucket, bin_index)
-
-    def _candidate_projection(
-        self,
-        bot: Bot,
-        wave: MovementWave,
-        body_bearing: float,
-        strafe_offset: float,
-        move_speed: float,
-        field_margin: float,
-        direction: int,
-        use_surfing: bool,
-    ) -> tuple[float, float]:
-        if use_surfing:
-            return self._project_surf_position(
+            projected_x, projected_y = self._project_surf_position(
                 bot,
                 wave,
                 strafe_offset,
@@ -583,14 +468,20 @@ class MovementFlattener:
                 field_margin,
                 direction,
             )
-        return self._project_position(
-            bot,
-            body_bearing,
-            strafe_offset,
-            move_speed,
-            field_margin,
-            direction,
-        )
+        else:
+            projected_x, projected_y = self._project_position(
+                bot,
+                body_bearing,
+                strafe_offset,
+                move_speed,
+                field_margin,
+                direction,
+            )
+        guess_factor = self._guess_factor(wave, projected_x, projected_y)
+        bin_index = self._bin_index(guess_factor)
+        if use_surfing:
+            return self._danger(wave, bin_index, bot)
+        return self._smoothed_count(wave.target_id, wave.distance_bucket, bin_index)
 
     def _project_position(
         self,
@@ -713,7 +604,6 @@ class MovementFlattener:
         guess_factor = self._guess_factor(wave, hit_x, hit_y)
         bin_index = self._bin_index(guess_factor)
         danger_breakdown = self._danger_breakdown(wave, bin_index)
-        evidence = self._evidence_breakdown(wave, bin_index, hit_x, hit_y)
         learned_danger = danger_breakdown.total_danger
         if wave.kind == "expected":
             learned_danger *= self.config.goto_wave_kind_expected_multiplier
@@ -721,7 +611,6 @@ class MovementFlattener:
         distance_risk = self._go_to_target_distance_risk(hit_x, hit_y, target)
         travel_risk = math.hypot(destination_x - bot.x, destination_y - bot.y) * self.config.goto_travel_weight
         danger = learned_danger + wall_risk + distance_risk + travel_risk
-        shadow_danger = evidence.shadow_danger + wall_risk + distance_risk + travel_risk
         direction = self._go_to_lateral_direction(bot, target, destination_x, destination_y)
         return GoToSurfDecision(
             x=destination_x,
@@ -740,12 +629,6 @@ class MovementFlattener:
             wall_risk=wall_risk,
             distance_risk=distance_risk,
             travel_risk=travel_risk,
-            occupancy_danger=evidence.occupancy_danger,
-            hit_danger=evidence.hit_danger,
-            hit_profile_support=evidence.hit_profile_support,
-            hit_fallback_level=evidence.hit_fallback_level,
-            expected_pressure=evidence.expected_pressure,
-            shadow_danger=shadow_danger,
         )
 
     def _simulate_go_to_wave_hit(
@@ -827,73 +710,6 @@ class MovementFlattener:
 
     def _danger_breakdown(self, wave: MovementWave, bin_index: int) -> MovementDangerBreakdown:
         return self._danger_model.breakdown(wave, bin_index)
-
-    def _evidence_breakdown(
-        self,
-        wave: MovementWave,
-        bin_index: int,
-        x: float,
-        y: float,
-    ) -> MovementEvidenceBreakdown:
-        occupancy_danger = self._visit_occupancy_profile.smoothed_count(
-            wave.target_id,
-            wave.distance_bucket,
-            bin_index,
-        )
-        hit_danger = self._enemy_hit_profile.smoothed_count(
-            wave.target_id,
-            wave.distance_bucket,
-            bin_index,
-        )
-        hit_support = self._enemy_hit_profile.sample_count(wave.target_id, wave.distance_bucket)
-        hit_confidence = clamp(
-            hit_support / max(1.0, self.config.evidence_shadow_hit_min_samples),
-            0.0,
-            1.0,
-        )
-        if hit_support <= 0.0:
-            fallback_level = "occupancy"
-        elif hit_confidence < 1.0:
-            fallback_level = "blended"
-        else:
-            fallback_level = "hit_profile"
-        expected_pressure = self._expected_wave_pressure(wave.target_id, x, y)
-        hit_component = min(
-            self.config.evidence_shadow_hit_component_cap,
-            hit_danger * hit_confidence * self.config.evidence_shadow_hit_weight,
-        )
-        expected_component = min(
-            self.config.evidence_shadow_expected_component_cap,
-            expected_pressure * self.config.evidence_shadow_expected_weight,
-        )
-        shadow_danger = (
-            self.config.unvisited_bin_danger
-            + occupancy_danger * self.config.evidence_shadow_occupancy_weight
-            + hit_component
-            + expected_component
-        )
-        return MovementEvidenceBreakdown(
-            occupancy_danger=occupancy_danger,
-            hit_danger=hit_danger,
-            hit_profile_support=hit_support,
-            hit_fallback_level=fallback_level,
-            expected_pressure=expected_pressure,
-            shadow_danger=shadow_danger,
-        )
-
-    def _expected_wave_pressure(self, target_id: int, x: float, y: float) -> float:
-        pressure = 0.0
-        for expected_wave in self._wave_store.for_target(target_id):
-            if expected_wave.kind != "expected":
-                continue
-            expected_bin = self._bin_index(self._guess_factor(expected_wave, x, y))
-            occupancy = self._visit_occupancy_profile.smoothed_count(
-                target_id,
-                expected_wave.distance_bucket,
-                expected_bin,
-            )
-            pressure += expected_wave.expected_confidence * (self.config.unvisited_bin_danger + occupancy)
-        return pressure
 
     def _has_bullet_shadow(self, bot: Bot, wave: MovementWave, bin_index: int) -> bool:
         if not self.config.bullet_shadow_enabled or not self._shadow_bullets:
@@ -979,7 +795,7 @@ class MovementFlattener:
         )
 
     def _smoothed_count(self, target_id: int, bucket: int, bin_index: int) -> float:
-        return self._legacy_behavior_profile.smoothed_count(target_id, bucket, bin_index)
+        return self._profile_store.smoothed_count(target_id, bucket, bin_index)
 
     def _bin_index(self, guess_factor: float) -> int:
         normalized = clamp((guess_factor + 1.0) / 2.0, 0.0, 1.0)

@@ -42,7 +42,6 @@ class EnergyTelemetry:
         move_direction: int | None = None,
         known_targets: int | None = None,
         heat_state: GunHeatState | None | object = _UNSET,
-        detection_confidence: float | None = None,
         inferred_fire_turn: int | None = None,
         fire_source_x: float | None = None,
         fire_source_y: float | None = None,
@@ -68,7 +67,6 @@ class EnergyTelemetry:
                 move_direction=move_direction,
                 known_targets=known_targets,
                 heat_state=heat_state,
-                detection_confidence=detection_confidence,
                 inferred_fire_turn=inferred_fire_turn,
                 fire_source_x=fire_source_x,
                 fire_source_y=fire_source_y,
@@ -134,7 +132,6 @@ def _enemy_fire_detected_fields(
     move_direction: int | None = None,
     known_targets: int | None = None,
     heat_state: GunHeatState | None | object = _UNSET,
-    detection_confidence: float | None = None,
     inferred_fire_turn: int | None = None,
     fire_source_x: float | None = None,
     fire_source_y: float | None = None,
@@ -175,8 +172,6 @@ def _enemy_fire_detected_fields(
     if heat_state is not _UNSET:
         narrowed_heat_state = cast(GunHeatState | None, heat_state)
         fields["gun_heat"] = round(narrowed_heat_state.heat, 2) if narrowed_heat_state is not None else None
-    if detection_confidence is not None:
-        fields["detection_confidence"] = round(detection_confidence, 3)
     if inferred_fire_turn is not None:
         fields["inferred_fire_turn"] = inferred_fire_turn
     if fire_source_x is not None:

@@ -603,8 +603,6 @@ def _wave_visit_fields(visit: WaveVisit) -> dict[str, object]:
     if displacement_distance_bucket is not None:
         fields["displacement_distance_bucket"] = displacement_distance_bucket
     linear = visit.gun_diagnostics.get("linear", {})
-    if not linear:
-        linear = visit.gun_diagnostics.get("linear_wall_aware", {})
     linear_flight_time = _diagnostic_float(linear, "flight_time")
     linear_lateral_confidence = _diagnostic_float(linear, "lateral_confidence")
     linear_short_flight_time = _diagnostic_bool(linear, "short_flight_time")
@@ -617,16 +615,6 @@ def _wave_visit_fields(visit: WaveVisit) -> dict[str, object]:
         fields["linear_context_short_flight_time"] = linear_short_flight_time
     if linear_tags is not None:
         fields["linear_context_tags"] = linear_tags
-    linear_wall_aware = visit.gun_diagnostics.get("linear_wall_aware", {})
-    linear_wall_aware_wall_hit = _diagnostic_bool(linear_wall_aware, "wall_hit")
-    linear_wall_aware_ticks = _diagnostic_int(linear_wall_aware, "ticks")
-    linear_wall_aware_final_speed = _diagnostic_float(linear_wall_aware, "final_speed")
-    if linear_wall_aware_wall_hit is not None:
-        fields["linear_wall_aware_wall_hit"] = linear_wall_aware_wall_hit
-    if linear_wall_aware_ticks is not None:
-        fields["linear_wall_aware_ticks"] = linear_wall_aware_ticks
-    if linear_wall_aware_final_speed is not None:
-        fields["linear_wall_aware_final_speed"] = round(linear_wall_aware_final_speed, 3)
     return fields
 
 

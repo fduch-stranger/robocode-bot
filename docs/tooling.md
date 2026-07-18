@@ -25,8 +25,8 @@ Important local variables:
 | `ROBOCODE_<BOT>_GUN_MODE` / `ROBOCODE_<BOT>_GUN_SET` | Per-bot gun pins and gun sets. |
 | `ROBOCODE_LEGACY_BOTS_ROOT` | Optional converted legacy bot root. |
 
-Standard force-testable guns are `head_on`, `linear`, `linear_wall_aware`,
-`displacement`, `traditional_gf`, `dynamic_cluster`, and `anti_surfer`.
+Standard force-testable guns are `head_on`, `linear`, `displacement`,
+`traditional_gf`, `dynamic_cluster`, and `anti_surfer`.
 
 ## Battles
 
@@ -112,16 +112,6 @@ tools/gun_eval_summary.py battle-results/runs/<run>/telemetry \
   --bot adaptive-prime \
   --json-output battle-results/runs/<run>/gun-eval-summary.json
 
-tools/fire_utility_summary.py battle-results/runs/<run>/telemetry \
-  --bot adaptive-prime \
-  --json-output battle-results/runs/<run>/fire-utility-summary.json
-
-tools/fire_utility_replay.py \
-  battle-results/runs/<run-a>/telemetry \
-  battle-results/runs/<run-b>/telemetry \
-  --bot adaptive-prime \
-  --json-output battle-results/fire-utility-replay.json
-
 tools/radar_efficiency_summary.py battle-results/runs/<run>/telemetry \
   --bot adaptive-prime \
   --json-output battle-results/runs/<run>/radar-efficiency-summary.json
@@ -133,83 +123,31 @@ tools/intent_gap_summary.py battle-results/runs/<run> \
 Tool roles:
 
 - `telemetry_audit.py`: JSONL readability, required bots, schema fields,
-  bullet/gun attribution, enemy-fire evasion labels, movement-evidence
-  separation, and fire-utility formulas/lifecycle.
+  bullet/gun attribution, and enemy-fire evasion labels.
 - `combat_economics_summary.py`: raw score, firsts, firepower, damage, and
   per-gun real conversion. Raw output is the primary view for local bots and
   ported opponents.
 - `gun_eval_summary.py`: virtual-gun wave scores, selected-gun diagnostics,
   post-switch real conversion, and Traditional GF source diagnostics.
-- `fire_utility_summary.py`: causal accepted-shot probability reliability by
-  probability, range, power, mode, quality, fallback, and chronological window,
-  plus ready-gun fire/hold reasons. Calibration diagnostics include
-  supported-shot coverage, expected calibration error, Brier skill against the
-  fixed `Beta(1,5)` prior, and hit/miss probability separation.
-- `fire_utility_replay.py`: reruns the current production shadow calibrator over
-  one or more historical telemetry directories. It preserves staged ready-fire
-  snapshots across delayed accepted callbacks, reconciles durable hits before
-  closing unresolved round-end shots, resets learning independently per run,
-  and reports both per-run and aggregate reliability. Use it for
-  reproducible retrospective candidate checks; it does not replace a fresh
-  prequential validation run.
 - `radar_efficiency_summary.py`: target freshness, radar mode distribution,
   stale/lost shots, hit rate by target age, reacquire/drop counts, and
   enemy-fire scan-gap diagnostics.
 - `intent_gap_summary.py`: missing or duplicate intent turns from
   `--intent-diagnostics` runs. Use it with `bot.turn_timing` and
   `bot.skipped_turn` telemetry when investigating skipped ticks or slow turns.
+- `bot_motion_sanity.py`: sampled movement and stationary-span diagnostics
+  from runner logs.
 
-The combat-economics summary and both fire-utility tools reject malformed or
-partially written JSONL with a file-and-line diagnostic and exit status `2`;
-they do not continue with a silently incomplete calibration sample.
-
-Accuracy filtering is an optional diagnostic for historical noisy Java surfer
-runs. Do not use it as the default result view:
+Accuracy filtering is an optional diagnostic for noisy converted-bot runs. Do
+not use it as the default result view:
 
 ```sh
 tools/combat_economics_summary.py battle-results/runs/<legacy-run> \
   --accuracy-filter-threshold 0.30
 ```
 
-Do not apply that filter to `bots/ports/basic-gf-surfer-port`; ported-surfer
-runs are already the preferred clean benchmark.
-
-For legacy BasicGFSurfer parity runs, also inspect for visible fixed-Java bot
-immobility. If the Java bridge bot is stuck and the Python port farms a very
-lopsided score, treat that run as suspect reference evidence instead of clean
-parity proof.
-
-Use runner tick sampling for a repeatable immobility sanity check:
-
-```sh
-scripts/run-battle.sh \
-  --rounds 12 \
-  --tick-sample 10 \
-  --run-dir battle-results/runs/surfer-parity-sampled \
-  bots/ports/basic-gf-surfer-port \
-  --legacy basic-gf-surfer
-
-tools/bot_motion_sanity.py \
-  battle-results/runs/surfer-parity-sampled/runner.log \
-  --bot BasicGFSurferFixed \
-  --json-output battle-results/runs/surfer-parity-sampled/motion-sanity.json
-
-tools/intent_gap_summary.py battle-results/runs/surfer-parity-sampled
-```
-
-`bot_motion_sanity.py` reports suspect rounds and, when `runner.log` contains
-round results, a clean/suspect score split. Treat the clean score as the useful
-parity signal and the suspect score as bridge-glitch context.
-
-The input can also be a run directory or a series directory; the tool will find
-nested `runner.log` files and aggregate the clean/suspect score split:
-
-```sh
-tools/bot_motion_sanity.py \
-  battle-results/series/<series-dir> \
-  --bot BasicGFSurferFixed \
-  --json-output battle-results/series/<series-dir>/motion-sanity.json
-```
+Do not apply that filter to native Python opponents such as
+`bots/ports/basic-gf-surfer-port`.
 
 ## A/B Runs
 
@@ -229,7 +167,6 @@ Presets:
 | `sweep-1v1-core` | Sweep vs Adaptive, Chase, Circle. |
 | `adaptive-melee-core` | Four local bots. |
 | `adaptive-1v1-basic-gf-surfer-port` | Preferred Python BasicGFSurfer port. |
-| `adaptive-1v1-basic-gf-surfer` | Historical/noisy converted BasicGFSurfer reference only. |
 
 Typical comparison:
 
@@ -273,7 +210,7 @@ native Python ports:
 
 ```sh
 scripts/run-battle.sh --list-legacy
-scripts/run-battle.sh --rounds 10 bots/adaptive-prime --legacy basic-gf-surfer
+scripts/run-battle.sh --rounds 10 bots/adaptive-prime --legacy diamond
 ```
 
 The preferred strategy is to port useful opponents under `bots/ports/` and tune

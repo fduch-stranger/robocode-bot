@@ -81,15 +81,6 @@ PRESETS: dict[str, dict[str, Any]] = {
             }
         ],
     },
-    "adaptive-1v1-basic-gf-surfer": {
-        "description": "Historical/noisy converted BasicGFSurferFixed check; prefer the Python port for tuning.",
-        "rounds": 24,
-        "repeats": 3,
-        "targetBot": TARGET_BOT,
-        "matchups": [
-            {"name": "adaptive-vs-basic-gf-surfer", "bots": ["bots/adaptive-prime", "legacy:basic-gf-surfer"]},
-        ],
-    },
     "adaptive-1v1-basic-gf-surfer-port": {
         "description": "Adaptive Prime focused Python BasicGFSurfer port benchmark.",
         "rounds": 24,

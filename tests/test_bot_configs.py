@@ -223,7 +223,6 @@ class BotConfigTest(unittest.TestCase):
             "dynamic_cluster",
             "head_on",
             "linear",
-            "linear_wall_aware",
             "traditional_gf",
         }
 

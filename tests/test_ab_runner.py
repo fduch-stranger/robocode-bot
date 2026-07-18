@@ -43,16 +43,7 @@ class RunAbTest(unittest.TestCase):
                 self.assertEqual(target_bot, preset["targetBot"])
                 self.assertEqual(matchup_names, [matchup["name"] for matchup in preset["matchups"]])
 
-    def test_basic_gf_surfer_preset_is_focused_on_surfer(self) -> None:
-        preset = run_ab.PRESETS["adaptive-1v1-basic-gf-surfer"]
 
-        self.assertEqual("Adaptive Prime", preset["targetBot"])
-        self.assertEqual(24, preset["rounds"])
-        self.assertEqual(3, preset["repeats"])
-        self.assertEqual(
-            [{"name": "adaptive-vs-basic-gf-surfer", "bots": ["bots/adaptive-prime", "legacy:basic-gf-surfer"]}],
-            preset["matchups"],
-        )
 
     def test_basic_gf_surfer_port_preset_is_focused_on_port(self) -> None:
         preset = run_ab.PRESETS["adaptive-1v1-basic-gf-surfer-port"]
@@ -73,9 +64,9 @@ class RunAbTest(unittest.TestCase):
     def test_resolve_bot_args_keeps_legacy_token(self) -> None:
         repo = Path("/repo")
 
-        args = run_ab.resolve_bot_args(repo, ["bots/adaptive-prime", "legacy:basic-gf-surfer"])
+        args = run_ab.resolve_bot_args(repo, ["bots/adaptive-prime", "legacy:drussgt"])
 
-        self.assertEqual(["/repo/bots/adaptive-prime", "legacy:basic-gf-surfer"], args)
+        self.assertEqual(["/repo/bots/adaptive-prime", "legacy:drussgt"], args)
 
     def test_parse_env_overrides_requires_key_value_pairs(self) -> None:
         self.assertEqual({"A": "1", "B": "two"}, run_ab.parse_env_overrides(["A=1", "B=two"]))
@@ -163,7 +154,7 @@ class RunAbTest(unittest.TestCase):
             try:
                 args = argparse.Namespace(
                     name="surfer-telemetry",
-                    preset="adaptive-1v1-basic-gf-surfer",
+                    preset="adaptive-1v1-basic-gf-surfer-port",
                     baseline=str(repo),
                     candidate=str(repo),
                     baseline_env=[],

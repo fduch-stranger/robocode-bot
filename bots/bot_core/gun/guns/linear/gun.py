@@ -1,19 +1,10 @@
 from bot_core.geometry.angles import absolute_bearing_between
 from bot_core.gun.config import GunDecisionContext, GunModePolicy, GunModeTraits
 from bot_core.gun.context import AimContext, GunBearing, GunVisit
-from bot_core.gun.prediction import (
-    LinearPrediction,
-    predict_linear_details,
-    predict_wall_aware_linear_details,
-)
+from bot_core.gun.prediction import predict_linear_details
 
 
 LINEAR_MODE = "linear"
-LINEAR_WALL_AWARE_MODE = "linear_wall_aware"
-LINEAR_VARIANT_MODES = frozenset({
-    LINEAR_MODE,
-    LINEAR_WALL_AWARE_MODE,
-})
 
 
 class LinearGun:
@@ -21,12 +12,8 @@ class LinearGun:
         self,
         min_switch_visits: int = 90,
         min_switch_score: float = 0.30,
-        *,
-        mode: str = LINEAR_MODE,
     ) -> None:
-        if mode not in LINEAR_VARIANT_MODES:
-            raise ValueError(f"unknown linear gun mode: {mode}")
-        self.mode = mode
+        self.mode = LINEAR_MODE
         self.mode_policy = GunModePolicy(
             self.mode,
             min_switch_visits,
@@ -40,49 +27,31 @@ class LinearGun:
         )
 
     def aim(self, context: AimContext) -> GunBearing:
-        prediction, metadata = self._predict_position(context)
-        mode_metadata = dict(metadata.get(self.mode, {}))
-        mode_metadata.update(
-            {
-                "context_tags": self._context_tags(context),
-                "short_flight_time": context.fire_context.bullet_flight_time <= 22.0,
-                "flight_time": context.fire_context.bullet_flight_time,
-                "lateral_confidence": context.fire_context.lateral_direction_confidence,
-            }
-        )
-        metadata[self.mode] = mode_metadata
-        return GunBearing(
-            self.mode,
-            absolute_bearing_between(context.bot.x, context.bot.y, prediction.x, prediction.y),
-            decision_context=GunDecisionContext(
-                self.mode,
-                {"context_tags": self._context_tags(context)},
-            ),
-            metadata=metadata,
-        )
-
-    def _predict_position(self, context: AimContext) -> tuple[LinearPrediction, dict[str, object]]:
-        if self.mode == LINEAR_WALL_AWARE_MODE:
-            prediction = predict_wall_aware_linear_details(
-                context.bot,
-                context.target,
-                context.firepower,
-                context.field_margin,
-            )
-            return prediction, {
-                self.mode: {
-                    "ticks": prediction.ticks,
-                    "wall_hit": prediction.wall_hit,
-                    "final_speed": prediction.final_speed,
-                }
-            }
         prediction = predict_linear_details(
             context.bot,
             context.target,
             context.firepower,
             context.field_margin,
         )
-        return prediction, {}
+        context_tags = self._context_tags(context)
+        return GunBearing(
+            self.mode,
+            absolute_bearing_between(context.bot.x, context.bot.y, prediction.x, prediction.y),
+            decision_context=GunDecisionContext(
+                self.mode,
+                {"context_tags": context_tags},
+            ),
+            metadata={
+                self.mode: {
+                    "context_tags": context_tags,
+                    "short_flight_time": context.fire_context.bullet_flight_time <= 22.0,
+                    "flight_time": context.fire_context.bullet_flight_time,
+                    "lateral_confidence": context.fire_context.lateral_direction_confidence,
+                }
+            },
+        )
+
+
 
     @staticmethod
     def _context_tags(context: AimContext) -> frozenset[str]:

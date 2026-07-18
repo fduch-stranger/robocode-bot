@@ -1,13 +1,7 @@
 from bot_core.movement.commands import MovementCommand
 from bot_core.movement.config import MovementFlatteningConfig
 from bot_core.movement.danger import MovementDangerModel
-from bot_core.movement.decisions import (
-    FlatteningDecision,
-    GoToSurfDecision,
-    MovementDangerBreakdown,
-    MovementEvidenceBreakdown,
-    MovementProfileVisit,
-)
+from bot_core.movement.decisions import FlatteningDecision, GoToSurfDecision, MovementDangerBreakdown, MovementProfileVisit
 from bot_core.movement.flattener import MovementFlattener
 from bot_core.movement.minimum_risk import MinimumRiskConfig, MinimumRiskDecision, MinimumRiskMovement
 from bot_core.movement.navigation import drive_command_to_destination, drive_to_destination
@@ -23,7 +17,6 @@ __all__ = [
     "MinimumRiskMovement",
     "MovementCommand",
     "MovementDangerBreakdown",
-    "MovementEvidenceBreakdown",
     "MovementDangerModel",
     "MovementFlattener",
     "MovementFlatteningConfig",

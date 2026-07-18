@@ -271,68 +271,11 @@ Success criteria:
 - Ask before spending `50+` rounds unless the user has already approved that
   run.
 
-## BasicGFSurfer Case Study
-
-`bots/ports/basic-gf-surfer-port` is the first completed application of this
-guideline.
-
-Reference:
-
-- Legacy alias: `--legacy basic-gf-surfer`
-- Reference source: embedded `wiki.BasicGFSurferFixed.java` from the local fixed
-  legacy setup
-- Bridge behavior: generated wrapper plus `RobotMethodReplacer` and `BotPeer`
-  compatibility mapping
-
-Important mismatches found:
-
-- Distance-style movement commands mattered more than direct speed assignment.
-- Continuous radar search overwrote fresh scan locks in the native loop.
-- Java used one lateral direction field for both movement fallback and gun
-  guess-factor sign.
-- Native custom-event-style gun waves performed worse than manual once-per-turn
-  updates.
-- Java-style energy-only wave tracking also performed worse than native
-  accepted-fire tracking.
-- The fixed Java bridge bot can stay alive while effectively immobile, inflating
-  raw Python port score.
-
-Final selected behavior:
-
-- Distance-style `set_forward(100)` / `set_back(100)` movement.
-- Staged radar search/lock with recent-scan grace.
-- Shared `_lateral_direction`.
-- Native fire-accepted gun-wave tracking.
-- Explicit once-per-turn gun-wave advancement.
-- Explicit round-started and round-ended resets, preserving battle-persistent
-  surf and gun stats.
-
-Final validation on 2026-07-04:
-
-| Check | Result |
-| --- | --- |
-| Focused port unit tests | `23 passed, 6 subtests passed` |
-| Full unit suite | `321 passed` |
-| Sampled 3x24 fixed Java motion sanity | Suspect; `62` clean rounds score Python `5744`, Java fixed `4224`; `10` immobile Java rounds contributed Python `1770`, Java fixed `0` |
-| Sampled 3x24 Python port motion sanity | OK; `72` rounds, `0` suspect rounds, longest stationary span `10` sampled turns |
-| Sampled 3x24 raw aggregate | Python `7514`, Java fixed `4224`; bullet damage Python `4070`, Java fixed `2565`; first places Python `48`, Java fixed `25` |
-| A/B smoke | Passed with `adaptive-1v1-basic-gf-surfer-port`, `1` round, `1` repeat |
-
-Interpretation:
-
-- The Python port is not byte-for-byte or event-for-event identical to the Java
-  bridge bot.
-- It is the preferred stable local BasicGFSurfer-style opponent.
-- Raw wins over the Java bridge bot must be discounted when the Java bot is
-  immobile.
-- The clean subset still supports using the Python port as the normal local
-  surfer benchmark.
-
 ## Port README Checklist
 
 Every port README should state:
 
-- the legacy alias and source of truth,
+- the legacy source of truth,
 - whether the port is a benchmark, parity reference, or experimental opponent,
 - known bridge/API mismatches,
 - validation commands and latest clean evidence,

@@ -32,14 +32,14 @@ def round_result_line(
 class BotMotionSanityTest(unittest.TestCase):
     def test_detects_live_bot_stationary_span(self) -> None:
         states = [
-            bot_motion_sanity.BotState(1, 10, "BasicGFSurferFixed", 100.0, 100.0, 0.0, 80.0),
-            bot_motion_sanity.BotState(1, 60, "BasicGFSurferFixed", 100.1, 100.0, 0.0, 79.0),
-            bot_motion_sanity.BotState(1, 120, "BasicGFSurferFixed", 100.1, 100.0, 0.0, 78.0),
+            bot_motion_sanity.BotState(1, 10, "LegacyReferenceBot", 100.0, 100.0, 0.0, 80.0),
+            bot_motion_sanity.BotState(1, 60, "LegacyReferenceBot", 100.1, 100.0, 0.0, 79.0),
+            bot_motion_sanity.BotState(1, 120, "LegacyReferenceBot", 100.1, 100.0, 0.0, 78.0),
         ]
 
         motions = bot_motion_sanity.analyze_motion(
             states,
-            bot_filters={"BasicGFSurferFixed"},
+            bot_filters={"LegacyReferenceBot"},
             stationary_distance=0.5,
             speed_threshold=0.05,
             max_stationary_turns=100,
@@ -55,10 +55,10 @@ class BotMotionSanityTest(unittest.TestCase):
 
     def test_movement_resets_stationary_span(self) -> None:
         states = [
-            bot_motion_sanity.BotState(1, 10, "BasicGFSurferFixed", 100.0, 100.0, 0.0, 80.0),
-            bot_motion_sanity.BotState(1, 60, "BasicGFSurferFixed", 100.0, 100.0, 0.0, 79.0),
-            bot_motion_sanity.BotState(1, 100, "BasicGFSurferFixed", 130.0, 100.0, 4.0, 78.0),
-            bot_motion_sanity.BotState(1, 150, "BasicGFSurferFixed", 130.0, 100.0, 0.0, 77.0),
+            bot_motion_sanity.BotState(1, 10, "LegacyReferenceBot", 100.0, 100.0, 0.0, 80.0),
+            bot_motion_sanity.BotState(1, 60, "LegacyReferenceBot", 100.0, 100.0, 0.0, 79.0),
+            bot_motion_sanity.BotState(1, 100, "LegacyReferenceBot", 130.0, 100.0, 4.0, 78.0),
+            bot_motion_sanity.BotState(1, 150, "LegacyReferenceBot", 130.0, 100.0, 0.0, 77.0),
         ]
 
         motions = bot_motion_sanity.analyze_motion(
@@ -83,10 +83,10 @@ class BotMotionSanityTest(unittest.TestCase):
             log_path.write_text(
                 "".join(
                     [
-                        bot_state_line(1, 10, "BasicGFSurferFixed", 100.0, 100.0, 0.0),
-                        bot_state_line(1, 70, "BasicGFSurferFixed", 100.0, 100.0, 0.0),
-                        bot_state_line(1, 130, "BasicGFSurferFixed", 100.0, 100.0, 0.0),
-                        round_result_line(1, "BasicGFSurferFixed", 120, 50, 40, 1),
+                        bot_state_line(1, 10, "LegacyReferenceBot", 100.0, 100.0, 0.0),
+                        bot_state_line(1, 70, "LegacyReferenceBot", 100.0, 100.0, 0.0),
+                        bot_state_line(1, 130, "LegacyReferenceBot", 100.0, 100.0, 0.0),
+                        round_result_line(1, "LegacyReferenceBot", 120, 50, 40, 1),
                         round_result_line(1, "BasicGFSurfer_Port", 80, 0, 80, 0),
                     ]
                 ),
@@ -97,7 +97,7 @@ class BotMotionSanityTest(unittest.TestCase):
                 [
                     str(log_path),
                     "--bot",
-                    "BasicGFSurferFixed",
+                    "LegacyReferenceBot",
                     "--max-stationary-turns",
                     "100",
                     "--json-output",
@@ -171,10 +171,10 @@ class BotMotionSanityTest(unittest.TestCase):
             clean_log.write_text(
                 "".join(
                     [
-                        bot_state_line(1, 10, "BasicGFSurferFixed", 100.0, 100.0, 0.0),
-                        bot_state_line(1, 70, "BasicGFSurferFixed", 130.0, 100.0, 4.0),
-                        bot_state_line(1, 130, "BasicGFSurferFixed", 170.0, 100.0, 4.0),
-                        round_result_line(1, "BasicGFSurferFixed", 110, 50, 40, 1),
+                        bot_state_line(1, 10, "LegacyReferenceBot", 100.0, 100.0, 0.0),
+                        bot_state_line(1, 70, "LegacyReferenceBot", 130.0, 100.0, 4.0),
+                        bot_state_line(1, 130, "LegacyReferenceBot", 170.0, 100.0, 4.0),
+                        round_result_line(1, "LegacyReferenceBot", 110, 50, 40, 1),
                         round_result_line(1, "BasicGFSurfer_Port", 100, 0, 100, 0),
                     ]
                 ),
@@ -183,10 +183,10 @@ class BotMotionSanityTest(unittest.TestCase):
             suspect_log.write_text(
                 "".join(
                     [
-                        bot_state_line(1, 10, "BasicGFSurferFixed", 100.0, 100.0, 0.0),
-                        bot_state_line(1, 70, "BasicGFSurferFixed", 100.0, 100.0, 0.0),
-                        bot_state_line(1, 130, "BasicGFSurferFixed", 100.0, 100.0, 0.0),
-                        round_result_line(1, "BasicGFSurferFixed", 0, 0, 0, 0),
+                        bot_state_line(1, 10, "LegacyReferenceBot", 100.0, 100.0, 0.0),
+                        bot_state_line(1, 70, "LegacyReferenceBot", 100.0, 100.0, 0.0),
+                        bot_state_line(1, 130, "LegacyReferenceBot", 100.0, 100.0, 0.0),
+                        round_result_line(1, "LegacyReferenceBot", 0, 0, 0, 0),
                         round_result_line(1, "BasicGFSurfer_Port", 180, 50, 120, 1),
                     ]
                 ),
@@ -197,7 +197,7 @@ class BotMotionSanityTest(unittest.TestCase):
                 [
                     str(root),
                     "--bot",
-                    "BasicGFSurferFixed",
+                    "LegacyReferenceBot",
                     "--max-stationary-turns",
                     "100",
                     "--json-output",
@@ -213,8 +213,8 @@ class BotMotionSanityTest(unittest.TestCase):
             by_bot = {bot["name"]: bot for bot in payload["scoreSummary"]["bots"]}
             self.assertEqual(100, by_bot["BasicGFSurfer_Port"]["clean"]["score"])
             self.assertEqual(180, by_bot["BasicGFSurfer_Port"]["suspect"]["score"])
-            self.assertEqual(110, by_bot["BasicGFSurferFixed"]["clean"]["score"])
-            self.assertEqual(0, by_bot["BasicGFSurferFixed"]["suspect"]["score"])
+            self.assertEqual(110, by_bot["LegacyReferenceBot"]["clean"]["score"])
+            self.assertEqual(0, by_bot["LegacyReferenceBot"]["suspect"]["score"])
 
     def test_cli_returns_two_when_log_has_no_tick_samples(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

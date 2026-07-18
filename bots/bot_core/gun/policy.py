@@ -11,13 +11,11 @@ DEFAULT_LIVE_GUN_MODES = frozenset({"linear", "traditional_gf", "dynamic_cluster
 STANDARD_FORCE_GUN_MODES = DEFAULT_LIVE_GUN_MODES | frozenset({
     "anti_surfer",
     "head_on",
-    "linear_wall_aware",
 })
 DEFAULT_MODE_PRIORITY = (
     "linear",
     "dynamic_cluster",
     "traditional_gf",
-    "linear_wall_aware",
     "head_on",
     "displacement",
     "anti_surfer",
