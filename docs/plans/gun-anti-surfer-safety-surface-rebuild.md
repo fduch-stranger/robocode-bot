@@ -1,472 +1,483 @@
-# Anti-Surfer Safety Surface Rebuild Plan
+# Anti-Surfer Hit-Danger Safety Surface Rebuild Plan
 
-The current `anti_surfer` gun is intentionally simple: it records enemy escape
-guess factors into a decayed profile and aims at the least-visited non-edge bin.
-That makes it easy to inspect, but it is not enough to exploit real surfing
-behavior. A rarely visited bin can be empty because it is unreachable, wall
-limited, inconsistent with the enemy's current movement state, or just sparse
-noise.
+The current `anti_surfer` gun records resolved enemy guess-factor visits in one
+decayed profile and aims at the least-visited non-edge bin. That is inspectable,
+but an empty occupancy bin can be unreachable, wall-limited, inconsistent with
+the enemy's current movement, or merely sparse noise.
 
-This plan rebuilds `anti_surfer` as a reachable safety-surface gun. It separates
-the pressure our confirmed shots teach the enemy from the places the enemy
-actually visits. The design treats those as two distinct one-dimensional
-guess-factor surfaces, tests whether pressure avoidance is observable, and only
-then aims at physically plausible safety regions.
+The supported Python BasicGFSurfer benchmark also establishes an important
+causal constraint: its surfing danger statistics are updated when it is hit,
+not whenever the opponent fires. Confirmed fired aims therefore describe our
+shot exposure, but real hit locations are the primary observable proxy for what
+this benchmark has learned as danger.
+
+This plan rebuilds `anti_surfer` around a hit-derived danger surface, while
+keeping confirmed-shot exposure and target occupancy as separate evidence. It
+first tests whether later movement avoids historical hit danger and only then
+enables a kinematically reachable low-danger-valley aim policy.
 
 ## Goals
 
-1. Replace absolute emptiest-occupancy-bin aiming with a pressure-derived,
-   reachable safety selection.
-2. Preserve the public gun mode name `anti_surfer`.
-3. Keep the implementation package-local under `bot_core.gun.guns.anti_surfer`.
-4. Keep `anti_surfer` force-testable before any live-selection promotion.
-5. Add diagnostics before selector or availability gates hide weak model
-   behavior.
-6. Falsify or support the core surfer-response hypothesis with passive evidence
-   before changing real aim.
-7. Keep gun-pressure history separate from target-occupancy history.
+1. Replace absolute emptiest-occupancy-bin aiming with a reachable low-danger
+   valley derived from real hit locations.
+2. Preserve the public gun mode name `anti_surfer` and the current occupancy
+   behavior as an experiment baseline.
+3. Learn from real shots and hits produced by every gun mode, because the enemy
+   observes the bot's complete firing history.
+4. Keep hit danger, confirmed-shot exposure, and target occupancy in separate
+   profiles with distinct telemetry semantics.
+5. Falsify or support the hit-danger-avoidance hypothesis before changing real
+   aim.
+6. Keep the candidate force-testable and unavailable to normal live selection
+   until repeated isolated evidence supports promotion.
+7. Use the shared gun lifecycle only for generic confirmed-shot and shot-outcome
+   delivery; keep surface analysis and policy under
+   `bot_core.gun.guns.anti_surfer`.
+8. Put Adaptive experiment settings in centralized Adaptive configuration and
+   include them in the effective `bot.config` snapshot and fingerprint.
 
 ## Non-Goals
 
-- Do not make `anti_surfer` live-selectable for Adaptive as part of the first
-  rebuild step.
-- Do not solve this with selector thresholds alone.
-- Do not add exact high-cardinality segmentation before the global surface is
-  improved.
-- Do not rely on formal continuous Morse theory. The practical model is
-  discrete topology over guess-factor bins.
-- Do not implement counterfactual path simulation or time-indexed gate
-  interception here. Those belong to the
-  [Dedicated Particle-Flow Gun V2](particle-flow-gun-v2.md) controller if its
-  physical predictor reaches that phase.
+- Do not make `anti_surfer` live-selectable during the rebuild.
+- Do not change firepower, fire gating, movement, radar, or selector thresholds
+  in the matching experiment.
+- Do not treat confirmed-shot aim density as learned danger for the Python
+  BasicGFSurfer port.
+- Do not add exact high-cardinality segmentation or an online calibration
+  store.
+- Do not add counterfactual path simulation or time-indexed gate interception.
+  Those remain owned by the
+  [Dedicated Particle-Flow Gun V2](particle-flow-gun-v2.md) plan.
+- Do not build a shared surface framework before the package-local experiment
+  produces useful evidence.
 
-## Baseline Problem
+## Benchmark Behavior And Causal Model
 
-Current learning and aiming are equivalent to:
+The Python BasicGFSurfer port updates its `surf_stats` only from matched
+`on_hit_by_bullet` events. It then compares predicted left and right positions
+against those hit-derived statistics. A miss does not update its danger array.
 
-```text
-record where the enemy actually visits
-for bins excluding edges:
-  choose the lowest enemy-occupancy count
-  tie-break toward center
-```
-
-That conflates two different quantities:
+Consequently, these quantities must remain distinct:
 
 ```text
+hit danger:
+  where our real bullets hit this target
+  primary proxy for the danger learned by BasicGFSurfer
+
+shot exposure:
+  where our confirmed real bullets actually travelled
+  useful diagnostic and possible later input for other surfer families
+
 target occupancy:
-  where the enemy actually moved when our wave arrived
-
-gun pressure:
-  where our confirmed real shots aimed and where hits taught the enemy danger
+  where the target was when our real or evaluation wave resolved
+  behavior evidence, not danger
 ```
 
-A surfer reacts primarily to the second quantity. Inverting target occupancy
-can select a bin that is empty because it is unreachable or behaviorally
-implausible, not because the enemy considers it safe:
+The main hypothesis becomes:
 
 ```text
-target-occupancy profile says GF -0.9 is empty
-the enemy cannot plausibly reach or transition toward GF -0.9 now
-anti_surfer still shoots GF -0.9
+after enough real hits establish a danger surface,
+does this target's later movement avoid historically dangerous GF regions
+more strongly than non-surfer controls do?
 ```
 
-The rebuilt gun should ask:
+The experiment must use lagged evidence. A shot or hit must not contribute to
+the danger surface used to judge its own visit. Otherwise successful targeting
+would create a mechanical positive correlation and obscure whether later
+movement changed.
+
+## Surface Model
+
+Maintain three per-target, battle-lifetime profiles over the configured
+guess-factor bins:
 
 ```text
-what gun-pressure surface have our confirmed shots exposed,
-does this enemy measurably avoid that pressure,
-which low-pressure regions are kinematically reachable now,
-and which reachable region is behaviorally plausible at intercept time?
-```
+hit_danger_surface[bin] =
+  smoothed real-hit GF density
 
-## Safety Surface Model
-
-Build two discrete surfaces across the configured guess-factor bins:
-
-```text
-gun_pressure_surface[bin] =
-  smoothed confirmed-shot aim density
-  + hit pressure
-  + optional model pressure
+shot_exposure_surface[bin] =
+  smoothed confirmed real-shot GF density
 
 target_occupancy_surface[bin] =
-  smoothed actual wave-visit density
+  smoothed resolved wave-visit GF density
 ```
 
-`gun_pressure_surface` approximates what our firing history may teach a surfer.
-`target_occupancy_surface` describes observed behavior and helps validate the
-avoidance hypothesis. Do not relabel occupancy as danger or invert it directly.
+For the BasicGFSurfer benchmark, the initial hit kernel should mirror its
+unweighted hit update closely enough to test the causal hypothesis. Keep bullet
+power and damage in diagnostics, but do not silently power-weight the base
+surface. Any damage-weighted alternative is a later isolated experiment.
 
-The first implementation should use confirmed-shot aim density as the pressure
-base and actual visits as passive response evidence. Hit pressure and other-gun
-model pressure should remain optional until the base relationship is visible.
+All three profiles use the shared asymmetric guess-factor geometry. Actual
+bullet direction must be normalized against the associated wave's head-on
+bearing, lateral direction, and positive or negative maximum escape angle.
 
-Interpret the surface as:
+Profiles persist across rounds within a battle, matching the benchmark's danger
+memory, and clear at battle boundaries. They remain separated by target.
+
+Interpret the hit-danger surface as:
 
 ```text
-local gun-pressure minima = candidate safe valleys
-local gun-pressure maxima = danger ridges
-basin width = how broad a safe region is
-valley depth/prominence = how stable the valley is
-occupancy response = whether later target visits shift away from pressure
+local minima = candidate low-danger valleys
+local maxima = learned-danger ridges
+basin width = how broad a candidate region is
+valley depth/prominence = how stable the valley is against smoothing noise
 ```
 
-Static GF topology does not prove that an enemy must cross a basin boundary at
-the bullet-intercept tick. Gate interception is therefore not part of the base
-safety-surface gun.
+Target occupancy validates whether the target later visits low-danger regions.
+Shot exposure measures what we fired and helps distinguish sparse hit evidence
+from narrow firing behavior. Neither surface is relabeled as hit danger.
 
-## Proposed Changes
+## Phase 0: Add Generic Real-Shot Lifecycle Evidence
 
-### 1. Add Passive Pressure And Avoidance Diagnostics First
-
-Before changing selection behavior, record the two surfaces separately and
-test the core hypothesis: does this opponent subsequently move away from the
-pressure exposed by our confirmed shots?
-
-Pressure insertion must use the actual confirmed bullet bearing and power from
-the fired-shot lifecycle, not a speculative pre-fire aim that may later be
-changed or never fired. Occupancy insertion continues to use resolved wave
-visits.
-
-Keep diagnostics component-owned through `GunBearing.metadata`,
-`visit_diagnostics()`, or a sampled package-local telemetry event.
-
-Suggested fields:
+The current component protocol receives resolved `GunVisit` objects but not the
+actual `BulletFiredEvent` direction or later bullet outcome. Add narrow shared
+gun-system delivery for:
 
 ```text
-anti_surfer_selected_gf
-anti_surfer_selected_bin
-anti_surfer_selection_kind        # pressure_valley, fallback
-anti_surfer_pressure_weight
-anti_surfer_occupancy_weight
-anti_surfer_pressure_at_visit
-anti_surfer_pressure_occupancy_correlation
-anti_surfer_post_pressure_shift
-anti_surfer_avoidance_confidence
-anti_surfer_reachable_mass
-anti_surfer_valley_count
-anti_surfer_selected_valley_width
-anti_surfer_selected_valley_depth
-anti_surfer_selected_valley_prominence
-anti_surfer_pressure_entropy
-anti_surfer_occupancy_entropy
+confirmed shot:
+  bullet id
+  target id
+  fire turn
+  actual source x/y
+  actual bullet direction, power, and speed
+  associated GunWave context
+  actual normalized shot GF
+
+shot outcome:
+  bullet id
+  target id
+  hit or non-hit result when observable
+  hit position, power, and damage for real hits
+  associated confirmed-shot and GunWave context
+  actual normalized hit GF
+```
+
+Requirements:
+
+- Promote the pending wave only after the real bullet-fired event.
+- Associate the promoted wave with the real bullet id.
+- Derive shot and hit GFs from actual event geometry, not speculative pre-fire
+  bearings.
+- Dispatch confirmed shots and outcomes generically; do not make
+  `VirtualGunSystem` import or special-case `AntiSurferGun`.
+- Allow components that do not consume these events to remain simple no-ops or
+  non-observers.
+- Ensure unfired aims and evaluation waves never update real-shot or hit-danger
+  profiles.
+- Feed the Anti-Surfer observer with shots and hits from all selected gun modes.
+
+At confirmed fire time, attach an immutable snapshot or equivalent versioned
+view of the pre-shot hit-danger profile to the real wave. The later resolved
+visit uses that pre-shot view for lagged diagnostics. The current shot and any
+eventual hit cannot contaminate their own evidence.
+
+## Phase 1: Passive Falsification With Current Aim Preserved
+
+Record all three surfaces while retaining the current
+`occupancy_baseline` aim policy. Add only the telemetry required to test the
+hypothesis:
+
+```text
+anti_surfer_policy
+anti_surfer_hit_count
+anti_surfer_shot_count
+anti_surfer_occupancy_count
+anti_surfer_prior_hit_danger_at_visit
+anti_surfer_prior_hit_danger_percentile
+anti_surfer_distance_from_recent_hit
+anti_surfer_post_hit_shift
+anti_surfer_exposure_at_visit
 anti_surfer_surfer_relevance
+anti_surfer_evidence_mature
 ```
 
-Expected effect:
+Package-specific fields belong in component metadata, `visit_diagnostics()`,
+or a sampled package-local telemetry event. Avoid expanding generic fire
+telemetry with every future valley metric.
 
-- Establish whether BasicGFSurfer and other targets exhibit a measurable
-  pressure-avoidance signature.
-- Separate "no surfer response" from "useful response, bad reachability" and
-  from selector context.
-- Provide a stop gate before any aim behavior changes.
+Add `tools/anti_surfer_surface_summary.py` to report, by target and repeat:
 
-Stop or redesign the gun if mature evidence does not show a repeatable avoidance
-relationship. Do not proceed merely because the pressure surface looks
-interesting.
+- sample adequacy for hits, confirmed shots, and resolved visits;
+- the distribution of prior hit-danger percentiles at later visits;
+- event-aligned movement before and after newly recorded hits;
+- distance from recent hit kernels over subsequent resolved waves;
+- the same measures for BasicGFSurfer and non-surfer controls;
+- missing associations, invalid GFs, and self-contaminated samples.
 
-### 2. Replace Emptiest Occupancy Bin With Reachable Pressure Valley
+Use shuffled or circularly rotated profile bins as an offline null comparison.
+Do not interpret raw hit-danger/occupancy correlation alone as avoidance.
 
-After Phase 1 supports the avoidance hypothesis, smooth the gun-pressure surface
-and find local valleys rather than isolated empty bins:
+Treat a repeat as mature only after it contains at least eight real hits and
+twenty resolved production visits for the target. If a run does not reach that
+bar, report it as inconclusive rather than negative.
+
+Proceed only when both exploratory repeats show a directionally consistent,
+lagged avoidance response against BasicGFSurfer and that response is stronger
+than against the non-surfer controls. Stop or redesign if the differential is
+absent, reverses between repeats, or depends on self-contaminated evidence.
+
+## Phase 2: Add Reachable Hit-Danger-Valley Selection
+
+Only after Phase 1 passes, add a candidate aim policy behind an experiment
+setting. Smooth the hit-danger surface and find broad local valleys:
 
 ```text
-smooth bins with a small symmetric kernel
-find local minima below nearby basin shoulders
-measure valley width, depth, and prominence
-ignore one-bin holes with weak prominence
+smooth with a small symmetric kernel
+find local minima below adjacent basin shoulders
+measure width, depth, and prominence
+ignore isolated one-bin holes
 ```
 
-Score candidates by kinematic reachability and transition plausibility:
+Score valleys with current kinematic plausibility:
 
 ```text
-current lateral direction and lateral confidence
-current speed and reversal cost
-distance / bullet flight time
-wall-limited positive/negative escape geometry
-optional low-weight occupancy plausibility after shrinkage
-```
-
-Wall-limited escape angles already define the positive and negative GF scale in
-the shared wave math. They are useful geometry inputs, but by themselves they
-do not make an interior GF bin reachable or unreachable. The first behavioral
-version must therefore include current velocity, reversal cost, and flight time
-instead of starting with a wall-only mask.
-
-Initial candidate shape:
-
-```text
-surfer_safety = inverse_smoothed(gun_pressure_surface)
-
 candidate_score =
-  surfer_safety
+  inverse_smoothed_hit_danger
   * kinematic_reachability
   * transition_likelihood
   * conservative_surfer_relevance
 ```
 
-Treat occupancy as validation and, later, a softly shrunk plausibility input.
-Do not invert occupancy or let a mature global occupancy profile override
-current kinematics.
+The first reachability model must include:
 
-Expected effect:
+- current lateral direction and confidence;
+- speed and reversal cost;
+- distance and bullet flight time;
+- shared wall-limited positive and negative escape geometry.
 
-- Avoid aiming at unreachable escape factors.
-- Prefer meaningful safe basins over noisy holes.
-- Keep behavior understandable in diagnostics.
+Wall-limited escape angles define the GF scale but do not, by themselves, prove
+that an interior bin is reachable. Do not implement a wall-only mask.
 
-### 3. Validate The Reachable-Valley Gun In Isolation
+Until hit evidence is mature, fall back to the existing occupancy baseline.
+After maturity, fall back when the danger surface is flat, no valley has useful
+prominence, or every candidate is kinematically implausible. Keep fallback
+reasons explicit in diagnostics.
 
-Force-test the reachable pressure-valley behavior before adding more surface
-terms, segmentation, selector gates, or path simulation. Compare it with both
-the current emptiest-occupancy baseline and the production Dynamic Cluster
-control using identical firepower policy.
+Add Phase 2 diagnostics only when the candidate exists:
+
+```text
+anti_surfer_selected_gf
+anti_surfer_selected_bin
+anti_surfer_selection_kind       # hit_danger_valley | occupancy_fallback
+anti_surfer_fallback_reason
+anti_surfer_reachable_mass
+anti_surfer_valley_count
+anti_surfer_selected_valley_width
+anti_surfer_selected_valley_depth
+anti_surfer_selected_valley_prominence
+anti_surfer_hit_danger_entropy
+```
+
+## Phase 3: Force-Test In Isolation
+
+Add the centralized Adaptive setting:
+
+```text
+ROBOCODE_ADAPTIVE_ANTI_SURFER_SURFACE=
+  occupancy_baseline | hit_danger_valley
+```
+
+Parse it through `adaptive_config.py`, represent it in the Adaptive gun policy,
+pass it into `AntiSurferGunConfig`, and include it in the effective
+`bot.config` snapshot and fingerprint. Keep numerical defaults in typed config;
+do not create an environment variable for every kernel or threshold.
+
+Force `anti_surfer` for both sides and use identical firepower policy. Compare:
+
+1. current `occupancy_baseline`;
+2. candidate `hit_danger_valley`;
+3. forced production `dynamic_cluster` as a global control.
 
 Required questions:
 
 ```text
-does the selected pressure valley receive later target occupancy?
-does kinematic reachability reject fantasy valleys?
-does avoidance confidence correlate with virtual and real conversion?
-does the gun add conditional value in wall or reversal contexts?
+does reachability reject implausible valleys?
+do selected valleys receive later occupancy?
+does the candidate improve real conversion after hit evidence matures?
+does it add conditional value in wall or reversal contexts?
+does it remain useful outside the single surfer benchmark?
 ```
 
-If the rebuilt gun cannot clearly beat the current anti-surfer baseline, stop.
-If it improves anti-surfer but remains globally weaker than Dynamic Cluster,
-keep it force-testable and evaluate only whether it offers distinct conditional
-value.
+If the candidate cannot beat the current Anti-Surfer baseline, stop. If it
+improves Anti-Surfer but remains globally weaker than Dynamic Cluster, retain it
+only as a force-testable situational experiment until distinct conditional
+value is repeated.
 
-### 4. Add Coarse Shrinkage, Not Exact Segmentation
+## Phase 4: Add Coarse Shrinkage Only After A Global Win
 
-Anti-surfer data is sparse. Avoid exact segment profiles first. Use coarse
-surface blending:
-
-```text
-global gun-pressure surface
-coarse pressure surface by distance
-coarse pressure surface by wall context
-coarse pressure surface by lateral-direction context
-
-global target-occupancy surface for diagnostics
-matching coarse occupancy surfaces only after enough response evidence
-```
-
-Blend with empirical-Bayes-style shrinkage:
-
-```text
-surface = global * (1 - trust) + coarse * trust
-trust = f(coarse_sample_count)
-```
-
-Potential coarse contexts:
+Anti-Surfer hit data is sparse. Do not start with exact segments. After the
+global hit-danger candidate wins, test one coarse surface at a time:
 
 ```text
 distance bucket
-wall escape balance bucket
-lateral direction confidence bucket
-surfer relevance bucket
+wall-context bucket
+lateral-direction-confidence bucket
+surfer-relevance bucket
 ```
 
-Expected effect:
-
-- Let wall and distance context shape valleys without making every context
-  sample-starved.
-- Keep global behavior as a stable fallback.
-
-### 5. Add Optional Pressure Terms Later
-
-Confirmed-shot aim density is the mandatory base pressure. After it predicts a
-real avoidance response, add optional modifiers one at a time:
+Blend coarse and global surfaces with sample-based shrinkage:
 
 ```text
-hit pressure:
-  where our real bullets recently connected
-
-model pressure:
-  dynamic_cluster/traditional_gf high-density prediction regions
-
-recency pressure:
-  short-horizon emphasis within confirmed fired aims
+surface = global * (1 - trust) + coarse * trust
+trust = f(coarse_hit_count)
 ```
 
-Use these as soft surface modifiers, not hard overrides. Model pressure is not
-observable proof of what the enemy has learned, so it must not replace
-confirmed-shot pressure.
+Require later-window or held-out improvement before retaining a dimension.
+Keep real-shot conversion analysis offline; do not add a sparse online
+cross-product or depend on a removed shared calibration subsystem.
 
-Expected effect:
+## Phase 5: Optional Signals, One At A Time
 
-- Model what the surfer is likely trying to avoid.
-- Exploit disagreement between normal guns and the safety surface.
-
-### 6. Measure Coarse Real Shot Conversion
-
-Track whether pressure-valley and fallback shots convert to real hits:
+Only after the hit-danger base is validated may these become isolated
+experiments:
 
 ```text
-target id
-aim source = pressure_valley | fallback
-coarse distance bucket
-coarse wall bucket
-real shots
-real hits
-damage
-fired energy
-virtual score
+recency weighting within hit danger
+damage-weighted hit danger
+confirmed-shot exposure as a soft modifier for other surfer families
+normal-gun model density as a soft disagreement feature
 ```
 
-Use this evidence offline after passive and forced evidence exists. Do not build
-an online cross-product of selection kind, distance, wall, relevance, valley
-width, and prominence; real shots are too sparse. Any later online calibration
-should use the shared supported-calibration policy rather than an
-anti-surfer-specific sparse store, and should add dimensions only after they
-improve held-out or later-window calibration.
-
-Expected effect:
-
-- Lower trust in beautiful but ineffective pressure-valley theories.
-- Keep anti-surfer situational instead of broadly overconfident.
-
-### 7. Hand Off Time-Indexed Counterfactual Simulation
-
-Do not add a second path simulator inside `anti_surfer`. If the dedicated
-Particle Flow controller reaches its surfer-response phase, the validated
-gun-pressure/safety surface can be considered as an input to that experiment.
-Particle Flow owns time-indexed paths, regime inference, and path-intersection
-scoring; `anti_surfer` remains the lightweight pressure-surface gun.
-
-Keep the boundary explicit:
-
-```text
-anti_surfer:
-  confirmed-shot pressure surface
-  passive avoidance evidence
-  cheap kinematic safety-valley aim
-
-particle_flow, if validated:
-  physical future paths
-  latent movement regimes
-  counterfactual surfer response over time
-  path-intersection aim
-```
-
-Do not extract a shared abstraction until one implementation has produced
-useful evidence. The plan establishes ownership now to prevent two speculative
-simulators from evolving independently.
+None may replace real hit danger for the BasicGFSurfer benchmark without new
+evidence. Promote one modifier at a time and remove rejected branches rather
+than leaving dormant legacy paths.
 
 ## Implementation Sequence
 
-1. Record confirmed-shot gun pressure and resolved target occupancy in separate
+1. Add confirmed-shot and shot-outcome models plus generic gun-system delivery.
+2. Associate real bullet ids with promoted gun waves and compute actual shot and
+   hit GFs using shared asymmetric geometry.
+3. Split Anti-Surfer state into hit-danger, shot-exposure, and target-occupancy
    profiles while preserving current aim.
-2. Add passive avoidance diagnostics and test the pressure-response hypothesis
-   against BasicGFSurfer and non-surfer controls.
-3. Stop or redesign if mature evidence shows no repeatable avoidance response.
-4. Add kinematic reachability and pressure-valley selection behind an
-   experiment flag; keep the mode force-testable only.
-5. Compare the candidate with the current emptiest-occupancy anti-surfer and a
-   forced Dynamic Cluster control using identical firepower policy.
-6. Add coarse shrinkage profiles only after the global pressure surface wins.
-7. Add hit, model, or recency pressure one at a time behind independent flags.
-8. Add coarse offline real-conversion evidence.
-9. Revisit selector thresholds or live-selectability only after repeated forced
-   evidence. Do not add gate/path simulation in this plan.
+4. Add pre-shot danger snapshots and passive lagged diagnostics.
+5. Add `anti_surfer_surface_summary.py` and unit tests for its evidence rules.
+6. Run Phase 1 against Python BasicGFSurfer and non-surfer controls.
+7. Stop if the mature lagged avoidance differential is not repeatable.
+8. Add hit-danger valley analysis and kinematic reachability behind the
+   centralized experiment setting.
+9. Force-test baseline, candidate, and Dynamic Cluster with matched firepower.
+10. Add coarse shrinkage or optional signals only after the simpler candidate
+    wins.
+11. Revisit selector thresholds or live selectability only in a separate,
+    evidence-backed step.
 
-Suggested isolated aim-policy flag:
+## Unit Verification
 
-```text
-ROBOCODE_ADAPTIVE_ANTI_SURFER_SURFACE=occupancy_baseline|pressure_valley
-```
-
-This flag changes anti-surfer aim policy only. It must not change firepower,
-fire gating, or opponent configuration in the matching A/B.
-
-## Verification
-
-Start with unit tests for deterministic surface analysis:
+Required deterministic tests:
 
 ```text
-confirmed fired aim updates gun pressure
-speculative or unfired aim does not update gun pressure
-resolved wave visit updates occupancy but not gun pressure
-flat gun-pressure surface falls back near center
-one broad low-pressure valley selects the basin center when reachable
+unfired aim does not update exposure or hit danger
+evaluation wave does not update real-shot profiles
+confirmed real shot from any gun mode updates exposure once
+actual fired direction, not intended bearing, determines shot GF
+real hit updates hit danger once and retains bullet association
+miss does not update hit danger
+resolved visit updates occupancy but not exposure or hit danger
+lagged visit diagnostic uses the pre-shot danger snapshot
+current shot and hit cannot contaminate their own lagged evidence
+profiles persist across rounds and clear across battles
+flat or immature hit-danger surface uses occupancy fallback
+broad reachable valley selects its basin center
 one-bin noise hole is ignored
-empty occupancy bin is not treated as a safe valley
-reversal cost and flight time reject an unreachable pressure valley
-wall geometry uses the shared asymmetric GF scale
-coarse pressure surface falls back to global when sample count is low
+reversal cost and flight time reject an unreachable valley
+wall geometry uses shared asymmetric GF scaling
+non-observer gun components remain unaffected by lifecycle delivery
+configuration setting appears in bot.config and changes its fingerprint
+summary tool rejects missing associations and insufficient evidence
 ```
 
-First run passive telemetry with current aim unchanged:
+Run the focused tests and then the full suite:
 
 ```sh
-scripts/run-battle.sh --telemetry --rounds 24 \
+PYTHONPATH=bots .venv/bin/python -m pytest tests/test_gun_stats.py
+PYTHONPATH=bots .venv/bin/python -m pytest tests/test_adaptive_config.py
+PYTHONPATH=bots .venv/bin/python -m pytest tests/test_anti_surfer_surface_summary.py
+PYTHONPATH=bots .venv/bin/python -m pytest
+```
+
+## Battle Verification
+
+### Passive hypothesis check
+
+Use telemetry with production aiming unchanged:
+
+```sh
+scripts/run-battle.sh --telemetry --rounds 16 \
   bots/adaptive-prime bots/ports/basic-gf-surfer-port
 
 tools/telemetry_audit.py <run-dir>/telemetry --require-bot adaptive-prime
+tools/anti_surfer_surface_summary.py <run-dir>/telemetry --bot adaptive-prime
 ```
 
-Require an avoidance report that compares pressure at subsequent visits,
-pressure/occupancy correlation, post-pressure GF shifts, and the same measures
-against at least one non-surfer control.
+Repeat once independently. Run at least one non-surfer control, such as
+`chase-lock`, with the same diagnostics. If either surfer repeat is immature,
+extend evidence rather than weakening the sample gate.
 
-Then run forced candidate battles:
+### Forced exploratory A/B
+
+Use the same code on both sides and change only the experiment setting:
 
 ```sh
-ROBOCODE_ADAPTIVE_GUN_MODE=anti_surfer \
-  scripts/run-battle.sh --telemetry --rounds 24 \
-  bots/adaptive-prime bots/ports/basic-gf-surfer-port
+scripts/run-ab.sh \
+  --name anti-surfer-hit-danger-exploration \
+  --preset adaptive-1v1-basic-gf-surfer-port \
+  --baseline . \
+  --candidate . \
+  --baseline-env ROBOCODE_ADAPTIVE_GUN_MODE=anti_surfer \
+  --baseline-env ROBOCODE_ADAPTIVE_ANTI_SURFER_SURFACE=occupancy_baseline \
+  --candidate-env ROBOCODE_ADAPTIVE_GUN_MODE=anti_surfer \
+  --candidate-env ROBOCODE_ADAPTIVE_ANTI_SURFER_SURFACE=hit_danger_valley \
+  --rounds 16 \
+  --repeats 2 \
+  --telemetry
 
-tools/combat_economics_summary.py <run-dir>
-tools/gun_eval_summary.py <run-dir>/telemetry --bot adaptive-prime
-tools/telemetry_audit.py <run-dir>/telemetry --require-bot adaptive-prime
+tools/combat_economics_summary.py battle-results/ab/<experiment>
+tools/gun_eval_summary.py <baseline-run>/telemetry --bot adaptive-prime
+tools/gun_eval_summary.py <candidate-run>/telemetry --bot adaptive-prime
+tools/anti_surfer_surface_summary.py <baseline-run>/telemetry --bot adaptive-prime
+tools/anti_surfer_surface_summary.py <candidate-run>/telemetry --bot adaptive-prime
 ```
 
-Also run local smoke battles against repo bots to catch obvious regressions:
+`combat_economics_summary.py` is a raw score, firepower, damage, and conversion
+summary. Do not apply converted-bot accuracy filtering to the native Python
+surfer port.
 
-```sh
-ROBOCODE_ADAPTIVE_GUN_MODE=anti_surfer \
-  scripts/run-battle.sh --rounds 8 bots/adaptive-prime bots/chase-lock
-```
+Also run an eight-round forced smoke against a local bot to catch lifecycle,
+fallback, or runtime regressions.
 
-Judge primarily on:
+### Promotion confirmation
 
-```text
-pressure-at-visit response after confirmed shots
-pressure/occupancy relationship and post-pressure shift
-avoidance confidence against surfer and non-surfer controls
-filtered anti_surfer hit rate
-filtered anti_surfer virtual wave average
-damage per fired energy
-selected pressure-valley diagnostics vs later occupancy and hit rate
-kinematic fallback rate
-long-range virtual wave average
-excluded stuck-surfer round count
-telemetry audit cleanliness
-```
+Only after exploratory evidence is positive:
 
-Do not change aim if the passive avoidance signature is absent. Do not promote
-if improvement appears only in raw stuck-surfer score, only against the current
-broken anti-surfer baseline, or only in low-confidence diagnostics.
+- run `24 rounds x 3 repeats` against the Python BasicGFSurfer port without
+  telemetry for the performance comparison;
+- run one separate matched telemetry validation after the performance result;
+- compare with forced Dynamic Cluster under the same firepower policy;
+- obtain explicit approval before the `50+`-round confirmation suite, as
+  required by the tooling workflow.
+
+Judge primarily on raw real-hit rate, damage per fired energy, repeat stability,
+post-maturity conversion, fallback rate, valley diagnostics, and clean
+telemetry associations. Do not use stuck-surfer filtering, excluded-round
+counts, or legacy converted-opponent scores as promotion evidence.
 
 ## Promotion Bar
 
-Treat one run as exploratory. Before changing defaults or selector behavior,
-confirm with at least:
+Do not change the default aim policy or selector behavior unless all of the
+following hold:
 
-```text
-24 rounds x 3 repeats against BasicGFSurfer with telemetry
-filtered surfer analysis
-forced anti_surfer local smoke against repo bots
-passive evidence showing a repeatable pressure-avoidance response
-diagnostics showing pressure-valley confidence correlates with later occupancy
-and real or virtual hits
-matching-firepower comparison with the current anti-surfer baseline and forced
-Dynamic Cluster control
-```
+1. Two mature passive repeats show a directionally consistent lagged avoidance
+   response against Python BasicGFSurfer.
+2. The response is stronger than the same measurement against non-surfer
+   controls and survives the offline null comparison.
+3. The candidate beats `occupancy_baseline` in the majority of promotion
+   repeats and in the aggregate without relying on changed firepower.
+4. Reachability and fallback diagnostics are valid, associations are complete,
+   and telemetry audit is clean.
+5. The candidate has either competitive global performance versus Dynamic
+   Cluster or repeated, explainable conditional value that justifies keeping it
+   force-testable.
 
-The first acceptable result is not necessarily a live-selectable gun. A good
-intermediate outcome is a force-testable anti-surfer that has explainable,
-reachable pressure-valley choices and reliable diagnostics. Time-indexed
-counterfactual surfing remains owned by the dedicated Particle Flow plan and is
-not an anti-surfer promotion step.
+The first acceptable outcome may remain a force-testable situational gun. If
+the causal hypothesis fails, remove the new aim branch and retain only generic
+lifecycle improvements that have independent value and clean tests.
