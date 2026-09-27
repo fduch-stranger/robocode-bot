@@ -183,7 +183,7 @@ class BotConfigTest(unittest.TestCase):
         )
         self.assertEqual(
             unsupported_global_set_config.GunPolicy().selectable_modes,
-            ADAPTIVE_LIVE_MODES,
+            DEFAULT_LIVE_MODES,
         )
 
         forceable_global_set_config = _load_config(
@@ -229,8 +229,9 @@ class BotConfigTest(unittest.TestCase):
             with self.subTest(bot=bot_dir):
                 path = ROOT / "bots" / bot_dir / file_name
                 config = _load_config(path)
-                self.assertEqual(getattr(config, force_modes_name), expected_modes)
-                for mode in expected_modes:
+                bot_modes = expected_modes | ({"anti_surfer"} if bot_dir == "adaptive-prime" else set())
+                self.assertEqual(getattr(config, force_modes_name), bot_modes)
+                for mode in bot_modes:
                     forced_config = _load_config(path, {env_name: mode})
                     self.assertEqual(forced_config.GunPolicy().forced_mode, mode)
 
