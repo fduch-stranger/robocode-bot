@@ -134,8 +134,9 @@ The summary covers:
 - share of time near walls, and ram attempts;
 - enemy fire power and hit rate.
 
-**Options.** Wave surfer, orbiter, chaser or rammer, oscillator, linear mover,
-random mover, stationary, unknown.
+**Options.** Wave surfer, orbiter, chaser, sweeper, oscillator, linear mover,
+random mover, stationary. The question is asked only after 120 scans, so there
+is no "unknown" option.
 
 **Gate.** Jev's accuracy must beat a rule-based classifier in code that uses the
 same buckets. It is measured against four opponents: the surfer port, Chase
@@ -159,9 +160,13 @@ us, as guess-factor buckets.
 disfavored side by a configured factor (for example 1.15). Discard an answer
 that arrives later than `max_age_turns` or after the wave has passed.
 
-**Gate.** In shadow mode against the surfer, over at least 1,000 waves, the side
-Jev favors must be hit less often than the side our surfing chose. Only when
-that holds:
+**Gate.** Bots never see enemy bullets that miss, so the hit rate of the side
+Jev favored cannot be measured for waves we dodged. The gate is therefore an
+information test: over at least 1,000 answered waves in shadow mode against the
+surfer, waves where Jev's choice differed from where we actually went must be
+hit more often than waves where it matched (one-sided two-proportion z-test,
+z >= 1.96). If Jev's choice carries no information about the enemy's aim,
+following it cannot help. Only when the gate passes:
 
 1. add `--tps` tooling;
 2. run the active A/B at a low fixed TPS (30, unless the latency profile allows
@@ -190,6 +195,9 @@ sides, because inherited values override `.env`.
 | `ROBOCODE_JEV_TIMEOUT_MS` | `1500` | Per-request timeout. |
 | `ROBOCODE_JEV_MAX_INFLIGHT` | `2` | Queue bound; the oldest request is dropped. |
 | `ROBOCODE_JEV_MAX_RPS` | `10` | Client-side request rate limit. |
+| `ROBOCODE_JEV_WORKERS` | `2` | Worker threads (parallel requests). |
+
+The [bot README](../../bots/adaptive-jev/README.md) lists the stub flags.
 
 ## Secret Handling
 
@@ -215,8 +223,9 @@ New events, added to `docs/telemetry-schema.md` when implemented:
   stale, below the confidence threshold, or shadow-only.
 - `advisor.error`: question kind and error class (timeout, HTTP status, or
   parse). It never includes the response body.
-- `advisor.outcome` (Phase 2): for each wave, the side Jev favored, the side we
-  took, and where the bullet passed.
+- `advisor.outcome` (Phase 2): for each answered wave, the side Jev favored,
+  where we ended up (`forward`, `reverse`, or `stop`, from the visit guess
+  factor), and whether the wave hit us.
 - `bot.config` gains the advisor flags and the transport name.
 
 `tools/advisor_summary.py` reports latency percentiles, stale and error rates,
@@ -258,7 +267,7 @@ Each milestone ends by recording its result in the Results table.
 
 | Milestone | Result |
 | --- | --- |
-| 0. API probe | Pending |
+| 0. API probe | Pass. 70/70 requests OK on `jev-1.13.0`. Sequential: p50 287 ms, p90 383 ms, max 410 ms. Four in parallel: p50 252 ms, about 15 requests per second. About 616 input tokens per request. On idealized feature profiles Jev named the intended style 31 of 35 times (it read the oscillator as an orbiter); the rule-based classifier's order was fixed before any battle so that it classifies all 8 prototypes. |
 | 1. Skeleton | Pending |
 | 2. Phase 1 shadow | Pending |
 | 3. Phase 2 shadow | Pending |

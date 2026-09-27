@@ -15,6 +15,7 @@ Current bots:
 - Circle Strafer: defensive orbital bot.
 - Sweep Pressure: direct sweep-pressure bot.
 - `bots/ports/basic-gf-surfer-port`: primary clean local surfer benchmark.
+- Adaptive Jev (`bots/adaptive-jev`, `.experimental`): Adaptive Prime plus an optional asynchronous Jev advisor. Disabled (default) it runs `AdaptiveJevPassthrough`, Adaptive Prime's class with only a new name (`AdaptivePrime.__init__(bot_info, telemetry_name)`); enabled it adds hooks after Adaptive Prime's handlers and `ObservedMovementFlattener`. Shared pieces live in `bot_core/advisors` (client, transports, bucketed state, observers). Plan and results: `docs/plans/jev-advisor-bot.md`.
 
 Gun architecture:
 - `VirtualGunSystem` builds aim/fire context, evaluates registered components, tracks waves, scores visits, and emits diagnostics.

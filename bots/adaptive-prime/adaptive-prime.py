@@ -77,9 +77,11 @@ from adaptive_config import (
 
 
 class AdaptivePrime(Bot):
-    def __init__(self) -> None:
+    def __init__(self, bot_info: BotInfo | None = None, telemetry_name: str = "adaptive-prime") -> None:
+        # Variants (bots/adaptive-jev) reuse this class under their own name and telemetry files.
         super().__init__(
-            BotInfo(
+            bot_info
+            or BotInfo(
                 name="Adaptive Prime",
                 version="1.0",
                 authors=["robocode-bot"],
@@ -131,7 +133,7 @@ class AdaptivePrime(Bot):
         )
         self._movement = MovementFlattener(MOVEMENT_FLATTENING_CONFIG)
         self._minimum_risk = MinimumRiskMovement(MINIMUM_RISK_CONFIG)
-        self._debug = DebugLogger(self, "adaptive-prime")
+        self._debug = DebugLogger(self, telemetry_name)
         self._energy_telemetry = EnergyTelemetry(self._debug)
         self._fire_telemetry = FireTelemetry(self._debug)
         self._movement_telemetry = MovementTelemetry(self._debug)

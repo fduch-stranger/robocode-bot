@@ -150,6 +150,30 @@ focus-target distance, wall/travel risk, recent-destination penalty, and
 optional fire-threat terms. Destinations are sticky for a short time to avoid
 jitter.
 
+## Advisors (Experimental)
+
+`bot_core/advisors` lets a bot ask a hosted model typed questions without
+blocking a turn. Only `bots/adaptive-jev` uses it; see the
+[Jev advisor plan](plans/jev-advisor-bot.md).
+
+- `AdvisorClient`: `submit()` applies a client-side rate limit, refuses
+  requests while the service asks for back-off (HTTP 429 or 529), and drops the
+  oldest queued request when the queue is full. Worker threads do the I/O, and
+  `drain()` returns finished results at turn end. Every failure becomes a
+  result with an error label, so the bot falls back to its own decision.
+- Transports: `JevTransport` (standard-library HTTPS, one persistent
+  connection per worker thread, key from `TYPESAFE_API_KEY`) and
+  `StubTransport` (fixed or random answers with simulated latency).
+- `state_summary`: numeric features are reduced to named buckets in code
+  before they are sent; `rule_based_style` is the baseline classifier over the
+  same features.
+- `observers`: `EnemyStyleObserver` (battle-level enemy movement statistics)
+  and `SurfObserver` (recent enemy hit guess factors, plus per-wave answer and
+  outcome records).
+- `ObservedMovementFlattener`: a `MovementFlattener` that reports enemy waves
+  and wave visits to a listener. Listener errors never propagate, and movement
+  results are unchanged.
+
 ## Telemetry
 
 Telemetry is JSONL. Common events:

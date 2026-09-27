@@ -21,6 +21,7 @@ Navigation hub for the Robocode bot workspace.
 | Bot | Focus |
 | --- | --- |
 | [Adaptive Prime](../bots/adaptive-prime/README.md) | champion candidate, surfing, potential fields, adaptive firepower |
+| [Adaptive Jev](../bots/adaptive-jev/README.md) | experimental Jev advisor on top of Adaptive Prime |
 | [Chase Lock](../bots/chase-lock/README.md) | target-lock pressure and range-band movement |
 | [Circle Strafer](../bots/circle-strafer/README.md) | stable orbit, wall escape, separation |
 | [Sweep Pressure](../bots/sweep-pressure/README.md) | sweeping pressure and projected wall avoidance |
