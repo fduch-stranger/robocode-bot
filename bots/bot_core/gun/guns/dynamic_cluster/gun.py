@@ -280,7 +280,7 @@ class DynamicClusterGun:
             fire_context.positive_escape_angle,
             fire_context.negative_escape_angle,
         )
-        hit_angle = math.atan2(18.0, target_distance)
+        hit_angle = math.degrees(math.atan2(18.0, target_distance))
         gf_hit_width = hit_angle / max_escape_angle
         return clamp(
             max(self.config.bandwidth_min, gf_hit_width * self.config.bandwidth_hit_width_scale),
