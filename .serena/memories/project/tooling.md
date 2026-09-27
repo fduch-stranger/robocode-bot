@@ -61,7 +61,6 @@ Battle lock and noise:
 - `run-battle.sh` takes a machine-wide lock (`/tmp/robocode-battle-<uid>.lock`); series and A/B runs inherit it. `ROBOCODE_BATTLE_LOCK=0` opts out. Worktrees made before the lock commit do not take it.
 - Identical baseline code scores about ±150 per 24-round run (4248-5174 per 24x3), so a 3-run A/B detects only ~15% effects; pool baselines of the same code and give candidates 6 runs when a decision matters. `docs/plans/adaptive-prime-roadmap.md` keeps the pooled table.
 - `tools/turn_timing_summary.py <telemetry> --bot adaptive-prime` attributes slow turns to a phase (`phase_us`) or GC (`gc_pause_us`).
-- When testing whether advice predicts outcomes (agree vs disagree with what the bot did), compare within each outcome category; an option the advisor never picks makes the raw test pass on base rates alone. Fix the sample size before looking, and confirm a marginal result on fresh runs.
 
 A/B guidance:
 - `1-8` rounds: smoke only.
