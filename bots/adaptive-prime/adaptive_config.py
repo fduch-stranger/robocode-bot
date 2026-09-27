@@ -95,6 +95,10 @@ class GunPolicy:
     eval_waves_enabled: bool = _env_flag("ROBOCODE_ADAPTIVE_GUN_EVAL")
     eval_wave_min_interval: int = _env_int("ROBOCODE_ADAPTIVE_GUN_EVAL_INTERVAL", 8)
     eval_wave_max_target_age: int = 2
+    # While the gun is too hot to fire, track the last full solution instead of re-aiming every gun.
+    hot_gun_tracking_active: bool = _env_flag("ROBOCODE_ADAPTIVE_HOT_GUN_TRACKING", default=True)
+    full_aim_lead_turns: int = 3
+    tracking_aim_max_age_turns: int = 20
     knn_min_samples: int = SHARED_GUN_POLICY_DEFAULTS.knn_min_samples
     min_visits: int = SHARED_GUN_POLICY_DEFAULTS.min_visits
     switch_margin: float = 0.08
@@ -293,7 +297,6 @@ class MovementPolicy:
     search_wall_projection_speed: float = 6
     search_speed: float = 4
     search_turn_rate: float = 3
-    collision_reverse_speed: float = -4
     flattener_direction_min_visits: float = 2.0
     flattener_direction_control_active: bool = _env_flag(
         "ROBOCODE_ADAPTIVE_FLATTENER_DIRECTION_CONTROL",

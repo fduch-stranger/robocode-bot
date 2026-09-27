@@ -87,6 +87,13 @@ Adaptive keeps bot-specific selector gates around the shared selector:
 - Eval waves can add capped selector-only evidence without training production
   learners.
 
+Hot-gun tracking: the full virtual-gun aim and the Dynamic Cluster power
+re-aim run only from `full_aim_lead_turns` (3) turns before the gun can fire.
+While the gun is hotter than that, the gun follows the last full solution's
+offset from the direct bearing, which removes most of the per-turn cost
+(`ROBOCODE_ADAPTIVE_HOT_GUN_TRACKING=0` disables it). Gun selection and switch
+diagnostics therefore update only on full-aim turns.
+
 Adaptive's default Traditional GF model uses a gun-local key of flight time,
 absolute lateral speed, and wall margin. It starts blending a segment after 8
 effective visits and reaches full segment weight at 36 visits. The model uses

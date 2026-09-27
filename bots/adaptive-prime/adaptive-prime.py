@@ -1,4 +1,6 @@
 import math
+from dataclasses import replace
+
 from robocode_tank_royale.bot_api import Bot, BotInfo, Color
 from robocode_tank_royale.bot_api.events import (
     BotDeathEvent,
@@ -36,6 +38,7 @@ from bot_core.gun import (
     selector_config_from_policy,
     should_log_switch_decision,
 )
+from bot_core.gun.aim_tracking import offset_tracking_bearing
 from bot_core.gun.factory import standard_runtime_config
 from bot_core.movement import (
     FlatteningDecision,
@@ -45,7 +48,7 @@ from bot_core.movement import (
 )
 from bot_core.motion import OwnMotionTracker
 from bot_core.radar import lock_radar_to_target
-from bot_core.geometry.angles import bearing_to
+from bot_core.geometry.angles import absolute_bearing_between, bearing_to, relative_bearing
 from bot_core.geometry.numeric import clamp
 from bot_core.geometry.position import distance_to
 from bot_core.movement.navigation import drive_to_destination
@@ -139,6 +142,7 @@ class AdaptivePrime(Bot):
         self._fired_bullets = FiredBulletTracker()
         self._last_gun_decision_log_turn: dict[int, int] = {}
         self._last_traditional_gf_profile_log_turn: dict[int, int] = {}
+        self._last_full_aim: dict[int, tuple[AimSolution, float, int]] = {}
 
     def run(self) -> None:
         self.body_color = Color.from_rgb(60, 112, 180)
@@ -347,30 +351,41 @@ class AdaptivePrime(Bot):
         radar_bearing = bearing_to(self, target.x, target.y, self.radar_direction)
         firepower = self._select_firepower(target, distance)
         use_segmented_gun_stats = self.enemy_count <= 1
-        aim = self._gun.aim(
-            self,
-            target,
-            distance,
-            firepower,
-            self._target_motion(target),
-            MOVEMENT_POLICY.field_margin,
-            disabled_modes=frozenset() if use_segmented_gun_stats else frozenset({"traditional_gf"}),
-            allow_segmented_stats=use_segmented_gun_stats,
-        )
-        self._phase_timer.mark("aim")
-        firepower, aim = self._maybe_apply_dynamic_shot_quality_power_scale(
-            target,
-            distance,
-            firepower,
-            aim,
-            use_segmented_gun_stats,
-        )
-        self._phase_timer.mark("power_reaim")
+        tracking_aim = self._hot_gun_tracking_aim(target)
+        if tracking_aim is not None:
+            aim = tracking_aim
+            self._phase_timer.mark("tracking_aim")
+        else:
+            aim = self._gun.aim(
+                self,
+                target,
+                distance,
+                firepower,
+                self._target_motion(target),
+                MOVEMENT_POLICY.field_margin,
+                disabled_modes=frozenset() if use_segmented_gun_stats else frozenset({"traditional_gf"}),
+                allow_segmented_stats=use_segmented_gun_stats,
+            )
+            self._phase_timer.mark("aim")
+            firepower, aim = self._maybe_apply_dynamic_shot_quality_power_scale(
+                target,
+                distance,
+                firepower,
+                aim,
+                use_segmented_gun_stats,
+            )
+            self._phase_timer.mark("power_reaim")
+            self._last_full_aim[target.bot_id] = (
+                aim,
+                absolute_bearing_between(self.x, self.y, target.x, target.y),
+                self.turn_number,
+            )
         score_segment = aim.segment_key if use_segmented_gun_stats else None
         if aim.mode_changed:
             self._fire_telemetry.record_gun_switch(target.bot_id, aim, self._gun.score_summary(target.bot_id, score_segment))
-        self._maybe_log_gun_switch_decision(target.bot_id, aim)
-        self._maybe_log_traditional_gf_profile(target.bot_id, aim)
+        if tracking_aim is None:
+            self._maybe_log_gun_switch_decision(target.bot_id, aim)
+            self._maybe_log_traditional_gf_profile(target.bot_id, aim)
         age = self.turn_number - target.seen_turn
 
         if age > TARGET_POLICY.reacquire_turns:
@@ -431,6 +446,35 @@ class AdaptivePrime(Bot):
             self._gun.set_pending_wave(self._gun.make_wave(self, target, firepower, aim))
             self.set_fire(firepower)
         self._phase_timer.mark("fire")
+
+    def _hot_gun_tracking_aim(self, target: TargetSnapshot) -> AimSolution | None:
+        """Cheap aim for turns on which the gun is still too hot to fire.
+
+        The full virtual-gun aim and Dynamic Cluster re-aim cost most of a turn, but a hot gun
+        cannot fire for several turns, so keep the gun on the last full solution's offset from
+        the direct bearing. The full aim resumes a few turns before the gun cools, leaving time
+        to rotate onto the exact solution.
+        """
+        if not GUN_POLICY.hot_gun_tracking_active:
+            return None
+        if self.gun_heat <= GUN_POLICY.full_aim_lead_turns * self.gun_cooling_rate + 1e-9:
+            return None
+        last = self._last_full_aim.get(target.bot_id)
+        if last is None:
+            return None
+        last_aim, last_direct_bearing, last_turn = last
+        last_bearing = last_aim.virtual_bearings.get(last_aim.mode)
+        if last_bearing is None or self.turn_number - last_turn > GUN_POLICY.tracking_aim_max_age_turns:
+            return None
+        direct_bearing = absolute_bearing_between(self.x, self.y, target.x, target.y)
+        aim_bearing = offset_tracking_bearing(last_bearing, last_direct_bearing, direct_bearing)
+        return replace(
+            last_aim,
+            gun_bearing=relative_bearing(aim_bearing, self.gun_direction),
+            previous_mode=last_aim.mode,
+            mode_changed=False,
+            switch_candidates=(),
+        )
 
     def _maybe_apply_dynamic_shot_quality_power_scale(
         self,
@@ -944,6 +988,7 @@ class AdaptivePrime(Bot):
             self._last_gun_decision_log_turn.clear()
             self._target_accel.clear()
             self._last_traditional_gf_profile_log_turn.clear()
+            self._last_full_aim.clear()
             self._last_velocity_change_turn.clear()
             self._own_motion.reset(self.turn_number)
             self._melee_round = False
@@ -1188,8 +1233,8 @@ class AdaptivePrime(Bot):
         if not self._melee_round:
             self._target_id = event.victim_id
         self._evade_direction *= -1
+        # The run loop sets movement after events each turn, so the evade flip is what reverses us.
         self._evade_until_turn = self.turn_number + MOVEMENT_POLICY.evade_turns
-        self.target_speed = MOVEMENT_POLICY.collision_reverse_speed
         contact_distance = distance_to(self, event.x, event.y)
         self._log(
             "hit.bot",
@@ -1208,6 +1253,7 @@ class AdaptivePrime(Bot):
 
     def on_bot_death(self, event: BotDeathEvent) -> None:
         self._targets.pop(event.victim_id, None)
+        self._last_full_aim.pop(event.victim_id, None)
         # BotDeath can run before BulletFired for the terminal shot.
         self._gun.remove_target(event.victim_id, preserve_pending=True)
         self._movement.remove_target(event.victim_id, clear_profile=False)
