@@ -148,6 +148,14 @@ firepower, and enough energy after the shot. Adaptive uses the shared
 `last_stand` path at critical energy instead of a separate KNN-gated low-energy
 override, so aligned close shots can still fire below the normal energy margin.
 
+When Dynamic Cluster is the selected gun, its shot-quality diagnostics can scale
+the policy firepower down (`ROBOCODE_ADAPTIVE_DYNAMIC_SHOT_QUALITY_POWER_SCALING`,
+on by default). Against the BasicGFSurfer port the scaling is a constant 0.55x
+multiplier, and turning it off raises bullet damage but loses rounds in the
+endgame; see
+[Adaptive Prime surfer economics](../../docs/plans/adaptive-surfer-economics.md)
+for the measurements.
+
 ## Analysis
 
 Primary telemetry:
