@@ -269,7 +269,7 @@ Each milestone ends by recording its result in the Results table.
 | --- | --- |
 | 0. API probe | Pass. 70/70 requests OK on `jev-1.13.0`. Sequential: p50 287 ms, p90 383 ms, max 410 ms. Four in parallel: p50 252 ms, about 15 requests per second. About 616 input tokens per request. On idealized feature profiles Jev named the intended style 31 of 35 times (it read the oscillator as an orbiter); the rule-based classifier's order was fixed before any battle so that it classifies all 8 prototypes. |
 | 1. Skeleton | Done (PR #8). `bots/adaptive-jev`, `bot_core/advisors`, advisor telemetry, and `tools/advisor_summary.py`; 355 tests pass. Disabled mode runs Adaptive Prime's class itself (6-round sanity check: Adaptive Prime 5 first places, disabled Adaptive Jev 4). Live shadow smoke: 0 errors, p50 256 ms, about 145 turns at unlimited TPS. |
-| 2. Phase 1 shadow | Pending |
+| 2. Phase 1 shadow | Gate passed narrowly; no active step follows. Across 8-round battles against each opponent (116 answers), Jev was right 0/30 times on the surfer (28 answers were "orbiter"), 11/32 on Circle Strafer, 5/17 on Chase Lock, and 5/37 on Sweep Pressure. That is 19% mean accuracy, against 3% for the rule-based classifier and 12.5% for chance. The logged summaries show why: the surfer's reversals are not tied to our wave passes, so both classifiers see it as an orbiter. Active style routing stays out of scope, because it needs per-style profiles and cannot raise the surfer benchmark. |
 | 3. Phase 2 shadow | Pending |
 | 4. Phase 2 active A/B | Pending |
 | 5. Decision | Pending |
