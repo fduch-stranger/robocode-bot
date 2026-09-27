@@ -57,6 +57,11 @@ Surfer policy:
 - Generic legacy support remains for unported references such as Diamond, DrussGT, and Saguaro.
 - Accuracy filtering is optional diagnostic context for noisy converted bots; do not apply it to native Python ports.
 
+Battle lock and noise:
+- `run-battle.sh` takes a machine-wide lock (`/tmp/robocode-battle-<uid>.lock`); series and A/B runs inherit it. `ROBOCODE_BATTLE_LOCK=0` opts out. Worktrees made before the lock commit do not take it.
+- Identical baseline code scores about ±150 per 24-round run (4248-5174 per 24x3), so a 3-run A/B detects only ~15% effects; pool baselines of the same code and give candidates 6 runs when a decision matters. `docs/plans/adaptive-prime-roadmap.md` keeps the pooled table.
+- `tools/turn_timing_summary.py <telemetry> --bot adaptive-prime` attributes slow turns to a phase (`phase_us`) or GC (`gc_pause_us`).
+
 A/B guidance:
 - `1-8` rounds: smoke only.
 - `12-16` rounds with repeats: exploration.

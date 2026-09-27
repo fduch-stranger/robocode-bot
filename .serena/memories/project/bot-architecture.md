@@ -23,7 +23,10 @@ Gun architecture:
 - `dynamic_cluster` is the primary KNN GF learner; `traditional_gf` and `displacement` are situational; `linear` and `head_on` are simple-motion fallbacks.
 - `AimModeSelector` is sticky and role-aware. `gun.switch_decision` is the main selector diagnostic.
 - `gun.eval_wave_visit` is selector-only evidence when enabled and must not train production gun models.
-- Adaptive uses side-effect-free same-mode re-aim after Dynamic Cluster power scaling.
+- Adaptive uses side-effect-free same-mode re-aim after Dynamic Cluster power scaling (it rebuilds every gun's bearing at the new power, so it costs about as much as a full aim).
+- Adaptive hot-gun tracking: the full aim and power re-aim run only from `full_aim_lead_turns` (3) turns before the gun can fire; otherwise the gun keeps the last full solution's offset from the direct bearing. This cut median decision time 4.7 -> 0.68 ms and skipped turns 10 -> 1 per 24 rounds, and won its A/B (+12%). Env: `ROBOCODE_ADAPTIVE_HOT_GUN_TRACKING=0` disables it.
+- Dynamic Cluster bandwidth uses a degree hit angle over degree escape angles (min 0.10, max 0.30, scale 1.25); before the fix it was always clamped to the minimum.
+- Selector gates every candidate against the current mode, independent of registry order.
 - Adaptive requires a `0.18` adjusted-score margin for fallback-over-primary switches.
 - Adaptive-specific tuning is centralized in `bots/adaptive-prime/adaptive_config.py`, including named firepower, target, radar, movement, movement-flattening, and minimum-risk policies/configs. Behavior methods should not carry independent tuning literals.
 - Adaptive `bot.config` telemetry includes the complete effective configuration, profile name, and deterministic fingerprint. Coarse environment controls cover go-to surfing, flattener direction application, and gun-heat waves.
@@ -38,7 +41,9 @@ Movement architecture:
 - Shared movement covers enemy-fire waves, GF danger profiles, flattening, go-to surfing, actual bullet shadows, and minimum-risk movement.
 - There is one production movement profile. The rejected split occupancy/hit/expected-pressure shadow model was removed.
 - Movement prediction follows Tank Royale target-speed order: update speed, move on the previous direction, apply speed-limited turn, wall clip, then zero speed after collision.
-- Bullet shadows use actual `BulletFiredEvent.bullet` state; `gun.fire_drift` audits planned versus actual bullet state.
+- Bullet shadows use actual `BulletFiredEvent.bullet` state and apply to both direction and go-to surfing; `gun.fire_drift` audits planned versus actual bullet state.
+- Engine turn order (1.3.1 `TurnProcessor`): fire guns (pre-move position, pre-rotation gun heading) -> move/turn -> wall and bot collisions -> scans -> advance all bullets one step -> bullet hits. So confirmed enemy waves start at turn E-1 from the previous position; our bullet hits and the enemy's 3x power hit bonus reach the next scan; wall and ram damage reach the same scan (`enemy_wall_hit_damage_bound`, `RAM_DAMAGE`).
+- Rejected experiments (do not retry without new evidence): hit-width fire gate (neutral, holds fire), pre-aim toward the next-turn bearing (lower aim error but no A/B gain), melee priority radar for Adaptive (-17% melee: rescans starve the fresh-scan fire gate), GC freeze (no slow turn was GC-dominated).
 
 Telemetry and analysis:
 - Key events include `bot.config`, `track`, `gun.switch`, `gun.switch_decision`, `gun.wave_visit`, `gun.eval_wave_visit`, `gun.fire_drift`, `enemy.fire_detected`, `enemy.gun_heat_wave`, `movement.profile_visit`, `movement.flatten`, `movement.goto_surf`, `movement.minimum_risk`, `bullet.fired`, `bullet.hit_bot`, and `hit.bullet`.
