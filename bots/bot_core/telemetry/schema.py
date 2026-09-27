@@ -65,6 +65,9 @@ EVENT_SPECS: dict[str, TelemetryEventSpec] = {
         optional_fields=(
             "turn_timeout_us",
             "time_left_us_before_go",
+            "gc_pause_us",
+            "gc_max_generation",
+            "phase_us",
             "target",
             "known_targets",
             "gun_heat",

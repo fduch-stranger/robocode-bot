@@ -60,7 +60,7 @@ The browser viewer and telemetry audit normalize bot-specific fields into a comm
 | `battle.reset` | - | `rounds`, `game_type` | - |
 | `bot.config` | - | `selectable_guns`, `force_guns`, `forced_gun`, `eval_waves`, `config_profile`, `config_fingerprint`, `effective_config` | - |
 | `bot.skipped_turn` | `skipped_turn` | `current_turn`, `last_decision_elapsed_us`, `last_time_left_us_before_go`, `turn_timeout_us`, `time_left_us`, `target`, `known_targets`, `gun_heat`, `gun_samples`, `gun_waves`, `eval_waves`, `movement_waves`, `shadow_bullets`, `movement_mode`, `aim_mode` | - |
-| `bot.turn_timing` | `decision_elapsed_us`, `severity` | `turn_timeout_us`, `time_left_us_before_go`, `target`, `known_targets`, `gun_heat`, `gun_samples`, `gun_waves`, `eval_waves`, `movement_waves`, `shadow_bullets`, `movement_mode`, `aim_mode` | - |
+| `bot.turn_timing` | `decision_elapsed_us`, `severity` | `turn_timeout_us`, `time_left_us_before_go`, `gc_pause_us`, `gc_max_generation`, `phase_us`, `target`, `known_targets`, `gun_heat`, `gun_samples`, `gun_waves`, `eval_waves`, `movement_waves`, `shadow_bullets`, `movement_mode`, `aim_mode` | - |
 | `round.reset` | - | `previous_turn`, `current_turn` | - |
 | `telemetry.dropped` | `count` | - | - |
 | `telemetry.session` | - | - | - |
