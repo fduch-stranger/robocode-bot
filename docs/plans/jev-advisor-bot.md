@@ -1,8 +1,9 @@
 # Jev Advisor Bot Plan
 
-**Status (2026-09-27): removed (PR #9).** Neither phase passed its gate (see Results).
-The code this page describes is in commit `e388ecf` (PR #8) if a later
-experiment needs it.
+**Status (2026-09-27): removed (PR #9).** Neither phase showed a usable
+signal: Phase 1 passed its gate only narrowly and has no active step, and
+Phase 2 failed its gate (see Results). The code this page describes is in
+commit `e388ecf` (PR #8) if a later experiment needs it.
 
 This plan describes an experimental bot variant, `adaptive-jev`, that adds
 TypeSafe AI's Jev model as an asynchronous advisor on top of Adaptive Prime.
