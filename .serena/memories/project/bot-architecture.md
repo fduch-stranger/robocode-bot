@@ -25,7 +25,7 @@ Gun architecture:
 - `gun.eval_wave_visit` is selector-only evidence when enabled and must not train production gun models.
 - Adaptive uses side-effect-free same-mode re-aim after Dynamic Cluster power scaling (it rebuilds every gun's bearing at the new power, so it costs about as much as a full aim).
 - Adaptive hot-gun tracking: the full aim and power re-aim run only from `full_aim_lead_turns` (3) turns before the gun can fire; otherwise the gun keeps the last full solution's offset from the direct bearing. This cut median decision time 4.7 -> 0.68 ms and skipped turns 10 -> 1 per 24 rounds, and won its A/B (+12%). Env: `ROBOCODE_ADAPTIVE_HOT_GUN_TRACKING=0` disables it.
-- Dynamic Cluster bandwidth uses a degree hit angle over degree escape angles (min 0.10, max 0.30, scale 1.25); before the fix it was always clamped to the minimum.
+- Dynamic Cluster bandwidth uses a degree hit angle over degree escape angles (min 0.10, max 0.30, scale 1.25; median ~0.117 against the surfer); before the fix it was always pinned at the old 0.12 floor. Scale 1.5 (median ~0.14) was -4.4%; a narrow variant (min 0.08, max 0.24, scale 1.0) performed like the chosen defaults.
 - Selector gates every candidate against the current mode, independent of registry order.
 - Adaptive requires a `0.18` adjusted-score margin for fallback-over-primary switches.
 - Adaptive-specific tuning is centralized in `bots/adaptive-prime/adaptive_config.py`, including named firepower, target, radar, movement, movement-flattening, and minimum-risk policies/configs. Behavior methods should not carry independent tuning literals.
