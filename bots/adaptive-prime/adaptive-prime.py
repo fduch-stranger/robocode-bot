@@ -52,7 +52,7 @@ from bot_core.telemetry.energy import EnergyTelemetry
 from bot_core.telemetry.fire import FireTelemetry, FireTick
 from bot_core.telemetry.movement import MovementTelemetry
 from bot_core.telemetry.targeting import TargetingTelemetry
-from bot_core.telemetry.timing import TurnTimingTelemetry
+from bot_core.telemetry.timing import TurnPhaseTimer, TurnTimingTelemetry
 from adaptive_config import (
     DUEL_MOVEMENT_POLICY,
     ENERGY_DROP_CONFIG,
@@ -130,7 +130,8 @@ class AdaptivePrime(Bot):
         self._fire_telemetry = FireTelemetry(self._debug)
         self._movement_telemetry = MovementTelemetry(self._debug)
         self._targeting_telemetry = TargetingTelemetry(self._debug)
-        self._timing_telemetry = TurnTimingTelemetry(self._debug)
+        self._timing_telemetry = TurnTimingTelemetry(self._debug, track_gc=True)
+        self._phase_timer = TurnPhaseTimer()
         self._debug.log("bot.config", **adaptive_config_status_fields())
         self._fired_bullets = FiredBulletTracker()
         self._last_gun_decision_log_turn: dict[int, int] = {}
@@ -148,6 +149,7 @@ class AdaptivePrime(Bot):
 
         while self.running:
             timing_start = self._timing_telemetry.begin()
+            self._phase_timer.start()
             self._update_own_motion_stats()
             self._track_or_search()
             self._record_turn_timing(timing_start)
@@ -305,10 +307,12 @@ class AdaptivePrime(Bot):
         self._energy_telemetry.record_gun_heat_wave(target.bot_id, fire_power, prediction, distance, age, movement_wave is not None)
 
     def _track_or_search(self) -> None:
+        self._phase_timer.mark("own_motion")
         self._reset_if_new_round()
         self._forget_stale_targets()
         self._log_movement_profile_visits()
         target = self._select_target()
+        self._phase_timer.mark("select")
         if target is None:
             self._search()
             self._targeting_telemetry.sample_search(known_targets=0)
@@ -329,6 +333,7 @@ class AdaptivePrime(Bot):
             disabled_modes=frozenset() if use_segmented_gun_stats else frozenset({"traditional_gf"}),
             allow_segmented_stats=use_segmented_gun_stats,
         )
+        self._phase_timer.mark("aim")
         firepower, aim = self._maybe_apply_dynamic_shot_quality_power_scale(
             target,
             distance,
@@ -336,6 +341,7 @@ class AdaptivePrime(Bot):
             aim,
             use_segmented_gun_stats,
         )
+        self._phase_timer.mark("power_reaim")
         score_segment = aim.segment_key if use_segmented_gun_stats else None
         if aim.mode_changed:
             self._fire_telemetry.record_gun_switch(target.bot_id, aim, self._gun.score_summary(target.bot_id, score_segment))
@@ -369,7 +375,9 @@ class AdaptivePrime(Bot):
         radar_command = lock_radar_to_target(self, target, RADAR_CONFIG)
         if abs(radar_command.turn) >= 1:
             self._radar_sweep_direction = 1 if radar_command.turn > 0 else -1
+        self._phase_timer.mark("gun_logs_radar")
         movement_mode, strafe_offset, flattening = self._set_adaptive_movement(target, distance, body_bearing)
+        self._phase_timer.mark("movement")
 
         fire_decision = FIRE_GATE.decide(age, distance, aim.gun_bearing, firepower, self.energy)
         self.set_turn_gun_left(aim.gun_bearing)
@@ -398,6 +406,7 @@ class AdaptivePrime(Bot):
         if fire_decision.can_fire:
             self._gun.set_pending_wave(self._gun.make_wave(self, target, firepower, aim))
             self.set_fire(firepower)
+        self._phase_timer.mark("fire")
 
     def _maybe_apply_dynamic_shot_quality_power_scale(
         self,
@@ -1245,7 +1254,7 @@ class AdaptivePrime(Bot):
         self._timing_telemetry.record_skipped_turn(self, event, **self._timing_fields())
 
     def _record_turn_timing(self, start_ns: int) -> None:
-        self._timing_telemetry.record_turn(self, start_ns, **self._timing_fields())
+        self._timing_telemetry.record_turn(self, start_ns, phase_us=self._phase_timer.snapshot(), **self._timing_fields())
 
     def _timing_fields(self) -> dict[str, object]:
         return {
