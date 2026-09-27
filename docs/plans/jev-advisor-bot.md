@@ -201,7 +201,7 @@ sides, because inherited values override `.env`.
 | `ROBOCODE_JEV_MAX_RPS` | `10` | Client-side request rate limit. |
 | `ROBOCODE_JEV_WORKERS` | `2` | Worker threads (parallel requests). |
 
-The [bot README](../../bots/adaptive-jev/README.md) lists the stub flags.
+The removed bot README (commit `e388ecf`) listed the stub flags.
 
 ## Secret Handling
 

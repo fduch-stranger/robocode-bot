@@ -23,17 +23,6 @@ The browser viewer and telemetry audit normalize bot-specific fields into a comm
 
 ## Events
 
-### Advisor
-
-| Event | Required Fields | Optional Fields | Aliases |
-| --- | --- | --- | --- |
-| `advisor.answer` | `kind`, `key`, `request_turn`, `answer_turn`, `latency_ms`, `choice`, `confidence`, `status` | `latency_turns`, `model`, `input_tokens`, `probabilities`, `target`, `fired_turn`, `samples`, `rule` | - |
-| `advisor.config` | - | `advisor`, `reason`, `transport`, `jev_enabled`, `jev_mode`, `jev_phases`, `jev_transport` | - |
-| `advisor.error` | `kind`, `key`, `error` | `http_status`, `latency_ms` | - |
-| `advisor.outcome` | `key`, `request_turn`, `answer_turn`, `visit_turn`, `realized`, `guess_factor`, `hit` | `kind`, `answered_before_visit`, `answer`, `confidence`, `target`, `fired_turn` | - |
-| `advisor.request` | `kind`, `key`, `request_turn`, `submit` | `target`, `fired_turn`, `samples`, `rule`, `summary` | - |
-| `advisor.stats` | - | `submitted`, `queued`, `sent`, `ok`, `errors`, `throttled`, `dropped_queue_full`, `rejected_rate`, `rejected_backoff`, `pending`, `internal_errors` | - |
-
 ### Combat
 
 | Event | Required Fields | Optional Fields | Aliases |

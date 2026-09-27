@@ -3,10 +3,6 @@ discover_bot_dirs() {
   local bot
 
   for bot in "$root_dir"/bots/* "$root_dir"/bots/ports/*; do
-    # Experimental bots (for example network-dependent ones) run only when named explicitly.
-    if [[ -f "$bot/.experimental" ]]; then
-      continue
-    fi
     if [[ -d "$bot" ]] && compgen -G "$bot/*.json" > /dev/null; then
       printf '%s\n' "$bot"
     fi

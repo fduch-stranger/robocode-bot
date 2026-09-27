@@ -25,7 +25,6 @@ Current local roster:
 | Bot | Role |
 | --- | --- |
 | [Adaptive Prime](bots/adaptive-prime/README.md) | Champion candidate with surfing, potential fields, and adaptive firepower. |
-| [Adaptive Jev](bots/adaptive-jev/README.md) | Experimental Adaptive Prime variant with an optional asynchronous Jev advisor; runs only when named. |
 | [Chase Lock](bots/chase-lock/README.md) | Pressure fighter that keeps targets pinned by range and lock discipline. |
 | [Circle Strafer](bots/circle-strafer/README.md) | Defensive orbit bot built around survival, spacing, and wall recovery. |
 | [Sweep Pressure](bots/sweep-pressure/README.md) | Direct-fire pressure bot with sweeping movement and projected wall avoidance. |

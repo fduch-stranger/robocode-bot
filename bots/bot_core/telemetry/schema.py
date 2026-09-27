@@ -478,46 +478,6 @@ EVENT_SPECS: dict[str, TelemetryEventSpec] = {
     ),
     "hit.wall": TelemetryEventSpec("combat", optional_fields=("evade_direction", "move_direction", "center_bearing", "wall_escape_until")),
     "hit.bot": TelemetryEventSpec("combat", optional_fields=("target", "energy", "rammed", "distance", "near_wall", "wall_risk")),
-    "advisor.config": TelemetryEventSpec(
-        "advisor",
-        optional_fields=("advisor", "reason", "transport", "jev_enabled", "jev_mode", "jev_phases", "jev_transport"),
-    ),
-    "advisor.request": TelemetryEventSpec(
-        "advisor",
-        required_fields=("kind", "key", "request_turn", "submit"),
-        optional_fields=("target", "fired_turn", "samples", "rule", "summary"),
-    ),
-    "advisor.answer": TelemetryEventSpec(
-        "advisor",
-        required_fields=("kind", "key", "request_turn", "answer_turn", "latency_ms", "choice", "confidence", "status"),
-        optional_fields=("latency_turns", "model", "input_tokens", "probabilities", "target", "fired_turn", "samples", "rule"),
-    ),
-    "advisor.error": TelemetryEventSpec(
-        "advisor",
-        required_fields=("kind", "key", "error"),
-        optional_fields=("http_status", "latency_ms"),
-    ),
-    "advisor.outcome": TelemetryEventSpec(
-        "advisor",
-        required_fields=("key", "request_turn", "answer_turn", "visit_turn", "realized", "guess_factor", "hit"),
-        optional_fields=("kind", "answered_before_visit", "answer", "confidence", "target", "fired_turn"),
-    ),
-    "advisor.stats": TelemetryEventSpec(
-        "advisor",
-        optional_fields=(
-            "submitted",
-            "queued",
-            "sent",
-            "ok",
-            "errors",
-            "throttled",
-            "dropped_queue_full",
-            "rejected_rate",
-            "rejected_backoff",
-            "pending",
-            "internal_errors",
-        ),
-    ),
 }
 
 

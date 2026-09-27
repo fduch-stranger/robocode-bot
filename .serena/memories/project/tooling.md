@@ -16,9 +16,6 @@ Local config:
 - Adaptive coarse controls are `ROBOCODE_ADAPTIVE_GOTO_SURFING`, `ROBOCODE_ADAPTIVE_FLATTENER_DIRECTION_CONTROL`, and `ROBOCODE_ADAPTIVE_GUN_HEAT_WAVES`.
 - Adaptive telemetry-backed experiments should retain the startup `bot.config` event, which contains the effective configuration and deterministic fingerprint.
 - `ROBOCODE_LEGACY_BOTS_ROOT` is optional and only for unported converted opponents.
-- `TYPESAFE_API_KEY` (Jev) lives only in `.env`; never type, echo, or pass it on a command line. `ROBOCODE_JEV_*` flags control `bots/adaptive-jev`; worktree runs point `ROBOCODE_ENV_FILE` at the main checkout's `.env`.
-- Bot dirs with an `.experimental` file are skipped by default battles and `scripts/package.sh`; name them explicitly.
-- `tools/jev_probe.py` checks the Jev API (latency, errors, model); `tools/advisor_summary.py` summarizes `advisor.*` telemetry (style accuracy with `--truth`, surf information test).
 
 Common commands:
 ```sh
@@ -64,6 +61,7 @@ Battle lock and noise:
 - `run-battle.sh` takes a machine-wide lock (`/tmp/robocode-battle-<uid>.lock`); series and A/B runs inherit it. `ROBOCODE_BATTLE_LOCK=0` opts out. Worktrees made before the lock commit do not take it.
 - Identical baseline code scores about ±150 per 24-round run (4248-5174 per 24x3), so a 3-run A/B detects only ~15% effects; pool baselines of the same code and give candidates 6 runs when a decision matters. `docs/plans/adaptive-prime-roadmap.md` keeps the pooled table.
 - `tools/turn_timing_summary.py <telemetry> --bot adaptive-prime` attributes slow turns to a phase (`phase_us`) or GC (`gc_pause_us`).
+- When testing whether advice predicts outcomes (agree vs disagree with what the bot did), compare within each outcome category; an option the advisor never picks makes the raw test pass on base rates alone. Fix the sample size before looking, and confirm a marginal result on fresh runs.
 
 A/B guidance:
 - `1-8` rounds: smoke only.
