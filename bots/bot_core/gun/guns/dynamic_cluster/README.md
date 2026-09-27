@@ -43,7 +43,10 @@ remains the primary KNN aim model rather than being hidden by selector policy.
 Shot-quality diagnostics combine aim confidence, neighbor agreement, ambiguity,
 wall-escape stability, and lateral confidence. They report a quality reason and
 recommended power scale. The rejected GF-softening experiment was removed, so
-shot quality affects firepower policy only.
+shot quality affects firepower policy only, and only in bots that apply the
+recommended scale. Adaptive Prime leaves that scaling off by default because it
+lost the endgame attrition against the BasicGFSurfer port; see
+[its README](../../../../adaptive-prime/README.md).
 
 The failed online calibration apply-correction experiment was removed from the
 gun and telemetry. Do not emit telemetry for calibration corrections unless a

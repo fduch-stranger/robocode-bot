@@ -181,35 +181,59 @@ Presets:
 | `adaptive-melee-core` | Four local bots. |
 | `adaptive-1v1-basic-gf-surfer-port` | Preferred Python BasicGFSurfer port. |
 
-Typical comparison:
+Options:
+
+| Option | Purpose |
+| --- | --- |
+| `--baseline DIR` / `--candidate DIR` | Worktree or checkout for each side. Both default to this checkout. |
+| `--baseline-env KEY=VALUE` / `--candidate-env KEY=VALUE` | Environment override for one side, repeatable. Use it for env-only variants of the same tree. |
+| `--rounds N` / `--repeats N` | Rounds per battle and paired baseline/candidate battles. |
+| `--run-dir DIR` | Output directory. Defaults to `battle-results/ab/<timestamp>-<name>`. |
+| `--telemetry` | Telemetry JSONL per battle. Keep it off for promotion runs. |
+
+Promotion standard against the surfer port:
 
 ```sh
 scripts/run-ab.sh \
   --name adaptive-gun-change \
   --preset adaptive-1v1-basic-gf-surfer-port \
-  --baseline <baseline-worktree> \
   --candidate <candidate-worktree> \
   --rounds 24 \
-  --repeats 3 \
-  --telemetry
+  --repeats 6
 
-tools/combat_economics_summary.py battle-results/ab/<experiment>
+tools/ab_pool.py \
+  --candidate battle-results/ab/<experiment> \
+  --baseline battle-results/ab/<experiment> battle-results/ab/<earlier-experiment-with-the-same-baseline-code>
 ```
 
-Use `1-8` rounds for smoke checks, `12-16` rounds for exploration, and
-`24 x 3` for promotion. Ask before spending `50+` rounds. Converted legacy
+Each repeat runs one baseline and one candidate battle in turn, so machine
+drift hits both sides. One 24-round run of identical code varies by about
+±150 points, and six-run batches of the same code have averaged anywhere from
+1395 to 1735, so never judge a candidate against its own six baseline runs
+alone. Pool every baseline run of the same code (`tools/ab_pool.py` accepts
+several experiment directories per side) and merge only when the candidate's
+mean beats the pooled baseline by at least two standard errors of the
+difference. Smaller gains are neutral, and tuning changes are not merged on
+neutral. The pooled table in
+[the Adaptive Prime roadmap](plans/adaptive-prime-roadmap.md) records which
+baseline runs exist for each code state.
+
+Use `1-8` rounds for smoke checks and `12-16` rounds for exploration. A
+6-repeat promotion A/B takes about 15 minutes on a quiet machine. Nothing else
+CPU-heavy should run at the same time: Adaptive's turns cost milliseconds and
+the surfer's microseconds, so contention skews one side. Converted legacy
 opponents are not quality gates; port useful opponents into `bots/ports/`
 before treating them as tuning targets.
 
 Use `run-ab.sh` for real baseline/candidate comparisons. When validating one
 current tree against a reference bot, use `scripts/run-battle-series.sh`
-instead; invoking A/B without distinct worktrees compares the same dirty tree on
-both sides and is not a meaningful promotion gate.
+instead; an A/B with the same tree on both sides and no environment override
+compares the same tree twice and is not a promotion gate.
 
-Adaptive Prime's startup `bot.config` event includes its complete effective
-configuration and a deterministic fingerprint. Record that event when an
-experiment uses environment overrides so results remain attributable even when
-the worktree revision is unchanged.
+The A/B manifest records each side's git revision, dirty state, and
+environment overrides. Adaptive Prime's startup `bot.config` telemetry event
+also includes its complete effective configuration and a deterministic
+fingerprint, so telemetry runs with environment overrides stay attributable.
 
 ## Battle Series
 

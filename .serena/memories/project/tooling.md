@@ -65,9 +65,10 @@ Battle lock and noise:
 A/B guidance:
 - `1-8` rounds: smoke only.
 - `12-16` rounds with repeats: exploration.
-- `24 x 3`: normal promotion gate.
-- Ask before spending `50+` rounds.
-- Use A/B only with distinct baseline/candidate worktrees or refs.
+- `24 x 6` repeats is the promotion gate, judged with `tools/ab_pool.py` against the pooled baseline of the same code (win = candidate mean above the pooled baseline by two standard errors of the difference; smaller is neutral, and tuning is not merged on neutral).
+- Six-run batches of identical code have averaged 1395-1735 per run, so never judge against the paired batch alone.
+- Env-only variants: same tree on both sides with `--candidate-env KEY=VALUE`; the manifest records the env per side. Otherwise use distinct baseline/candidate worktrees.
+- A 6-repeat A/B takes about 15 minutes; say what campaign is planned before running several.
 - Use battle series when validating one current tree against a reference bot.
 
 Telemetry viewer:

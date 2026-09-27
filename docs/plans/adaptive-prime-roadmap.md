@@ -1,15 +1,19 @@
 # Adaptive Prime Roadmap
 
 Goal: make Adaptive Prime stronger against the BasicGFSurfer port (the fixed
-enemy benchmark), completing every item below.
+enemy benchmark). The original items are complete; later experiments are
+appended, and [Adaptive Prime surfer economics](adaptive-surfer-economics.md)
+holds the detailed record of items 11-16.
 Changes are promoted through A/B runs (`adaptive-1v1-basic-gf-surfer-port`,
-24 rounds x 3, telemetry off, one benchmark at a time) and merged when
-validated.
+24 rounds x 6 candidate runs, telemetry off, one benchmark at a time), judged
+against the pooled baseline below with `tools/ab_pool.py`, and merged on a win
+of at least two standard errors of the difference.
 
-Benchmark noise: identical baseline code has scored 4248-5174 per 24x3 run, so
-one A/B only reliably detects changes of roughly 10% or more. Correctness fixes
-with a verified mechanism are kept when the A/B is not negative; tuning changes
-need a clear A/B win.
+Benchmark noise: identical baseline code has scored 4248-5174 per 24x3 run,
+and six-run batches of the same code have averaged 1395-1735 per run, so a
+single batch cannot see changes under about 15%. Correctness fixes with a
+verified mechanism are kept when the A/B is not negative; tuning changes need
+a clear win against the pooled baseline.
 
 ## Status
 
