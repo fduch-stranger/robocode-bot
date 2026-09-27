@@ -199,7 +199,7 @@ class FirePolicy:
     finish_distance: float = 240
     dynamic_shot_quality_power_scaling_enabled: bool = _env_flag(
         "ROBOCODE_ADAPTIVE_DYNAMIC_SHOT_QUALITY_POWER_SCALING",
-        default=True,
+        default=False,
     )
     minimum_firepower: float = 0.1
     power_adjustment_epsilon: float = 0.01
@@ -316,8 +316,8 @@ class MovementPolicy:
 @dataclass(frozen=True)
 class DuelMovementPolicy:
     potential_step: float = 205.0
-    preferred_distance: float = 580.0
-    min_distance: float = 430.0
+    preferred_distance: float = 480.0
+    min_distance: float = 380.0
     max_distance: float = 730.0
     critical_distance: float = 300.0
     wall_margin: float = 130.0
