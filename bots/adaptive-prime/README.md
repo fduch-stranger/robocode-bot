@@ -49,7 +49,9 @@ Adaptive is different from the other local bots in three places:
 1. Use shared go-to surfing when a wave can be scored.
 2. Otherwise compute a potential-field destination from enemy repulsion,
    orbit tangent, fire-threat repulsion, wall repulsion, and center attraction.
-3. Use distance bands to panic-open, open range, orbit, or reconnect.
+3. Use distance bands to panic-open, open range, orbit, or reconnect. The
+   duel policy prefers 480 px and holds at least 380 px; it used to prefer
+   580 px, where every gun hit about 13% against the BasicGFSurfer port.
 
 Melee uses shared minimum-risk movement. In `track` telemetry this appears as
 `movement_mode=melee_minimum_risk`.
@@ -148,11 +150,12 @@ firepower, and enough energy after the shot. Adaptive uses the shared
 `last_stand` path at critical energy instead of a separate KNN-gated low-energy
 override, so aligned close shots can still fire below the normal energy margin.
 
-When Dynamic Cluster is the selected gun, its shot-quality diagnostics can scale
-the policy firepower down (`ROBOCODE_ADAPTIVE_DYNAMIC_SHOT_QUALITY_POWER_SCALING`,
-on by default). Against the BasicGFSurfer port the scaling is a constant 0.55x
-multiplier, and turning it off raises bullet damage but loses rounds in the
-endgame; see
+Dynamic Cluster's shot-quality diagnostics can scale the policy firepower down
+when it is the selected gun, but that scaling is off by default
+(`ROBOCODE_ADAPTIVE_DYNAMIC_SHOT_QUALITY_POWER_SCALING=1` re-enables it).
+Against the BasicGFSurfer port the scaling was a constant 0.55x multiplier;
+turning it off alone raised bullet damage but lost rounds, and together with
+the closer duel distance it is a clear win. See
 [Adaptive Prime surfer economics](../../docs/plans/adaptive-surfer-economics.md)
 for the measurements.
 
