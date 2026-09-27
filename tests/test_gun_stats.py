@@ -543,6 +543,35 @@ class GunStatsTest(unittest.TestCase):
         self.assertEqual("selected", reasons["dynamic_cluster"])
         self.assertEqual("superseded", reasons["traditional_gf"])
 
+    def test_aim_mode_selector_picks_best_candidate_regardless_of_iteration_order(self) -> None:
+        config = runtime_config(
+            selector=GunSelectorConfig(
+                switch_margin=0.15,
+                selectable_modes=frozenset({"linear", "dynamic_cluster", "traditional_gf"}),
+            ),
+            min_visits=2,
+            min_switch_score=0.1,
+            traditional_gf=TraditionalGfGunConfig(min_switch_visits=2, min_switch_score=0.1),
+        )
+        stats = {
+            (1, "linear"): GunStats(visits=10, hits=1, rolling_score=0.2),
+            (1, "traditional_gf"): GunStats(visits=10, hits=2, rolling_score=0.45),
+            (1, "dynamic_cluster"): GunStats(visits=10, hits=3, rolling_score=0.55),
+        }
+        scorer = VirtualGunScorer(scoring_config(config), stats, {})
+        selector = make_selector(config, scorer, {1: "linear"}, stats)
+
+        selected, _, _, candidates = selector.select_with_diagnostics(
+            1,
+            {"linear": 0.0, "traditional_gf": -1.0, "dynamic_cluster": 1.0},
+            None,
+        )
+
+        self.assertEqual("dynamic_cluster", selected)
+        reasons = {candidate.mode: candidate.reason for candidate in candidates}
+        self.assertEqual("selected", reasons["dynamic_cluster"])
+        self.assertEqual("superseded", reasons["traditional_gf"])
+
     def test_aim_mode_selector_uses_displacement_specific_thresholds(self) -> None:
         config = runtime_config(
             selector=GunSelectorConfig(

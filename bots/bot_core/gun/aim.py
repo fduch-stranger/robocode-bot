@@ -123,7 +123,10 @@ class AimModeSelector:
             decision_contexts,
         )
         current_degraded = self._situational_current_degraded(current, decision_contexts)
-        best_score = -self.config.switch_margin if current_degraded else current_score
+        # Every candidate is gated against the current mode, not against earlier candidates,
+        # so selection does not depend on registry iteration order.
+        baseline_score = -self.config.switch_margin if current_degraded else current_score
+        best_score: float | None = None
         candidates: dict[str, GunSwitchCandidate] = {}
         ordered_modes: list[str] = []
         for mode in virtual_bearings:
@@ -149,12 +152,11 @@ class AimModeSelector:
                 reason = "visits"
             elif mode != current and score < min_score:
                 reason = "score_floor"
-            elif mode != current and score > best_score + switch_margin:
+            elif mode != current and score > baseline_score + switch_margin:
                 reason = "selected"
-                best_mode = mode
-                best_score = score
-            elif mode != current and score > current_score + switch_margin:
-                reason = "superseded"
+                if best_score is None or score > best_score:
+                    best_mode = mode
+                    best_score = score
             candidates[mode] = GunSwitchCandidate(
                 mode,
                 True,
