@@ -64,6 +64,17 @@ class AdvisorSummaryTest(unittest.TestCase):
         self.assertLess(abs(result["z"]), 1.0)
         self.assertFalse(result["gate_passed"])
 
+    def test_surf_gate_ignores_a_base_rate_gap_in_an_option_jev_never_picks(self) -> None:
+        # Staying put is hit more often, and Jev never answers "stop": the raw test is fooled.
+        confounded = [_outcome("forward", "stop", index % 5 == 0) for index in range(600)]
+        confounded += [_outcome("forward", "forward", index % 12 == 0) for index in range(300)]
+        confounded += [_outcome("reverse", "forward", index % 12 == 0) for index in range(300)]
+        result = advisor_summary.surf_information_test([event["fields"] for event in confounded])
+        self.assertGreater(result["raw_z"], 1.96)
+        self.assertLess(abs(result["z"]), 1.0)
+        self.assertEqual(600, result["comparable_waves"])
+        self.assertFalse(result["gate_passed"])
+
 
 if __name__ == "__main__":
     unittest.main()

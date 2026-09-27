@@ -6,8 +6,10 @@ with the rule-based classifier's label logged on the same request.
 
 Surf: for each answered wave, compares the hit rate when Jev's choice matched where we actually went
 with the hit rate when it did not. If Jev's choice carries information about the enemy's aim,
-waves where it disagreed with our movement should be hit more often (a one-sided two-proportion
-z-test; the Phase 2 gate needs z >= 1.96 over at least 1,000 answered waves).
+waves where it disagreed with our movement should be hit more often. The comparison is made within
+each realized option (a one-sided Mantel-Haenszel test), because each option has its own base hit
+rate and an option Jev never picks can only disagree. The Phase 2 gate needs z >= 1.96 over at
+least 1,000 answered waves; ``raw_z`` is the unstratified value, for reference only.
 """
 from __future__ import annotations
 
@@ -74,12 +76,32 @@ def surf_information_test(outcomes: list[dict[str, Any]]) -> dict[str, Any]:
     disagree = [outcome for outcome in answered if outcome["answer"] != outcome.get("realized")]
     agree_hits = sum(bool(outcome.get("hit")) for outcome in agree)
     disagree_hits = sum(bool(outcome.get("hit")) for outcome in disagree)
-    z = None
+    raw_z = None
     if agree and disagree:
         pooled = (agree_hits + disagree_hits) / len(answered)
         spread = math.sqrt(pooled * (1.0 - pooled) * (1.0 / len(agree) + 1.0 / len(disagree)))
         if spread > 0:
-            z = round((disagree_hits / len(disagree) - agree_hits / len(agree)) / spread, 3)
+            raw_z = round((disagree_hits / len(disagree) - agree_hits / len(agree)) / spread, 3)
+    # Where we ended up has its own base hit rate, and an option Jev never picks can only ever
+    # "disagree". Compare agree and disagree within each realized option (Mantel-Haenszel).
+    strata: dict[str, dict[str, list[int]]] = {}
+    for outcome in answered:
+        cell = "agree" if outcome["answer"] == outcome.get("realized") else "disagree"
+        counts = strata.setdefault(str(outcome.get("realized")), {"agree": [0, 0], "disagree": [0, 0]})[cell]
+        counts[0] += 1
+        counts[1] += bool(outcome.get("hit"))
+    numerator = 0.0
+    variance = 0.0
+    comparable = 0
+    for cells in strata.values():
+        (n_agree, h_agree), (n_disagree, h_disagree) = cells["agree"], cells["disagree"]
+        n, h = n_agree + n_disagree, h_agree + h_disagree
+        if not n_agree or not n_disagree or n < 2 or h in (0, n):
+            continue
+        comparable += n
+        numerator += h_disagree - n_disagree * h / n
+        variance += n_agree * n_disagree * h * (n - h) / (n * n * (n - 1))
+    z = round(numerator / math.sqrt(variance), 3) if variance > 0 else None
     hit_waves = [outcome for outcome in answered if outcome.get("hit")]
     return {
         "answered_waves": len(answered),
@@ -88,6 +110,12 @@ def surf_information_test(outcomes: list[dict[str, Any]]) -> dict[str, Any]:
         "agreement": _rate(len(agree), len(answered)),
         "hit_rate_when_agree": _rate(agree_hits, len(agree)),
         "hit_rate_when_disagree": _rate(disagree_hits, len(disagree)),
+        "raw_z": raw_z,
+        "by_realized": {
+            realized: {cell: {"waves": counts[0], "hit_rate": _rate(counts[1], counts[0])} for cell, counts in cells.items()}
+            for realized, cells in sorted(strata.items())
+        },
+        "comparable_waves": comparable,
         "z": z,
         "jev_choices": dict(Counter(outcome["answer"] for outcome in answered)),
         "realized": dict(Counter(outcome.get("realized") for outcome in answered)),
