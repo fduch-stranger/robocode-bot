@@ -15,11 +15,14 @@ from robocode_tank_royale.bot_api.events import (
 from bot_core.debug import DebugLogger, FiredBulletTracker
 from bot_core.physics.rules import bullet_hit_bonus_for_power
 from bot_core.energy import (
+    RAM_DAMAGE,
+    SAME_TURN_SCAN_DELAY_TURNS,
     EnemyEnergyCorrectionLedger,
     EnemyFireDetector,
     EnemyFirePowerPrediction,
     EnemyFirePowerPredictor,
     GunHeatTracker,
+    enemy_wall_hit_damage_bound,
     last_stand_firepower,
 )
 from bot_core.gun import (
@@ -198,6 +201,24 @@ class AdaptivePrime(Bot):
 
     def _detect_enemy_fire(self, event: ScannedBotEvent, previous: TargetSnapshot, scan_gap: int) -> bool:
         distance = distance_to(self, event.x, event.y)
+        if scan_gap == 1:
+            # Wall damage lands in the same scan as a firing drop; discount its upper bound.
+            wall_damage = enemy_wall_hit_damage_bound(
+                previous.speed,
+                event.speed,
+                event.x,
+                event.y,
+                self.arena_width,
+                self.arena_height,
+            )
+            if wall_damage > 0:
+                self._enemy_fire_detector.record_correction(
+                    event.scanned_bot_id,
+                    self.turn_number,
+                    wall_damage,
+                    "enemy_wall_hit",
+                    scan_delay_turns=SAME_TURN_SCAN_DELAY_TURNS,
+                )
         detection = self._enemy_fire_detector.evaluate_scan(
             event.scanned_bot_id,
             previous.energy,
@@ -229,12 +250,15 @@ class AdaptivePrime(Bot):
         heat_state = detection.heat_state
         current_target = target_from_scan(event, self.turn_number)
         estimated_fire_turn = max(previous.seen_turn + 1, self.turn_number - max(0, scan_gap - 1))
-        fire_source = interpolate_target(previous, current_target, estimated_fire_turn)
+        # The server fires before moving and advances new bullets once on the firing turn, so the
+        # bullet starts at the shooter's position from the turn before and is one step out already.
+        bullet_origin_turn = estimated_fire_turn - 1
+        fire_source = interpolate_target(previous, current_target, bullet_origin_turn)
         movement_wave = self._movement.record_enemy_fire(
             self,
             fire_source,
             signal.fire_power or FIRE_POLICY.enemy_fire_fallback_power,
-            fired_turn=estimated_fire_turn,
+            fired_turn=bullet_origin_turn,
             **self._own_motion.movement_wave_kwargs(self.turn_number),
         )
         melee_active = self._melee_round or self.enemy_count > 1 or len(self._targets) > 1
@@ -1148,6 +1172,14 @@ class AdaptivePrime(Bot):
         )
 
     def on_hit_bot(self, event: HitBotEvent) -> None:
+        # Ram damage is applied before this turn's scan; HitBot runs before ScannedBot.
+        self._enemy_fire_detector.record_correction(
+            event.victim_id,
+            self.turn_number,
+            RAM_DAMAGE,
+            "ram",
+            scan_delay_turns=SAME_TURN_SCAN_DELAY_TURNS,
+        )
         self._targets[event.victim_id] = target_from_hit_bot(
             event,
             self.turn_number,

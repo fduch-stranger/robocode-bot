@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from bot_core.energy.corrections import EnemyEnergyCorrectionLedger
+from bot_core.energy.corrections import BULLET_HIT_SCAN_DELAY_TURNS, EnemyEnergyCorrectionLedger
 from bot_core.energy.drops import EnergyDropConfig, EnergyDropSignal, classify_energy_drop
 from bot_core.energy.fire_power import EnemyFirePowerPrediction, EnemyFirePowerPredictor
 from bot_core.energy.gun_heat import GunHeatState, GunHeatTracker
@@ -71,8 +71,16 @@ class EnemyFireDetector:
         heat_state = self.gun_heat.record_fire(target_id, current_turn, fire_power, cooling_rate)
         return EnemyFireDetection(signal, distance, previous_prediction, heat_state)
 
-    def record_correction(self, target_id: int, turn_number: int, correction: float, reason: str) -> None:
-        self.correction_ledger.record(target_id, turn_number, correction, reason)
+    def record_correction(
+        self,
+        target_id: int,
+        turn_number: int,
+        correction: float,
+        reason: str,
+        *,
+        scan_delay_turns: int = BULLET_HIT_SCAN_DELAY_TURNS,
+    ) -> None:
+        self.correction_ledger.record(target_id, turn_number, correction, reason, scan_delay_turns=scan_delay_turns)
 
     def consume_correction(self, target_id: int, current_turn: int, after_turn: int) -> float:
         return self.correction_ledger.consume(target_id, current_turn, after_turn)

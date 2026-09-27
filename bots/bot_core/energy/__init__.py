@@ -1,4 +1,9 @@
-from bot_core.energy.corrections import EnemyEnergyCorrectionLedger
+from bot_core.energy.corrections import (
+    RAM_DAMAGE,
+    SAME_TURN_SCAN_DELAY_TURNS,
+    EnemyEnergyCorrectionLedger,
+    enemy_wall_hit_damage_bound,
+)
 from bot_core.energy.drops import EnergyDropConfig, EnergyDropSignal, classify_energy_drop
 from bot_core.energy.fire_detection import EnemyFireDetection, EnemyFireDetector
 from bot_core.energy.fire_gate import FireDecision, FireGate, FireGateConfig, last_stand_firepower
@@ -11,6 +16,8 @@ from bot_core.energy.fire_power import (
 from bot_core.energy.gun_heat import GunHeatConfig, GunHeatState, GunHeatTracker
 
 __all__ = [
+    "RAM_DAMAGE",
+    "SAME_TURN_SCAN_DELAY_TURNS",
     "EnemyEnergyCorrectionLedger",
     "EnemyFireDetection",
     "EnemyFireDetector",
@@ -27,5 +34,6 @@ __all__ = [
     "GunHeatState",
     "GunHeatTracker",
     "classify_energy_drop",
+    "enemy_wall_hit_damage_bound",
     "last_stand_firepower",
 ]

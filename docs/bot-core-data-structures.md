@@ -137,7 +137,7 @@ turn limit, wall clip, and zero speed after wall hit.
 | Structure | Purpose |
 | --- | --- |
 | `EnergyDropConfig` | Shared thresholds for fire/noise classification. |
-| `EnemyEnergyCorrectionLedger` | Tracks correction for known non-fire energy changes: our bullet damage (positive) and the enemy's `3 * power` gain when its bullet hits us (negative). Scanned energy is recorded before bullet hits resolve, so a correction observed on turn `T` applies to the first scan after `T`. |
+| `EnemyEnergyCorrectionLedger` | Tracks correction for known non-fire energy changes: our bullet damage (positive) the enemy's `3 * power` gain when its bullet hits us (negative), ram damage (`0.6`), and an upper bound of enemy wall-hit damage (`enemy_wall_hit_damage_bound`: speed dropped to zero while pinned at the wall margin). Scanned energy is recorded before bullet hits resolve, so bullet corrections observed on turn `T` apply to the first scan after `T`; wall and ram damage is applied before the scan and uses a same-turn delay of `0`. |
 | `EnemyFireDetector` | Shared sequence for corrected drop classification, gun heat, fire-power samples, and telemetry. |
 | `EnemyFirePowerPredictor` | KNN-style enemy bullet-power prediction. |
 | `GunHeatTracker` | Expected enemy fire readiness. |
