@@ -53,6 +53,7 @@ Tool roles:
 
 Surfer policy:
 - Use `bots/ports/basic-gf-surfer-port` and A/B preset `adaptive-1v1-basic-gf-surfer-port`.
+- `bots/ports/tomcat-port` is a native port of lxx.Tomcat 3.68 (preset `adaptive-1v1-tomcat-port`): much stronger than Adaptive, heavy per turn (a few skipped turns per 24 rounds), not a baseline yet. The bridge-wrapped Java Tomcat is broken and not a parity reference.
 - BasicGFSurfer-specific converted-Java aliases and presets were removed.
 - Generic legacy support remains for unported references such as Diamond, DrussGT, and Saguaro.
 - Accuracy filtering is optional diagnostic context for noisy converted bots; do not apply it to native Python ports.

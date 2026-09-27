@@ -1,0 +1,12 @@
+{
+  "name": "Tomcat Port",
+  "version": "3.68",
+  "authors": ["robocode-bot"],
+  "description": "Python Tank Royale port of lxx.Tomcat 3.68 (wave surfing, Tomcat Claws gun).",
+  "homepage": "",
+  "countryCodes": ["DK"],
+  "gameTypes": ["classic", "1v1"],
+  "platform": "Python 3.13",
+  "programmingLang": "Python 3",
+  "base": "tomcat-port"
+}
