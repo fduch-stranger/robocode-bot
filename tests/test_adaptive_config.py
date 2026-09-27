@@ -20,7 +20,7 @@ def _load_adaptive_config() -> ModuleType:
 class AdaptiveConfigTest(unittest.TestCase):
     def test_standard_gun_modes_match_the_registered_set(self) -> None:
         config = _load_adaptive_config()
-        live_modes = frozenset({"linear", "traditional_gf", "dynamic_cluster", "displacement"})
+        live_modes = frozenset({"linear", "traditional_gf", "dynamic_cluster", "displacement", "anti_surfer"})
 
         self.assertEqual(live_modes, config.ADAPTIVE_SELECTABLE_GUN_MODES)
         self.assertEqual(live_modes | {"head_on"}, config.ADAPTIVE_FORCE_GUN_MODES)

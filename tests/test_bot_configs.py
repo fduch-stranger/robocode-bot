@@ -15,6 +15,7 @@ from bot_core.gun.guns.traditional_gf.config import TraditionalGfGunConfig
 ROOT = Path(__file__).resolve().parents[1]
 BOTS_ROOT = ROOT / "bots"
 DEFAULT_LIVE_MODES = {"linear", "traditional_gf", "dynamic_cluster", "displacement"}
+ADAPTIVE_LIVE_MODES = DEFAULT_LIVE_MODES | {"anti_surfer"}
 
 
 def _load_config(path: Path, env: dict[str, str] | None = None) -> ModuleType:
@@ -49,7 +50,7 @@ class BotConfigTest(unittest.TestCase):
         default_gun = default_config.traditional_gf_config_from_policy(default_traditional_gf)
         default_dynamic_config = DynamicClusterGunConfig()
 
-        self.assertEqual(default_policy.selectable_modes, DEFAULT_LIVE_MODES)
+        self.assertEqual(default_policy.selectable_modes, ADAPTIVE_LIVE_MODES)
         self.assertIsNone(default_policy.forced_mode)
         self.assertEqual(default_policy.switch_margin, 0.08)
         self.assertEqual(default_traditional_gf.min_switch_visits, 45)
@@ -173,7 +174,7 @@ class BotConfigTest(unittest.TestCase):
         self.assertIsNone(invalid_per_bot_config.GunPolicy().forced_mode)
         self.assertEqual(
             invalid_per_bot_config.GunPolicy().selectable_modes,
-            DEFAULT_LIVE_MODES,
+            ADAPTIVE_LIVE_MODES,
         )
 
         unsupported_global_set_config = _load_config(
@@ -182,7 +183,7 @@ class BotConfigTest(unittest.TestCase):
         )
         self.assertEqual(
             unsupported_global_set_config.GunPolicy().selectable_modes,
-            DEFAULT_LIVE_MODES,
+            ADAPTIVE_LIVE_MODES,
         )
 
         forceable_global_set_config = _load_config(
