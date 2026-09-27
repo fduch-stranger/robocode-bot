@@ -53,6 +53,7 @@ Live repo-bot modes:
 | Mode | Role |
 | --- | --- |
 | `dynamic_cluster` | Primary KNN guess-factor learner. |
+| `anti_surfer` | Situational Dynamic Cluster variant with recency-weighted KNN memory; built only for bots whose gun set lists it (Adaptive Prime does). |
 | `displacement` | Situational history-replay gun. |
 | `traditional_gf` | Situational profile guess-factor gun. |
 | `linear` | Early/simple-motion fallback. |

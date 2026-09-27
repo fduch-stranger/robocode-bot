@@ -33,6 +33,7 @@ from bot_core.gun import (
     GunSystemConfig,
     TargetMotion,
     VirtualGunSystem,
+    anti_surfer_config_from_policy,
     displacement_config_from_policy,
     dynamic_cluster_config_from_policy,
     selector_config_from_policy,
@@ -74,6 +75,9 @@ from adaptive_config import (
     adaptive_config_status_fields,
     traditional_gf_config_from_policy,
 )
+
+
+SHOT_QUALITY_SCALED_MODES = frozenset({"dynamic_cluster", "anti_surfer"})
 
 
 class AdaptivePrime(Bot):
@@ -127,6 +131,7 @@ class AdaptivePrime(Bot):
                 displacement=displacement_config_from_policy(GUN_POLICY),
                 dynamic_cluster=dynamic_cluster_config_from_policy(GUN_POLICY),
                 traditional_gf=traditional_gf_config_from_policy(traditional_gf_policy),
+                anti_surfer=anti_surfer_config_from_policy(GUN_POLICY),
             )
         )
         self._movement = MovementFlattener(MOVEMENT_FLATTENING_CONFIG)
@@ -486,7 +491,7 @@ class AdaptivePrime(Bot):
     ) -> tuple[float, AimSolution]:
         if not FIRE_POLICY.dynamic_shot_quality_power_scaling_enabled:
             return firepower, aim
-        if aim.mode != "dynamic_cluster":
+        if aim.mode not in SHOT_QUALITY_SCALED_MODES:
             return firepower, aim
         if target.energy <= FIRE_POLICY.finish_target_energy and distance < FIRE_POLICY.duel.finisher_distance:
             return firepower, aim
@@ -508,7 +513,7 @@ class AdaptivePrime(Bot):
 
     @staticmethod
     def _dynamic_shot_quality_value(aim: AimSolution, key: str, default: float) -> float:
-        diagnostics = aim.gun_diagnostics.get("dynamic_cluster", {})
+        diagnostics = aim.gun_diagnostics.get(aim.mode, {})
         if not isinstance(diagnostics, dict):
             return default
         value = diagnostics.get(key)

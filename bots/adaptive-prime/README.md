@@ -64,14 +64,15 @@ Key movement telemetry:
 
 ## Guns
 
-Normal selectable guns are `linear`, `dynamic_cluster`, `traditional_gf`, and
-`displacement`.
+Normal selectable guns are `linear`, `dynamic_cluster`, `anti_surfer`,
+`traditional_gf`, and `displacement`.
 
 Selector roles:
 
 | Gun | Role |
 | --- | --- |
 | `dynamic_cluster` | Primary learning gun. |
+| `anti_surfer` | Situational Dynamic Cluster variant with recency weighting (half-life 90 waves) and 7 neighbors, for targets that adapt to being hit. |
 | `displacement` | Situational history-replay gun. |
 | `traditional_gf` | Situational profile gun with source-aware gates and a flight/lateral/wall-margin profile. |
 | `linear` | Early/simple-motion fallback. |
@@ -115,7 +116,9 @@ scripts/run-battle.sh --telemetry --rounds 24 \
 Useful experiment knobs:
 
 ```sh
-ROBOCODE_ADAPTIVE_GUN_SET=linear,dynamic_cluster,traditional_gf,displacement
+ROBOCODE_ADAPTIVE_GUN_SET=linear,dynamic_cluster,anti_surfer,traditional_gf,displacement
+ROBOCODE_ADAPTIVE_ANTI_SURFER_NEIGHBORS=7
+ROBOCODE_ADAPTIVE_ANTI_SURFER_HALF_LIFE=90
 ROBOCODE_ADAPTIVE_GUN_EVAL=1
 ROBOCODE_ADAPTIVE_GUN_EVAL_INTERVAL=1
 ROBOCODE_ADAPTIVE_GOTO_SURFING=0
@@ -128,7 +131,7 @@ direction application independently. Movement-wave learning remains active so
 the controls do not silently change training evidence.
 
 Valid pinned guns are `head_on`, `linear`, `displacement`,
-`traditional_gf`, and `dynamic_cluster`.
+`traditional_gf`, `dynamic_cluster`, and `anti_surfer`.
 
 ## Firepower
 

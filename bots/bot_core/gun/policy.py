@@ -4,14 +4,16 @@ from typing import cast
 
 from bot_core.gun.config import GunSelectorConfig
 from bot_core.gun.guns.displacement.config import DisplacementGunConfig
+from bot_core.gun.guns.anti_surfer.config import AntiSurferGunConfig
 from bot_core.gun.guns.dynamic_cluster.config import DynamicClusterGunConfig
 
 
 DEFAULT_LIVE_GUN_MODES = frozenset({"linear", "traditional_gf", "dynamic_cluster", "displacement"})
-STANDARD_FORCE_GUN_MODES = DEFAULT_LIVE_GUN_MODES | frozenset({"head_on"})
+STANDARD_FORCE_GUN_MODES = DEFAULT_LIVE_GUN_MODES | frozenset({"head_on", "anti_surfer"})
 DEFAULT_MODE_PRIORITY = (
     "linear",
     "dynamic_cluster",
+    "anti_surfer",
     "traditional_gf",
     "head_on",
     "displacement",
@@ -370,6 +372,48 @@ def dynamic_cluster_config_from_policy(policy: object) -> DynamicClusterGunConfi
         shot_quality_medium_power_scale=dynamic.shot_quality_medium_power_scale,
         shot_quality_low_power_scale=dynamic.shot_quality_low_power_scale,
     )
+
+
+@dataclass(frozen=True)
+class AntiSurferPolicy:
+    neighbors: int = 7
+    decay_half_life: float = 90.0
+    min_samples: int = 30
+    min_switch_visits: int = 60
+    min_switch_score: float = 0.08
+
+    @classmethod
+    def from_env(cls, prefix: str) -> "AntiSurferPolicy":
+        defaults = cls()
+        return cls(
+            neighbors=_env_int(f"{prefix}_ANTI_SURFER_NEIGHBORS", defaults.neighbors),
+            decay_half_life=_env_float(
+                f"{prefix}_ANTI_SURFER_HALF_LIFE",
+                defaults.decay_half_life,
+                minimum=1.0,
+            ),
+            min_samples=_env_int(f"{prefix}_ANTI_SURFER_MIN_SAMPLES", defaults.min_samples),
+        )
+
+    def __post_init__(self) -> None:
+        if self.neighbors < 1 or self.min_samples < 1 or self.min_switch_visits < 1:
+            raise ValueError("Anti-surfer neighbors, samples, and switch visits must be positive")
+        if self.decay_half_life <= 0:
+            raise ValueError("Anti-surfer decay half-life must be positive")
+
+
+def anti_surfer_config_from_policy(policy: object) -> AntiSurferGunConfig:
+    dynamic = dynamic_cluster_config_from_policy(policy)
+    anti_surfer = getattr(policy, "anti_surfer", AntiSurferPolicy())
+    values = {config_field.name: getattr(dynamic, config_field.name) for config_field in fields(dynamic)}
+    values.update(
+        neighbors=anti_surfer.neighbors,
+        decay_half_life=anti_surfer.decay_half_life,
+        min_samples=anti_surfer.min_samples,
+        min_switch_visits=anti_surfer.min_switch_visits,
+        min_switch_score=anti_surfer.min_switch_score,
+    )
+    return AntiSurferGunConfig(**values)
 
 
 def displacement_config_from_policy(policy: object) -> DisplacementGunConfig:

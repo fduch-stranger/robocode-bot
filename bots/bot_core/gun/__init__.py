@@ -40,9 +40,11 @@ from bot_core.gun.models import (
 )
 from bot_core.gun.policy import (
     DEFAULT_LIVE_GUN_MODES,
+    AntiSurferPolicy,
     DynamicClusterPolicy,
     SHARED_GUN_POLICY_DEFAULTS,
     STANDARD_FORCE_GUN_MODES,
+    anti_surfer_config_from_policy,
     default_gun_mode_for,
     displacement_config_from_policy,
     dynamic_cluster_config_from_policy,
@@ -78,6 +80,7 @@ __all__ = [
     "GunWave",
     "GunWaveTracker",
     "LINEAR_MODE",
+    "AntiSurferPolicy",
     "DEFAULT_LIVE_GUN_MODES",
     "DynamicClusterPolicy",
     "SHARED_GUN_POLICY_DEFAULTS",
@@ -101,6 +104,7 @@ __all__ = [
     "predict_linear_position",
     "segment_features",
     "displacement_config_from_policy",
+    "anti_surfer_config_from_policy",
     "dynamic_cluster_config_from_policy",
     "gun_mode_from_env",
     "gun_modes_from_env",

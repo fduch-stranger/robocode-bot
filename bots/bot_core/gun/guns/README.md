@@ -47,6 +47,7 @@ flowchart TD
 | [`linear`](linear/README.md) | `linear` | Stateless linear intercept prediction. |
 | [`displacement`](displacement/README.md) | `displacement` | Reads shared target history, no private learner. |
 | [`dynamic_cluster`](dynamic_cluster/README.md) | `dynamic_cluster` | Owns KNN sample memory. |
+| [`anti_surfer`](anti_surfer/README.md) | `anti_surfer` | Dynamic Cluster subclass with its own recency-weighted KNN memory; built only when a bot's gun set lists it. |
 | [`traditional_gf`](traditional_gf/README.md) | `traditional_gf` | Owns global and fixed flight/lateral/wall-margin GF profiles. |
 
 `factory.standard_runtime_config()` wires the standard bot gun set. Add a

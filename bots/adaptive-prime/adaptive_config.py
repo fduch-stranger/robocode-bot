@@ -7,6 +7,7 @@ from typing import Any, cast
 from bot_core.energy import EnergyDropConfig, FireGate, FireGateConfig
 from bot_core.gun import (
     DEFAULT_LIVE_GUN_MODES,
+    AntiSurferPolicy,
     DynamicClusterPolicy,
     SHARED_GUN_POLICY_DEFAULTS,
     STANDARD_FORCE_GUN_MODES,
@@ -20,9 +21,10 @@ from bot_core.radar import RadarLockConfig
 
 
 ADAPTIVE_CONFIG_PROFILE = "adaptive-default-v1"
-ADAPTIVE_SELECTABLE_GUN_MODES = DEFAULT_LIVE_GUN_MODES
+ADAPTIVE_SELECTABLE_GUN_MODES = DEFAULT_LIVE_GUN_MODES | frozenset({"anti_surfer"})
 ADAPTIVE_FORCE_GUN_MODES = STANDARD_FORCE_GUN_MODES
 ADAPTIVE_DYNAMIC_CLUSTER_POLICY = DynamicClusterPolicy.from_env("ROBOCODE_ADAPTIVE")
+ADAPTIVE_ANTI_SURFER_POLICY = AntiSurferPolicy.from_env("ROBOCODE_ADAPTIVE")
 
 
 def _env_flag(name: str, default: bool = False) -> bool:
@@ -117,6 +119,7 @@ class GunPolicy:
     primary_confidence_penalty_scale: float = 0.25
     switch_diagnostics_interval: int = 24
     dynamic_cluster: DynamicClusterPolicy = ADAPTIVE_DYNAMIC_CLUSTER_POLICY
+    anti_surfer: AntiSurferPolicy = ADAPTIVE_ANTI_SURFER_POLICY
 
 
 @dataclass(frozen=True)
