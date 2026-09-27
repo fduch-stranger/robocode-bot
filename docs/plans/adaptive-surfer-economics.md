@@ -46,6 +46,8 @@ Each experiment runs on its own branch and PR, in order, from the merged
 | 1c | Firepower: energy-gated scaling | Scaling applied only at or below 40 own energy (a temporary knob on the experiment branch, not merged) | Keep 1a's damage gain while firing cheap shots in the endgame |
 | 2 | Distance | `DuelMovementPolicy` `preferred_distance` 580 to 480, `min_distance` 430 to 380; fallback 530 and 400 | Higher hit rate for both bots; sign unknown |
 | 3 | Anti-surfer gun | Second Dynamic Cluster variant `anti_surfer` with recency weighting and about 7 neighbors, selectable by the virtual-gun system | A few points of hit rate; gated on a telemetry battle before any A/B |
+| 4 | Everything together | Anti-surfer gun, scaling off, and distance 480/380 in one candidate | A better gun could make full power pay for itself through the energy returned per hit |
+| 5 | Scaling off and distance 480/380 | The two config changes without the gun, first by env override and then as code defaults | Attribute the combined effect |
 
 ## Protocol
 
@@ -69,7 +71,18 @@ Each experiment runs on its own branch and PR, in order, from the merged
 Experiment 1 verdict: every firepower variant converts Adaptive's accuracy edge
 into more bullet damage, and every one of them loses rounds, so none clears
 the score gate. The endgame attrition is decided by energy spent per shot, and
-the cheap shots the scaling produces are what win it. Nothing was merged.
+the cheap shots the scaling produces are what win it. Nothing was merged on
+its own.
+
+Final verdict: the two neutral config changes combine into a clear win. Full
+power at 480 px keeps the damage gain of experiment 1 while rounds end sooner,
+so the surfer gets fewer shots at us and the endgame attrition is no longer
+lost: damage taken falls 17% instead of rising. The anti-surfer gun adds
+nothing measurable (row 4 against row 5), so the merged change is the two
+defaults only. Every generic gun tops out near 15-16% against this surfer; the
+remaining hit-rate idea is a surfer-model gun that predicts which orbit
+direction the port picks from our own hit history, the information it surfs
+on.
 
 Per 24-round run, mean ± standard error. The baseline row pools every run of
 the same code: the roadmap's 3 hot-gun-tracking runs (1824 ± 76) and the 6
@@ -79,9 +92,13 @@ about 15%. The z values compare each variant with the full pooled baseline.
 
 | # | Variant | Runs | Score | First places | Damage dealt | Damage taken | Decision |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | --- |
-| - | Baseline `main` (hot-gun tracking) | 27 | 1651 ± 44 | 16.0 | 607 ± 14 | 1341 ± 16 | - |
+| - | Baseline `main` (hot-gun tracking) | 57 | 1608 ± 29 | 15.4 | 605 ± 9 | 1353 ± 12 | - |
 | 1a | Scaling off | 6 | 1746 ± 52 | 15.0 | 746 ± 32 | 1227 ± 29 | Neutral, not merged: score +4% (z 1.0); damage dealt +22% (z 3.9) and damage taken -8% (z -3.0), but rounds won -8% (z -1.5). More power drains the surfer faster and loses the endgame attrition. |
 | 1b | Far band | 6 | 1563 ± 56 | 13.7 | 666 ± 24 | 1344 ± 33 | Negative, not merged: score -7% (z -1.5), rounds won -16% (z -3.3), damage dealt +9% (z 2.0). |
 | 1c | Energy-gated scaling (40) | 6 | 1749 ± 115 | 14.7 | 769 ± 41 | 1242 ± 63 | Neutral, not merged: score +5% (z 0.6); damage dealt +26% (z 3.6), damage taken -6% (z -1.3), rounds won -10% (z -1.2). Gating the cheap shots to the endgame did not recover the lost rounds. |
 | 2 | Distance 480/380 | 6 | 1674 ± 76 | 16.5 | 606 ± 16 | 1342 ± 47 | Neutral, not merged: score +1% (z 0.3), rounds won +3%, damage dealt and taken unchanged. The 530/400 fallback was not run. |
-| 3 | Anti-surfer gun | - | - | - | - | - | Implemented on branch `claude/anti-surfer-gun` (not merged); the telemetry gate and the A/B have not been run. |
+| 3 | Anti-surfer gun | 12 | 1689 ± 82 | 16.4 | 617 ± 13 | 1331 ± 52 | Neutral, not merged: score +3% (z 0.6). The gate passed on the virtual wave-visit score (0.124 against 0.097 for Dynamic Cluster) but the real hit rate is the same: 15.7% when selected and 15.5% pinned as the only gun, against 15.8-16.1% for Dynamic Cluster. Turn time p99 rose from 7 to 16 ms. Kept on branch `claude/anti-surfer-gun`. |
+| 4 | Gun + scaling off + distance 480/380 | 6 | 1867 ± 118 | 15.8 | 816 ± 24 | 1161 ± 62 | Score +15% (z 1.95 against the 45-run baseline of the time), damage dealt +33% (z 8.0), damage taken -14% (z -3.1), rounds won unchanged. Row 5 attributes this to the two config changes. |
+| 5 | Scaling off + distance 480/380, env override | 6 | 1823 ± 79 | 15.7 | 777 ± 25 | 1115 ± 66 | Win: score +14% (z 2.6 against the 51-run baseline), damage dealt +28% (z 6.3), damage taken -18% (z -3.6), rounds won unchanged. |
+| 5 | Same change as code defaults (confirmation) | 6 | 1759 ± 56 | 15.5 | 730 ± 25 | 1130 ± 42 | Score +9% (z 2.4), damage dealt +21% (z 4.7), damage taken -17% (z -5.1). |
+| 5 | Both batches pooled | 12 | 1791 ± 47 | 15.6 | 753 ± 18 | 1122 ± 37 | Merged: score +11% (z 3.3), damage dealt +24% (z 7.3), damage taken -17% (z -5.9), rounds won unchanged. |

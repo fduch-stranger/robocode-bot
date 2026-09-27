@@ -28,7 +28,9 @@ need a clear A/B win.
 | 11 | Firepower: Dynamic Cluster shot-quality scaling off | Rejected (neutral) | 6 runs vs 21-run pooled baseline: score +4% (z 1.0), bullet damage +22%, damage taken -8%, rounds won -8%; the scaling is a constant 0.55x vs the surfer. [Surfer economics](adaptive-surfer-economics.md) |
 | 12 | Firepower: far-band power 1.3/1.6/1.0 | Rejected | Score -7% (z -1.5), rounds won -16% (z -3.3) |
 | 13 | Firepower: scaling gated to own energy <= 40 | Rejected (neutral) | Score +5% (z 0.6), bullet damage +26%, rounds won -10% |
-| 14 | Duel distance: preferred 480, minimum 380 | Rejected (neutral) | 6 runs vs 27-run pooled baseline: score +1% (z 0.3), rounds won +3%, damage unchanged |
+| 14 | Duel distance: preferred 480, minimum 380 | Rejected alone (neutral) | 6 runs vs 27-run pooled baseline: score +1% (z 0.3), rounds won +3%, damage unchanged |
+| 15 | Anti-surfer gun: recency-weighted Dynamic Cluster variant | Rejected (neutral) | Gate passed on virtual wave score (+28%) but real hit rate unchanged (15.5% pinned); 12 runs: score +3% (z 0.6). Branch `claude/anti-surfer-gun`, not merged |
+| 16 | Shot-quality scaling off by default plus duel distance 480/380 | Done (PR #13) | Each alone neutral; together 12 runs vs 57-run pooled baseline: score 1608 -> 1791 (+11%, z 3.3), bullet damage +24%, damage taken -17%, rounds won unchanged. [Surfer economics](adaptive-surfer-economics.md) |
 | - | Rejected: hit-width fire gate | Dropped | Neutral; held fire instead of hitting more |
 | - | Rejected: GC freeze at round boundaries | Not needed | No slow turn was GC-dominated |
 
@@ -45,11 +47,14 @@ every A/B side that ran the same bot code:
 | + Dynamic Cluster fix | 6 | 1675 ± 68 | 66% | 638 ± 27 | 1358 ± 55 |
 | + wave origin, wall/ram corrections | 3 | 1623 ± 56 | 65% | 605 ± 30 | 1305 ± 38 |
 | Main before tracking (DC fix, wave origin) | 3 | 1629 ± 56 | 64% | 623 ± 41 | 1314 ± 73 |
-| + hot-gun tracking (current `main`) | 27 | 1651 ± 44 | 67% | 607 ± 14 | 1341 ± 16 |
+| + hot-gun tracking (`main` before PR #13) | 57 | 1608 ± 29 | 64% | 605 ± 9 | 1353 ± 12 |
 | main + shot-quality scaling off (env) | 6 | 1746 ± 52 | 63% | 746 ± 32 | 1227 ± 29 |
 | main + far-band power 1.3/1.6/1.0 | 6 | 1563 ± 56 | 57% | 666 ± 24 | 1344 ± 33 |
 | main + scaling gated to energy <= 40 | 6 | 1749 ± 115 | 61% | 769 ± 41 | 1242 ± 63 |
 | main + duel distance 480/380 | 6 | 1674 ± 76 | 69% | 606 ± 16 | 1342 ± 47 |
+| main + anti_surfer gun | 12 | 1689 ± 82 | 68% | 617 ± 13 | 1331 ± 52 |
+| main + gun + scaling off + distance 480/380 | 6 | 1867 ± 118 | 66% | 816 ± 24 | 1161 ± 62 |
+| + scaling off, distance 480/380 (current `main`, PR #13) | 12 | 1791 ± 47 | 65% | 753 ± 18 | 1122 ± 37 |
 
 One run's score varies by about ±150, so a 3-run A/B detects only changes of
 roughly 15% or more. Compare candidates against the pooled baseline and give
