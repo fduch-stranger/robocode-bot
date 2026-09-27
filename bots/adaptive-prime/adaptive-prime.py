@@ -1233,8 +1233,8 @@ class AdaptivePrime(Bot):
         if not self._melee_round:
             self._target_id = event.victim_id
         self._evade_direction *= -1
+        # The run loop sets movement after events each turn, so the evade flip is what reverses us.
         self._evade_until_turn = self.turn_number + MOVEMENT_POLICY.evade_turns
-        self.target_speed = MOVEMENT_POLICY.collision_reverse_speed
         contact_distance = distance_to(self, event.x, event.y)
         self._log(
             "hit.bot",

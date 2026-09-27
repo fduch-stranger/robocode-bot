@@ -297,7 +297,6 @@ class MovementPolicy:
     search_wall_projection_speed: float = 6
     search_speed: float = 4
     search_turn_rate: float = 3
-    collision_reverse_speed: float = -4
     flattener_direction_min_visits: float = 2.0
     flattener_direction_control_active: bool = _env_flag(
         "ROBOCODE_ADAPTIVE_FLATTENER_DIRECTION_CONTROL",
