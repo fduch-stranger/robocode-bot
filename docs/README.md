@@ -25,6 +25,7 @@ Navigation hub for the Robocode bot workspace.
 | [Circle Strafer](../bots/circle-strafer/README.md) | stable orbit, wall escape, separation |
 | [Sweep Pressure](../bots/sweep-pressure/README.md) | sweeping pressure and projected wall avoidance |
 | [BasicGFSurfer Port](../bots/ports/basic-gf-surfer-port/README.md) | native Python surfer reference opponent |
+| [Tomcat Port](../bots/ports/tomcat-port/README.md) | native port of lxx.Tomcat 3.68, a strong wave-surfing opponent |
 
 ## Gun Component Docs
 

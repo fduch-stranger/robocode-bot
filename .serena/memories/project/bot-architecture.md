@@ -39,6 +39,9 @@ Validated gun state:
 - Displacement uses rotation-normalized replay with continuous speed, lateral, advancing, wall, and heading-change similarity plus density-supported replay clusters. Markov and discrete coarse-match bonuses were removed.
 - Wall-aware Linear was a losing control and has been removed.
 
+Ports:
+- `bots/ports/tomcat-port` is a native port of lxx.Tomcat 3.68 (2026-09-27): `tomcat-port.py` is the Tank Royale boundary (Robocode radians inside, Java event order rebuilt in the turn loop, setAhead/setMaxVelocity mapped to set_forward/max_speed, own bullets created next turn from the previous snapshots); `tomcat_port/` mirrors the Java packages. It beats Adaptive Prime and the surfer port by a wide margin, needs `gc.freeze()` per round to avoid 100 ms gen-2 pauses, and the bridge-wrapped Java Tomcat is not a valid parity reference.
+
 Movement architecture:
 - Shared movement covers enemy-fire waves, GF danger profiles, flattening, go-to surfing, actual bullet shadows, and minimum-risk movement.
 - There is one production movement profile. The rejected split occupancy/hit/expected-pressure shadow model was removed.

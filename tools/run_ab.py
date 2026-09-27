@@ -81,6 +81,15 @@ PRESETS: dict[str, dict[str, Any]] = {
             }
         ],
     },
+    "adaptive-1v1-tomcat-port": {
+        "description": "Adaptive Prime against the native Tomcat 3.68 port.",
+        "rounds": 24,
+        "repeats": 3,
+        "targetBot": TARGET_BOT,
+        "matchups": [
+            {"name": "adaptive-vs-tomcat-port", "bots": ["bots/adaptive-prime", "bots/ports/tomcat-port"]},
+        ],
+    },
     "adaptive-1v1-basic-gf-surfer-port": {
         "description": "Adaptive Prime focused Python BasicGFSurfer port benchmark.",
         "rounds": 24,
