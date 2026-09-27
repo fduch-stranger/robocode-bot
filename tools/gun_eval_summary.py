@@ -33,8 +33,11 @@ def _read_events(telemetry_dir: Path, bot: str) -> list[dict[str, Any]]:
             for line in stream:
                 if not line.strip():
                     continue
-                event = json.loads(line)
-                if event.get("bot") == bot:
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(event, dict) and event.get("bot") == bot:
                     events.append(event)
     return events
 

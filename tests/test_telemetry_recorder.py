@@ -1,8 +1,10 @@
 import json
 import os
+import tempfile
 import time
 import unittest
 from io import StringIO
+from pathlib import Path
 from typing import Any, cast
 
 from robocode_tank_royale.bot_api import Bot
@@ -129,6 +131,46 @@ class TelemetryRecorderTest(unittest.TestCase):
         self.assertIsNone(record["turn"])
         self.assertIsNone(record["state"]["x"])
         self.assertIsNone(record["state"]["y"])
+
+
+class TelemetryViewerLockTest(unittest.TestCase):
+    def test_fresh_empty_lock_is_treated_as_held(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            lock_path = Path(tmpdir) / "telemetry-viewer.lock"
+            lock_path.write_text("", encoding="utf-8")
+
+            TelemetryRecorder._remove_stale_lock(lock_path)
+
+            self.assertTrue(lock_path.exists())
+
+    def test_old_empty_lock_is_removed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            lock_path = Path(tmpdir) / "telemetry-viewer.lock"
+            lock_path.write_text("", encoding="utf-8")
+            old = time.time() - 60
+            os.utime(lock_path, (old, old))
+
+            TelemetryRecorder._remove_stale_lock(lock_path)
+
+            self.assertFalse(lock_path.exists())
+
+    def test_lock_for_dead_pid_is_removed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            lock_path = Path(tmpdir) / "telemetry-viewer.lock"
+            lock_path.write_text("99999999", encoding="utf-8")
+
+            TelemetryRecorder._remove_stale_lock(lock_path)
+
+            self.assertFalse(lock_path.exists())
+
+    def test_lock_for_live_pid_is_kept(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            lock_path = Path(tmpdir) / "telemetry-viewer.lock"
+            lock_path.write_text(str(os.getpid()), encoding="utf-8")
+
+            TelemetryRecorder._remove_stale_lock(lock_path)
+
+            self.assertTrue(lock_path.exists())
 
 
 if __name__ == "__main__":

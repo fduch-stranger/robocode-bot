@@ -909,6 +909,7 @@ class AdaptivePrime(Bot):
             self._fired_bullets.clear()
             self._last_gun_decision_log_turn.clear()
             self._target_accel.clear()
+            self._last_traditional_gf_profile_log_turn.clear()
             self._last_velocity_change_turn.clear()
             self._own_motion.reset(self.turn_number)
             self._melee_round = False

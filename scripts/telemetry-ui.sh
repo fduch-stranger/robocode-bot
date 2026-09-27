@@ -153,7 +153,11 @@ request_shutdown() {
 import sys
 import urllib.request
 
-urllib.request.urlopen(sys.argv[1].rstrip("/") + "/api/shutdown", timeout=3).read()
+request = urllib.request.Request(
+    sys.argv[1].rstrip("/") + "/api/shutdown",
+    headers={"X-Robocode-Telemetry": "1"},
+)
+urllib.request.urlopen(request, timeout=3).read()
 PY
 }
 

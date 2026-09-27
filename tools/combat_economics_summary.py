@@ -295,11 +295,19 @@ def _round_accuracy(
     bullet_powers: dict[str, float] = {}
     pending_hits: dict[str, list[tuple[float, float]]] = defaultdict(list)
     rounds[current_round]
+    # Bots emit round.reset lazily, so a turn drop may already have opened the new round.
+    round_opened_by_turn_drop = False
     for event in events:
         name = event.get("event")
         if name == "round.reset":
-            current_round += 1
-            previous_turn = None
+            reset_turn = event.get("turn")
+            reset_after_turn_drop = (
+                isinstance(reset_turn, int) and previous_turn is not None and reset_turn < previous_turn
+            )
+            if reset_after_turn_drop or not round_opened_by_turn_drop:
+                current_round += 1
+            round_opened_by_turn_drop = False
+            previous_turn = reset_turn if isinstance(reset_turn, int) else None
             bullet_modes.clear()
             bullet_powers.clear()
             pending_hits.clear()
@@ -312,6 +320,7 @@ def _round_accuracy(
         if isinstance(turn, int):
             if previous_turn is not None and turn < previous_turn and not resolves_pending_hit:
                 current_round += 1
+                round_opened_by_turn_drop = True
                 bullet_modes.clear()
                 bullet_powers.clear()
                 pending_hits.clear()
@@ -376,8 +385,11 @@ def _read_bot_events(telemetry_dir: Path, bot: str) -> list[dict[str, Any]]:
             for line in stream:
                 if not line.strip():
                     continue
-                event = json.loads(line)
-                if event.get("bot") == bot:
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(event, dict) and event.get("bot") == bot:
                     events.append(event)
     return events
 

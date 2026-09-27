@@ -12,6 +12,9 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 
+CONTROL_HEADER = "X-Robocode-Telemetry"
+
+
 class TelemetryHandler(SimpleHTTPRequestHandler):
     telemetry_dir: Path
     static_dir: Path
@@ -38,6 +41,9 @@ class TelemetryHandler(SimpleHTTPRequestHandler):
             self._write_json({"ok": True, "dir": str(self.telemetry_dir), "files": self._files()})
             return
         if parsed.path == "/api/shutdown":
+            if not self._is_trusted_control_request():
+                self.send_error(403)
+                return
             self._write_json({"ok": True, "shutdown": True})
             threading.Thread(target=self.server.shutdown, daemon=True).start()
             return
@@ -46,9 +52,22 @@ class TelemetryHandler(SimpleHTTPRequestHandler):
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
         if parsed.path == "/api/reset":
+            if not self._is_trusted_control_request():
+                self.send_error(403)
+                return
             self._write_json(self._reset())
             return
         self.send_error(404)
+
+    def _is_trusted_control_request(self) -> bool:
+        # A custom header forces a CORS preflight that this server never approves, so other
+        # sites cannot trigger shutdown/reset; the Host check rejects DNS-rebinding requests.
+        if self.headers.get(CONTROL_HEADER) != "1":
+            return False
+        host = (self.headers.get("Host") or "").lower()
+        bound_host, port = self.server.server_address[:2]
+        trusted_hosts = {f"127.0.0.1:{port}", f"localhost:{port}", f"[::1]:{port}", f"{bound_host}:{port}"}
+        return host in trusted_hosts
 
     def log_message(self, format: str, *args: object) -> None:
         return
@@ -121,19 +140,25 @@ class TelemetryHandler(SimpleHTTPRequestHandler):
                 size = path.stat().st_size
                 if size < position:
                     position = 0
-                with path.open("r", encoding="utf-8") as stream:
+                with path.open("rb") as stream:
                     stream.seek(position)
-                    for line in stream:
-                        line = line.strip()
+                    for raw_line in stream:
+                        # Bots flush mid-record; leave a partial last line for the next poll.
+                        if not raw_line.endswith(b"\n"):
+                            break
+                        position += len(raw_line)
+                        line = raw_line.strip()
                         if not line:
                             continue
                         try:
                             event = json.loads(line)
-                        except json.JSONDecodeError:
+                        except (json.JSONDecodeError, UnicodeDecodeError):
+                            continue
+                        if not isinstance(event, dict):
                             continue
                         event["file"] = file_name
                         batch.append(event)
-                    handler._positions[file_name] = stream.tell()
+                    handler._positions[file_name] = position
             except OSError:
                 continue
 

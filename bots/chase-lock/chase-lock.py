@@ -874,7 +874,8 @@ class ChaseLock(Bot):
 
     def on_bot_death(self, event: BotDeathEvent) -> None:
         self._targets.pop(event.victim_id, None)
-        self._gun.remove_target(event.victim_id)
+        # BotDeath can run before BulletFired for the terminal shot.
+        self._gun.remove_target(event.victim_id, preserve_pending=True)
         self._movement.remove_target(event.victim_id, clear_profile=False)
         self._enemy_gun_heat.remove_target(event.victim_id)
         if self._target_id == event.victim_id:

@@ -67,12 +67,12 @@ for run_number in $(seq 1 "$runs"); do
     "$ROOT_DIR/scripts/run-battle.sh" \
       --rounds "$rounds" \
       --run-dir "$run_dir" \
-      "${run_battle_args[@]}"
+      ${run_battle_args[@]+"${run_battle_args[@]}"}
   else
     if ! "$ROOT_DIR/scripts/run-battle.sh" \
       --rounds "$rounds" \
       --run-dir "$run_dir" \
-      "${run_battle_args[@]}" >"$series_log" 2>&1; then
+      ${run_battle_args[@]+"${run_battle_args[@]}"} >"$series_log" 2>&1; then
       echo "Series run $run_number failed. Last log lines from $series_log:" >&2
       tail -40 "$series_log" >&2
       exit 1
@@ -96,7 +96,11 @@ metric_names = ("totalScore", "survival", "bulletDamage", "ramDamage", "firstPla
 runs = []
 aggregate = {}
 
-for result_path in sorted(series_dir.glob("run-*/results.json")):
+# Only this series' runs: a reused --run-dir may still hold results from a longer earlier series.
+for run_number in range(1, requested_runs + 1):
+    result_path = series_dir / f"run-{run_number}" / "results.json"
+    if not result_path.is_file():
+        continue
     with result_path.open() as fh:
         payload = json.load(fh)
     runs.append(
