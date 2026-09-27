@@ -15,7 +15,6 @@ Current bots:
 - Circle Strafer: defensive orbital bot.
 - Sweep Pressure: direct sweep-pressure bot.
 - `bots/ports/basic-gf-surfer-port`: primary clean local surfer benchmark.
-- Adaptive Jev (`bots/adaptive-jev`, `.experimental`): Adaptive Prime plus an optional asynchronous Jev advisor. Disabled (default) it runs `AdaptiveJevPassthrough`, Adaptive Prime's class with only a new name (`AdaptivePrime.__init__(bot_info, telemetry_name)`); enabled it adds hooks after Adaptive Prime's handlers and `ObservedMovementFlattener`. Shared pieces live in `bot_core/advisors` (client, transports, bucketed state, observers). Plan and results: `docs/plans/jev-advisor-bot.md`.
 
 Gun architecture:
 - `VirtualGunSystem` builds aim/fire context, evaluates registered components, tracks waves, scores visits, and emits diagnostics.
@@ -44,7 +43,7 @@ Movement architecture:
 - Movement prediction follows Tank Royale target-speed order: update speed, move on the previous direction, apply speed-limited turn, wall clip, then zero speed after collision.
 - Bullet shadows use actual `BulletFiredEvent.bullet` state and apply to both direction and go-to surfing; `gun.fire_drift` audits planned versus actual bullet state.
 - Engine turn order (1.3.1 `TurnProcessor`): fire guns (pre-move position, pre-rotation gun heading) -> move/turn -> wall and bot collisions -> scans -> advance all bullets one step -> bullet hits. So confirmed enemy waves start at turn E-1 from the previous position; our bullet hits and the enemy's 3x power hit bonus reach the next scan; wall and ram damage reach the same scan (`enemy_wall_hit_damage_bound`, `RAM_DAMAGE`).
-- Rejected experiments (do not retry without new evidence): hit-width fire gate (neutral, holds fire), pre-aim toward the next-turn bearing (lower aim error but no A/B gain), melee priority radar for Adaptive (-17% melee: rescans starve the fresh-scan fire gate), GC freeze (no slow turn was GC-dominated).
+- Rejected experiments (do not retry without new evidence): hit-width fire gate (neutral, holds fire), pre-aim toward the next-turn bearing (lower aim error but no A/B gain), melee priority radar for Adaptive (-17% melee: rescans starve the fresh-scan fire gate), GC freeze (no slow turn was GC-dominated), Jev advisor bot `adaptive-jev` (hosted typed-question model; opponent-style accuracy 19% over four opponents and 0% on the surfer, no surf-side signal once stratified by outcome; removed, record in `docs/plans/jev-advisor-bot.md`, code in commit `e388ecf`).
 
 Telemetry and analysis:
 - Key events include `bot.config`, `track`, `gun.switch`, `gun.switch_decision`, `gun.wave_visit`, `gun.eval_wave_visit`, `gun.fire_drift`, `enemy.fire_detected`, `enemy.gun_heat_wave`, `movement.profile_visit`, `movement.flatten`, `movement.goto_surf`, `movement.minimum_risk`, `bullet.fired`, `bullet.hit_bot`, and `hit.bullet`.

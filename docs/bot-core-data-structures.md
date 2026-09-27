@@ -151,30 +151,6 @@ scan_gap <= policy limit
 not collision/noise
 ```
 
-## Advisor Data
-
-Experimental; used only by `bots/adaptive-jev`.
-
-| Structure | Meaning |
-| --- | --- |
-| `StyleFeatures` | Battle-level enemy movement: mean speed and lateral speed relative to us, lateral reversals per 100 scans, reversal lift near our wave passes, pooled within-round distance spread and trend, mean turn rate, collisions per round, wall-time share, and the linear gun's hit rate. |
-| `SurfFeatures` | One confirmed enemy wave: distance, power, flight turns, our speed and lateral share, wall-limited escape room in each direction as a share of the open-field escape angle, and recent enemy hit guess factors. |
-| `SurfRecord` | An asked wave waiting for both its answer and its visit. |
-
-Reversal lift:
-
-```text
-lift      = (reversals within 2 turns of one of our wave passes / reversals)
-          / (scans within 2 turns of one of our wave passes / scans)
-pass turn = our fire turn + round(distance at fire / bullet speed)
-```
-
-The surf outcome option uses the guess factor relative to our lateral direction
-at fire time: `forward` when `gf >= 0.3`, `reverse` when `gf <= -0.3`, and
-`stop` otherwise. The Phase 2 information test compares the hit rate when Jev's
-choice matched the outcome option with the hit rate when it did not (a
-one-sided two-proportion z-test).
-
 ## Telemetry Records
 
 JSONL envelope:
