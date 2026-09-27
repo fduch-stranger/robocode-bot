@@ -35,6 +35,7 @@ Validated gun state:
 - Traditional GF uses one global profile plus `(flight time, absolute lateral speed, wall margin)` segments, `8/36` blending, max-bin selection, smoothing `1.25`, decay `0.985`, and 31 bins. Firing is bounded to `|GF| <= 0.87`; training retains the full range.
 - Dynamic Cluster uses direct density aim after 30 samples, 17 neighbors, context weighting, centroid refinement, ambiguity centering, adaptive hit-width bandwidth, and shot-quality power scaling. The rejected long warm-up blend and its environment/status fields were removed.
 - Against the BasicGFSurfer port the shot-quality scaling is a constant 0.55x (always `very_weak`). Turning it off, gating it by energy, and raising the far-band power all raised bullet damage but lost rounds in the endgame attrition (rejected 2026-09-27, `docs/plans/adaptive-surfer-economics.md`). Cheap late shots win the attrition; do not re-run plain firepower increases.
+- Fighting closer (duel preferred distance 480, minimum 380) was neutral against the surfer port (2026-09-27, 6 runs, score +1%): both hit rates rise together. An `anti_surfer` recency-weighted Dynamic Cluster variant exists on branch `claude/anti-surfer-gun`, untested in battle.
 - Displacement uses rotation-normalized replay with continuous speed, lateral, advancing, wall, and heading-change similarity plus density-supported replay clusters. Markov and discrete coarse-match bonuses were removed.
 - Wall-aware Linear was a losing control and has been removed.
 
