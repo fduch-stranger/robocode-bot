@@ -4,6 +4,7 @@ This repository develops Python bots for Robocode Tank Royale, targeting the ups
 
 Main layout:
 - `bots/adaptive-prime/`: 1v1 champion candidate with go-to surfing, potential fields, adaptive firepower.
+- `bots/ports/`: native Python ports of reference opponents; `basic-gf-surfer-port` is the fixed 1v1 benchmark for Adaptive Prime and is never edited by tuning work.
 - `bots/chase-lock/`: target-lock pressure bot with range-band chase movement.
 - `bots/circle-strafer/`: defensive orbital bot.
 - `bots/sweep-pressure/`: direct sweep-pressure bot.

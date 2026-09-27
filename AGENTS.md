@@ -14,6 +14,8 @@ bot behavior or tooling.
 - For KNN buffers, waves, movement stats, and telemetry record structure, read
   [docs/bot-core-data-structures.md](docs/bot-core-data-structures.md).
 - For bot-specific strategy, read that bot's `README.md`.
+- For porting a reference opponent into `bots/ports/`, read
+  [docs/legacy-bot-porting-guideline.md](docs/legacy-bot-porting-guideline.md).
 
 ## Repository Layout
 
@@ -21,6 +23,8 @@ bot behavior or tooling.
 - `bots/chase-lock/`: target-lock pressure bot.
 - `bots/circle-strafer/`: defensive orbital bot.
 - `bots/sweep-pressure/`: direct sweep-pressure bot.
+- `bots/ports/`: native Python ports of reference opponents. `basic-gf-surfer-port`
+  is the fixed 1v1 benchmark for Adaptive Prime; tuning work never edits it.
 - `bots/bot_core/`: shared bot logic used by all bots.
 - `scripts/`: user-facing setup, packaging, battle, telemetry, and A/B commands.
 - `tools/`: battle runner, telemetry viewer, A/B runner, and audit utilities.
@@ -80,6 +84,9 @@ off for A/B benchmarking unless the task is specifically about telemetry.
 - Avoid duplicating formulas and command references across docs; link to the
   canonical doc instead.
 - Do not revert unrelated user changes in the working tree.
+- Benchmark ports under `bots/ports/` stay fixed so A/B results remain
+  comparable; change one only to fix its fidelity to the original bot, and say
+  so, because every pooled baseline against it is invalid afterwards.
 
 ### Semantic Tooling
 

@@ -28,7 +28,7 @@ Current local roster:
 | [Chase Lock](bots/chase-lock/README.md) | Pressure fighter that keeps targets pinned by range and lock discipline. |
 | [Circle Strafer](bots/circle-strafer/README.md) | Defensive orbit bot built around survival, spacing, and wall recovery. |
 | [Sweep Pressure](bots/sweep-pressure/README.md) | Direct-fire pressure bot with sweeping movement and projected wall avoidance. |
-| [BasicGFSurfer Port](bots/ports/basic-gf-surfer-port/README.md) | Ported legacy benchmark and surfer-style sparring partner. |
+| [BasicGFSurfer Port](bots/ports/basic-gf-surfer-port/README.md) | Ported legacy benchmark and surfer-style sparring partner; the fixed 1v1 benchmark for Adaptive Prime, kept unchanged. |
 
 ## Fastest Fight
 
