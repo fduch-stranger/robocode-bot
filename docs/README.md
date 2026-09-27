@@ -26,6 +26,7 @@ Navigation hub for the Robocode bot workspace.
 | [Sweep Pressure](../bots/sweep-pressure/README.md) | sweeping pressure and projected wall avoidance |
 | [BasicGFSurfer Port](../bots/ports/basic-gf-surfer-port/README.md) | native Python surfer reference opponent |
 | [Tomcat Port](../bots/ports/tomcat-port/README.md) | native port of lxx.Tomcat 3.68, a strong wave-surfing opponent |
+| [Diamond Port](../bots/ports/diamond-port/README.md) | native port of voidious.Diamond 1.8.28, the strongest local opponent, 1v1 and melee |
 
 ## Gun Component Docs
 
