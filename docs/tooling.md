@@ -124,6 +124,10 @@ tools/radar_efficiency_summary.py battle-results/runs/<run>/telemetry \
 
 tools/intent_gap_summary.py battle-results/runs/<run> \
   --json-output battle-results/runs/<run>/intent-gap-summary.json
+
+tools/turn_timing_summary.py battle-results/runs/<run>/telemetry \
+  --bot adaptive-prime \
+  --json-output battle-results/runs/<run>/turn-timing-summary.json
 ```
 
 Tool roles:
@@ -141,6 +145,9 @@ Tool roles:
 - `intent_gap_summary.py`: missing or duplicate intent turns from
   `--intent-diagnostics` runs. Use it with `bot.turn_timing` and
   `bot.skipped_turn` telemetry when investigating skipped ticks or slow turns.
+- `turn_timing_summary.py`: decision-time percentiles, skipped turns, and
+  slow-turn attribution to a phase (`phase_us`) or to garbage collection
+  (`gc_pause_us`) from `bot.turn_timing` telemetry.
 - `bot_motion_sanity.py`: sampled movement and stationary-span diagnostics
   from runner logs.
 

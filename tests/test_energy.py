@@ -1,6 +1,7 @@
 import unittest
 
 from bot_core.energy import (
+    SAME_TURN_SCAN_DELAY_TURNS,
     EnemyEnergyCorrectionLedger,
     EnemyFireDetector,
     EnemyFirePowerPredictor,
@@ -9,6 +10,7 @@ from bot_core.energy import (
     FireGate,
     FireGateConfig,
     GunHeatTracker,
+    enemy_wall_hit_damage_bound,
     last_stand_firepower,
 )
 from bot_core.physics import gun_heat_for_power
@@ -68,6 +70,37 @@ class EnergyTest(unittest.TestCase):
 
         self.assertTrue(detection.is_fire)
         self.assertAlmostEqual(1.9, detection.signal.fire_power or 0.0, places=6)
+
+    def test_enemy_wall_hit_damage_bound_detects_pinned_stop(self) -> None:
+        self.assertAlmostEqual(3.0, enemy_wall_hit_damage_bound(8.0, 0.0, 18.0, 300.0, 800.0, 600.0))
+        self.assertAlmostEqual(2.5, enemy_wall_hit_damage_bound(-6.0, 0.0, 782.0, 300.0, 800.0, 600.0))
+        self.assertEqual(0.0, enemy_wall_hit_damage_bound(8.0, 0.0, 400.0, 300.0, 800.0, 600.0))
+        self.assertEqual(0.0, enemy_wall_hit_damage_bound(2.0, 0.0, 18.0, 300.0, 800.0, 600.0))
+        self.assertEqual(0.0, enemy_wall_hit_damage_bound(8.0, 6.0, 18.0, 300.0, 800.0, 600.0))
+
+    def test_enemy_fire_detector_ignores_same_turn_wall_damage(self) -> None:
+        detector = EnemyFireDetector(EnergyDropConfig())
+        detector.record_correction(
+            4,
+            11,
+            enemy_wall_hit_damage_bound(8.0, 0.0, 18.0, 300.0, 800.0, 600.0),
+            "enemy_wall_hit",
+            scan_delay_turns=SAME_TURN_SCAN_DELAY_TURNS,
+        )
+
+        detection = detector.evaluate_scan(
+            target_id=4,
+            previous_energy=50.0,
+            current_energy=47.0,
+            previous_seen_turn=10,
+            current_turn=11,
+            scan_gap=1,
+            distance=320.0,
+            our_energy=90.0,
+            cooling_rate=0.1,
+        )
+
+        self.assertFalse(detection.is_fire)
 
     def test_enemy_fire_detector_updates_heat_for_ignored_drop(self) -> None:
         detector = EnemyFireDetector(EnergyDropConfig(max_scan_gap=1))

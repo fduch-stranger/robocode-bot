@@ -117,6 +117,13 @@ Accepted fire creates a movement wave, enemy fire-power sample, gun-heat update,
 and evasion window. Expected fire can also be generated from gun heat, but
 direct energy-drop evidence wins over stale heat estimates.
 
+Tank Royale 1.3.1 processes a turn as: fire guns, move and turn, wall and bot
+collisions, scans, advance bullets (including ones fired this turn), bullet
+hits. So a drop seen in the scan on turn `E` was a bullet created at the
+shooter's position from turn `E - 1` that has already moved one step; Adaptive
+Prime starts that wave at `E - 1`. Wall and ram damage reach the same turn's
+scan, while bullet hits reach the next one (see `EnemyEnergyCorrectionLedger`).
+
 ## Movement
 
 Shared movement code lives in `bot_core.movement`.
