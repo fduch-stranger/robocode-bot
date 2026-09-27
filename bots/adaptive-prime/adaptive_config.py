@@ -303,6 +303,7 @@ class MovementPolicy:
         default=True,
     )
     goto_surfing_active: bool = _env_flag("ROBOCODE_ADAPTIVE_GOTO_SURFING", default=True)
+    option_surfing_active: bool = _env_flag("ROBOCODE_ADAPTIVE_OPTION_SURFING", default=True)
 
     def __post_init__(self) -> None:
         if not (self.panic_retreat_distance < self.close_reset_distance <= self.preferred_min_distance):

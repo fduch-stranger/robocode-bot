@@ -16,6 +16,19 @@ def drive_command_to_destination(bot: Bot, x: float, y: float, speed: float) -> 
     return turn, target_speed
 
 
+def drive_command_to_bearing(bot: Bot, move_bearing: float, speed: float) -> tuple[float, float]:
+    """Turn and target speed that move along ``move_bearing`` using whichever end of the bot is closer."""
+    turn = ((move_bearing - bot.direction + 180) % 360) - 180
+    target_speed = speed
+    if turn > 90:
+        turn -= 180
+        target_speed = -speed
+    elif turn < -90:
+        turn += 180
+        target_speed = -speed
+    return turn, target_speed
+
+
 def drive_to_destination(bot: Bot, x: float, y: float, speed: float) -> tuple[float, float]:
     turn, target_speed = drive_command_to_destination(bot, x, y, speed)
     bot.target_speed = target_speed

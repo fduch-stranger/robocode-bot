@@ -124,13 +124,35 @@ Geometry helpers live in `bot_core.geometry`; bullet physics lives in
 | `MovementDangerModel` | Combines profile, ensemble, unvisited-bin, wall, and travel danger. |
 | `MovementFlattener` | Shared facade used by bots. |
 | `SurfingPlanner` | Go-to surf candidate generation and scoring. |
+| `OptionSurfer` | Option surfing: three options per wave, precise ring intersection danger, one wave of lookahead. |
 | `MovementCommand` | Testable movement output abstraction. |
 | `ShadowBullet` | Bullet-shadow approximation based on actual fired bullet state. |
 
 Movement-wave features include distance, lateral speed, acceleration, wall
 margin, bullet power, and recent direction-change/decel age. The predictor uses
 Tank Royale target-speed order: speed update, move along previous direction,
-turn limit, wall clip, and zero speed after wall hit.
+turn limit, wall clip, and zero speed after wall hit. A target speed of zero
+stops the bot in one turn (verified from engine tick samples), so the stop
+option is instant.
+
+Option surfing danger, for one option against one wave:
+
+```text
+state(turn) = predicted with the option (orbit bearing = bearing to source
+              +/- (90 - lean), wall smoothed; stop = target speed 0)
+ring(turn) = [bullet_speed * (turn - 1 - fired_turn), bullet_speed * (turn - fired_turn)]
+breaking(turn) = ring(turn) overlaps the bot circle (radius 18)
+half_width = asin(18 / d) if the tangent distance sqrt(d^2 - 18^2) lies in the ring,
+             else the widest acos((d^2 + r^2 - 18^2) / (2 d r)) over the ring radii r
+span = union over breaking turns of bearing_offset(turn) +/- half_width, as guess factors
+danger = sum(bin_danger * covered fraction of bin) + head_on_prior(span)
+danger *= bullet_damage(power); danger /= max(1, ticks to impact)
+danger *= distancing_base ^ (distance now / distance when passed) / distancing_base
+total = danger + min over the three options against the next wave
+```
+
+The head-on prior is a Gaussian bump at guess factor 0 (weight 1, width 0.12)
+so an empty profile still avoids sitting on the direct line of fire.
 
 ## Energy And Enemy Fire
 

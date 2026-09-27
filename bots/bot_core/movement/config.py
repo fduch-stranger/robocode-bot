@@ -42,3 +42,14 @@ class MovementFlatteningConfig:
     stats_buffer_decay: float = 0.99
     stats_buffer_min_samples: float = 6.0
     stats_buffer_max_effective_samples: float = 48.0
+    option_surf_waves: int = 2
+    option_surf_bot_radius: float = 18.0
+    option_surf_attack_multiplier: float = 0.6
+    option_surf_max_attack_angle: float = 81.0
+    option_surf_distancing_base: float = 2.5
+    option_surf_time_to_impact_weighting: bool = True
+    option_surf_head_on_prior: float = 1.0
+    option_surf_head_on_prior_width: float = 0.12
+    option_surf_expected_waves: bool = True
+    option_surf_smoothed_bins: bool = False
+    option_surf_hysteresis: float = 0.05

@@ -10,9 +10,12 @@ class MovementDangerModel:
         self.config = config
         self.profile = profile
 
-    def breakdown(self, wave: MovementWave, bin_index: int) -> MovementDangerBreakdown:
-        profile_danger = self.profile.smoothed_count(wave.target_id, wave.distance_bucket, bin_index)
-        ensemble = self.profile.stats_buffers.danger(wave, bin_index)
+    def breakdown(self, wave: MovementWave, bin_index: int, smoothed: bool = True) -> MovementDangerBreakdown:
+        if smoothed:
+            profile_danger = self.profile.smoothed_count(wave.target_id, wave.distance_bucket, bin_index)
+        else:
+            profile_danger = self.profile.raw_count(wave.target_id, wave.distance_bucket, bin_index)
+        ensemble = self.profile.stats_buffers.danger(wave, bin_index, smoothed)
         ensemble_confidence = clamp(
             ensemble.samples / max(1.0, self.config.stats_buffer_max_effective_samples),
             0.0,

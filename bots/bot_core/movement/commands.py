@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 
 from robocode_tank_royale.bot_api import Bot
 
-from bot_core.movement.navigation import drive_command_to_destination
+from bot_core.movement.navigation import drive_command_to_bearing, drive_command_to_destination
 
 
 @dataclass(frozen=True)
@@ -53,6 +53,30 @@ class MovementCommand:
             telemetry_fields=telemetry_fields,
             direction_update=direction_update,
         )
+
+    @classmethod
+    def drive_to_bearing(
+        cls,
+        bot: Bot,
+        move_bearing: float,
+        speed: float,
+        mode: str,
+        direction_update: int | None = None,
+        **telemetry_fields: object,
+    ) -> "MovementCommand":
+        turn, target_speed = drive_command_to_bearing(bot, move_bearing, speed)
+        return cls(
+            mode=mode,
+            turn=turn,
+            speed=target_speed,
+            telemetry_fields=telemetry_fields,
+            direction_update=direction_update,
+        )
+
+    @classmethod
+    def hold(cls, mode: str, direction_update: int | None = None, **telemetry_fields: object) -> "MovementCommand":
+        """Brake to a stop without turning."""
+        return cls(mode=mode, turn=0.0, speed=0.0, telemetry_fields=telemetry_fields, direction_update=direction_update)
 
     def apply(self, bot: Bot) -> None:
         bot.target_speed = self.speed
