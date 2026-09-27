@@ -73,15 +73,15 @@ the cheap shots the scaling produces are what win it. Nothing was merged.
 
 Per 24-round run, mean ± standard error. The baseline row pools every run of
 the same code: the roadmap's 3 hot-gun-tracking runs (1824 ± 76) and the 6
-baseline runs of each firepower A/B (1625 ± 107, 1735 ± 113, 1586 ± 57).
+baseline runs of each A/B (1625 ± 107, 1735 ± 113, 1586 ± 57, 1570 ± 91).
 Their spread is a reminder that a single 3-run A/B cannot see changes under
 about 15%. The z values compare each variant with the full pooled baseline.
 
 | # | Variant | Runs | Score | First places | Damage dealt | Damage taken | Decision |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | --- |
-| - | Baseline `main` (hot-gun tracking) | 21 | 1674 ± 49 | 16.3 | 609 ± 16 | 1327 ± 17 | - |
+| - | Baseline `main` (hot-gun tracking) | 27 | 1651 ± 44 | 16.0 | 607 ± 14 | 1341 ± 16 | - |
 | 1a | Scaling off | 6 | 1746 ± 52 | 15.0 | 746 ± 32 | 1227 ± 29 | Neutral, not merged: score +4% (z 1.0); damage dealt +22% (z 3.9) and damage taken -8% (z -3.0), but rounds won -8% (z -1.5). More power drains the surfer faster and loses the endgame attrition. |
 | 1b | Far band | 6 | 1563 ± 56 | 13.7 | 666 ± 24 | 1344 ± 33 | Negative, not merged: score -7% (z -1.5), rounds won -16% (z -3.3), damage dealt +9% (z 2.0). |
 | 1c | Energy-gated scaling (40) | 6 | 1749 ± 115 | 14.7 | 769 ± 41 | 1242 ± 63 | Neutral, not merged: score +5% (z 0.6); damage dealt +26% (z 3.6), damage taken -6% (z -1.3), rounds won -10% (z -1.2). Gating the cheap shots to the endgame did not recover the lost rounds. |
-| 2 | Distance | - | - | - | - | - | pending |
-| 3 | Anti-surfer gun | - | - | - | - | - | pending |
+| 2 | Distance 480/380 | 6 | 1674 ± 76 | 16.5 | 606 ± 16 | 1342 ± 47 | Neutral, not merged: score +1% (z 0.3), rounds won +3%, damage dealt and taken unchanged. The 530/400 fallback was not run. |
+| 3 | Anti-surfer gun | - | - | - | - | - | Implemented on branch `claude/anti-surfer-gun` (not merged); the telemetry gate and the A/B have not been run. |
