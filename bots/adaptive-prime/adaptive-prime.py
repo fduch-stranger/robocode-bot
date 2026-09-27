@@ -563,6 +563,29 @@ class AdaptivePrime(Bot):
                 return command.mode, command.strafe_offset, None
 
         if duel_active:
+            if MOVEMENT_POLICY.option_surfing_active:
+                option_decision = self._movement.choose_option_surf(
+                    self,
+                    target,
+                    max_speed=MOVEMENT_POLICY.max_speed,
+                    field_margin=DUEL_MOVEMENT_POLICY.wall_margin,
+                    preferred_distance=DUEL_MOVEMENT_POLICY.preferred_distance,
+                    last_direction=self._evade_direction,
+                )
+                if option_decision is not None:
+                    if option_decision.speed == 0.0:
+                        command = MovementCommand.hold("option_surf_stop")
+                    else:
+                        command = MovementCommand.drive_to_bearing(
+                            self,
+                            option_decision.move_bearing,
+                            option_decision.speed,
+                            "option_surf",
+                            direction_update=option_decision.direction,
+                        )
+                    self._apply_movement_command(command)
+                    self._movement_telemetry.sample_option_surf(target.bot_id, option_decision, command)
+                    return command.mode, command.strafe_offset, None
             flattening = self._movement.choose_direction(
                 self,
                 body_bearing,

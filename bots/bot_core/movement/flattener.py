@@ -5,6 +5,7 @@ from robocode_tank_royale.bot_api import Bot
 from bot_core.movement.config import MovementFlatteningConfig
 from bot_core.movement.danger import MovementDangerModel
 from bot_core.movement.decisions import FlatteningDecision, GoToSurfDecision, MovementDangerBreakdown, MovementProfileVisit
+from bot_core.movement.option_surfing import OptionSurfDecision, OptionSurfer
 from bot_core.movement.profile import MovementProfile
 from bot_core.movement.surfing import SurfingPlanner
 from bot_core.movement.waves import MovementWave, MovementWaveFeatures, MovementWaveStore, ShadowBullet
@@ -21,12 +22,15 @@ class MovementFlattener:
         self._profile_store = MovementProfile(self.config)
         self._danger_model = MovementDangerModel(self.config, self._profile_store)
         self._surfing = SurfingPlanner(self.config, self._wave_store)
+        self._option_surfer = OptionSurfer(self.config)
         self._profile = self._profile_store.profile
         self._stats_buffers = self._profile_store.stats_buffers
         self._waves = self._wave_store.waves
         self._shadow_bullets: list[ShadowBullet] = []
         self._shadow_bin_cache: dict[tuple[int, int, tuple[int, ...]], frozenset[int]] = {}
         self._shadow_bin_cache_turn: int | None = None
+        self._option_bin_cache: dict[tuple[int, int], list[float]] = {}
+        self._option_bin_cache_turn: int | None = None
         self._last_switch_turn: dict[int, int] = {}
 
     @property
@@ -352,6 +356,67 @@ class MovementFlattener:
             travel_risk=best.travel_risk,
         )
 
+    def choose_option_surf(
+        self,
+        bot: Bot,
+        target: TargetSnapshot,
+        max_speed: float,
+        field_margin: float,
+        preferred_distance: float,
+        last_direction: int,
+    ) -> OptionSurfDecision | None:
+        """Option surfing: orbit either way or stop, judged over the next waves."""
+        waves = self._option_surf_waves(bot, target.bot_id)
+        if not waves:
+            return None
+        bin_dangers = {id(wave): self._option_bin_dangers(bot, wave) for wave in waves}
+        return self._option_surfer.choose(
+            bot,
+            target,
+            waves,
+            bin_dangers,
+            max_speed,
+            field_margin,
+            preferred_distance,
+            last_direction,
+        )
+
+    def _option_surf_waves(self, bot: Bot, target_id: int) -> list[MovementWave]:
+        candidates: list[tuple[float, MovementWave]] = []
+        for wave in self._wave_store.for_target(target_id):
+            if wave.kind == "expected":
+                if not self.config.option_surf_expected_waves:
+                    continue
+                if wave.expected_confidence < self.config.goto_expected_wave_min_confidence:
+                    continue
+            radius = wave.bullet_speed * max(0, bot.turn_number - wave.fired_turn)
+            distance = math.hypot(bot.x - wave.source_x, bot.y - wave.source_y)
+            remaining = distance - radius
+            if remaining <= -self.config.surf_intercept_margin:
+                continue
+            candidates.append((remaining, wave))
+        candidates.sort(key=lambda item: item[0])
+        return [wave for _, wave in candidates[: max(1, self.config.option_surf_waves)]]
+
+    def _option_bin_dangers(self, bot: Bot, wave: MovementWave) -> list[float]:
+        if self._option_bin_cache_turn != bot.turn_number:
+            self._option_bin_cache.clear()
+            self._option_bin_cache_turn = bot.turn_number
+        key = (id(wave), wave.fired_turn)
+        cached = self._option_bin_cache.get(key)
+        if cached is not None:
+            return cached
+        shadow_bins = self._shadow_bins(bot, wave) if self.config.bullet_shadow_enabled and self._shadow_bullets and wave.kind == "confirmed" else frozenset()
+        expected_multiplier = self.config.goto_wave_kind_expected_multiplier if wave.kind == "expected" else 1.0
+        dangers: list[float] = []
+        for bin_index in range(self.config.bin_count):
+            danger = self._danger_breakdown(wave, bin_index).total_danger * expected_multiplier
+            if bin_index in shadow_bins:
+                danger *= self.config.bullet_shadow_danger_multiplier
+            dangers.append(danger)
+        self._option_bin_cache[key] = dangers
+        return dangers
+
     def clear_round_state(self) -> None:
         self._wave_store.clear_round_state()
         self._shadow_bullets.clear()
@@ -363,11 +428,13 @@ class MovementFlattener:
         self._profile_store = MovementProfile(self.config)
         self._danger_model = MovementDangerModel(self.config, self._profile_store)
         self._surfing = SurfingPlanner(self.config, self._wave_store)
+        self._option_surfer = OptionSurfer(self.config)
         self._profile = self._profile_store.profile
         self._stats_buffers = self._profile_store.stats_buffers
         self._waves = self._wave_store.waves
         self._shadow_bullets.clear()
         self._shadow_bin_cache.clear()
+        self._option_bin_cache.clear()
         self._last_switch_turn.clear()
 
     def remove_target(self, target_id: int, clear_profile: bool = True) -> None:

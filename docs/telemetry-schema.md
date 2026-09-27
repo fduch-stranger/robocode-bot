@@ -76,6 +76,7 @@ The browser viewer and telemetry audit normalize bot-specific fields into a comm
 | `movement.flatten_shadow` | - | `target`, `current_direction`, `suggested_direction`, `bucket`, `current_count`, `alternative_count`, `distance`, `reason` | - |
 | `movement.goto_surf` | - | `target`, `destination_x`, `destination_y`, `danger`, `wave_kind`, `turn`, `speed` | `movement_mode` from `mode` |
 | `movement.minimum_risk` | - | `target`, `destination_x`, `destination_y`, `risk`, `candidates`, `nearest_enemy`, `nearest_enemy_distance`, `reused_destination`, `destination_age`, `turn`, `speed`, `known_targets`, `fire_threat` | `movement_mode` from `mode` |
+| `movement.option_surf` | - | `target`, `option`, `danger`, `danger_ccw`, `danger_stop`, `danger_cw`, `waves`, `wave_kind`, `hit_turn`, `gf_low`, `gf_high`, `time_to_impact`, `move_bearing`, `turn`, `speed` | `movement_mode` from `mode` |
 | `movement.profile_visit` | - | `target`, `guess_factor`, `bin`, `bucket`, `visits`, `wave_age`, `ensemble_danger`, `ensemble_samples` | - |
 | `search.wall_avoid` | - | `x`, `y`, `center_bearing`, `evade_direction`, `near_wall` | - |
 | `separate` | - | `target`, `distance`, `away_bearing`, `target_speed`, `turn_limit`, `move_direction` | - |

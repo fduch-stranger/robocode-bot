@@ -1,4 +1,11 @@
-from bot_core.movement import FlatteningDecision, GoToSurfDecision, MinimumRiskDecision, MovementCommand, MovementProfileVisit
+from bot_core.movement import (
+    FlatteningDecision,
+    GoToSurfDecision,
+    MinimumRiskDecision,
+    MovementCommand,
+    MovementProfileVisit,
+    OptionSurfDecision,
+)
 from bot_core.telemetry.sink import TelemetrySink
 
 
@@ -108,6 +115,9 @@ class MovementTelemetry:
         evade_direction: int,
     ) -> None:
         self._sink.sample("movement.goto_surf", **_goto_surf_fields(target_id, decision, command, evade_direction))
+
+    def sample_option_surf(self, target_id: int, decision: OptionSurfDecision, command: MovementCommand) -> None:
+        self._sink.sample("movement.option_surf", **_option_surf_fields(target_id, decision, command))
 
     def sample_duel_potential(
         self,
@@ -291,6 +301,27 @@ def _goto_surf_fields(
         "hit_bin": decision.hit_bin,
         "hit_turn": decision.hit_turn,
         "evade_direction": evade_direction,
+        "turn": round(command.turn, 2),
+        "speed": command.speed,
+    }
+
+
+def _option_surf_fields(target_id: int, decision: OptionSurfDecision, command: MovementCommand) -> dict[str, object]:
+    return {
+        "target": target_id,
+        "mode": command.mode,
+        "option": decision.option_name,
+        "danger": round(decision.danger, 4),
+        "danger_ccw": round(decision.danger_ccw, 4),
+        "danger_stop": round(decision.danger_stop, 4),
+        "danger_cw": round(decision.danger_cw, 4),
+        "waves": decision.waves,
+        "wave_kind": decision.wave_kind,
+        "hit_turn": decision.hit_turn,
+        "gf_low": round(decision.gf_low, 3),
+        "gf_high": round(decision.gf_high, 3),
+        "time_to_impact": round(decision.time_to_impact, 1),
+        "move_bearing": round(decision.move_bearing, 1),
         "turn": round(command.turn, 2),
         "speed": command.speed,
     }
