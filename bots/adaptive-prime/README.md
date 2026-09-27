@@ -27,7 +27,7 @@ flowchart TD
     D --> E["lock or reacquire radar"]
     E --> F{"battle mode"}
     F -- "1v1" --> G{"surfable wave?"}
-    G -- "yes" --> H["go-to surf"]
+    G -- "yes" --> H["option surf: orbit either way or stop"]
     G -- "no" --> I["potential-field route"]
     F -- "melee" --> J["minimum-risk route"]
     H --> K["fire gate"]
@@ -37,7 +37,8 @@ flowchart TD
 
 Adaptive is different from the other local bots in three places:
 
-- It prefers go-to surfing when an enemy wave is usable.
+- It surfs enemy waves by choosing between orbiting either way and stopping,
+  looking one wave ahead, when an enemy wave is usable.
 - It falls back to potential-field routing in 1v1 instead of simple orbiting.
 - It raises firepower more aggressively when gun confidence and energy position
   are good.
@@ -46,10 +47,18 @@ Adaptive is different from the other local bots in three places:
 
 1v1 movement priority:
 
-1. Use shared go-to surfing when a wave can be scored.
-2. Otherwise compute a potential-field destination from enemy repulsion,
+1. Use shared option surfing when an enemy wave is in flight: simulate
+   orbiting clockwise, orbiting counter-clockwise and stopping until the wave
+   passes, integrate the learned danger over the exact guess-factor span the
+   bot covers while the bullet ring breaks on it, add the cheapest
+   continuation against the next wave, and drive the safest option. Stops are
+   real stops: the engine brakes to zero in one turn. The orbit leans toward
+   the duel policy's preferred distance. `ROBOCODE_ADAPTIVE_OPTION_SURFING=0`
+   restores the older go-to surfing.
+2. Otherwise use shared go-to surfing when a wave can be scored.
+3. Otherwise compute a potential-field destination from enemy repulsion,
    orbit tangent, fire-threat repulsion, wall repulsion, and center attraction.
-3. Use distance bands to panic-open, open range, orbit, or reconnect. The
+4. Use distance bands to panic-open, open range, orbit, or reconnect. The
    duel policy prefers 480 px and holds at least 380 px; it used to prefer
    580 px, where every gun hit about 13% against the BasicGFSurfer port.
 
@@ -58,6 +67,7 @@ Melee uses shared minimum-risk movement. In `track` telemetry this appears as
 
 Key movement telemetry:
 
+- `movement.option_surf`
 - `movement.goto_surf`
 - `movement.duel_potential`
 - `movement.minimum_risk`

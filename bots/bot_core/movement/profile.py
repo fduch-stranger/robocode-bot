@@ -33,13 +33,16 @@ class MovementStatsBuffer:
         sample_key = (wave.target_id, segment)
         self._samples[sample_key] = self._samples.get(sample_key, 0.0) + weight
 
-    def danger(self, wave: MovementWave, bin_index: int) -> MovementStatsBufferDanger:
+    def danger(self, wave: MovementWave, bin_index: int, smoothed: bool = True) -> MovementStatsBufferDanger:
         segment = self._segment(wave)
         score = 0.0
-        for offset, smooth_weight in ((0, 1.0), (-1, 0.55), (1, 0.55), (-2, 0.25), (2, 0.25)):
-            neighbor = bin_index + offset
-            if 0 <= neighbor < self.config.bin_count:
-                score += self._visits.get((wave.target_id, segment, neighbor), 0.0) * smooth_weight
+        if smoothed:
+            for offset, smooth_weight in ((0, 1.0), (-1, 0.55), (1, 0.55), (-2, 0.25), (2, 0.25)):
+                neighbor = bin_index + offset
+                if 0 <= neighbor < self.config.bin_count:
+                    score += self._visits.get((wave.target_id, segment, neighbor), 0.0) * smooth_weight
+        else:
+            score = self._visits.get((wave.target_id, segment, bin_index), 0.0)
         samples = self._samples.get((wave.target_id, segment), 0.0)
         return MovementStatsBufferDanger(self.spec.name, score, samples)
 
@@ -135,10 +138,10 @@ class MovementStatsBufferSet:
         for buffer in self._buffers:
             buffer.record(wave, bin_index, weight)
 
-    def danger(self, wave: MovementWave, bin_index: int) -> MovementStatsBufferDanger:
+    def danger(self, wave: MovementWave, bin_index: int, smoothed: bool = True) -> MovementStatsBufferDanger:
         if not self.config.stats_buffer_enabled:
             return MovementStatsBufferDanger("disabled", 0.0, 0.0)
-        dangers = [buffer.danger(wave, bin_index) for buffer in self._buffers]
+        dangers = [buffer.danger(wave, bin_index, smoothed) for buffer in self._buffers]
         if not dangers:
             return MovementStatsBufferDanger("empty", 0.0, 0.0)
         weighted_danger = 0.0
@@ -177,6 +180,9 @@ class MovementProfile:
         self.stats_buffers.record(wave, bin_index, weight)
         self.decay_if_needed(wave.target_id)
         return self.profile[key]
+
+    def raw_count(self, target_id: int, bucket: int, bin_index: int) -> float:
+        return self.profile.get((target_id, bucket, bin_index), 0.0)
 
     def smoothed_count(self, target_id: int, bucket: int, bin_index: int) -> float:
         score = 0.0

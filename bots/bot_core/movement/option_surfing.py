@@ -210,6 +210,7 @@ class OptionSurfer:
         field_margin: float,
         preferred_distance: float,
         last_direction: int,
+        current_option: int | None = None,
     ) -> OptionSurfDecision | None:
         if not waves:
             return None
@@ -242,6 +243,9 @@ class OptionSurfer:
             best_total = min(best_total, result.danger)
 
         totals = {option: results[option].danger for option in OPTIONS}
+        if current_option in totals and self.config.option_surf_hysteresis > 0:
+            # Keep the current option unless another one is clearly safer, to avoid flip-flopping.
+            totals[current_option] *= 1.0 - self.config.option_surf_hysteresis
         if totals[STOP] <= totals[COUNTER_CLOCKWISE] and totals[STOP] <= totals[CLOCKWISE]:
             chosen = STOP
         elif totals[CLOCKWISE] < totals[COUNTER_CLOCKWISE]:

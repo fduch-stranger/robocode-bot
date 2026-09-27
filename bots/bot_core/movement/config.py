@@ -51,3 +51,5 @@ class MovementFlatteningConfig:
     option_surf_head_on_prior: float = 1.0
     option_surf_head_on_prior_width: float = 0.12
     option_surf_expected_waves: bool = True
+    option_surf_smoothed_bins: bool = False
+    option_surf_hysteresis: float = 0.05

@@ -31,6 +31,7 @@ class MovementFlattener:
         self._shadow_bin_cache_turn: int | None = None
         self._option_bin_cache: dict[tuple[int, int], list[float]] = {}
         self._option_bin_cache_turn: int | None = None
+        self._last_option: dict[int, int] = {}
         self._last_switch_turn: dict[int, int] = {}
 
     @property
@@ -370,7 +371,7 @@ class MovementFlattener:
         if not waves:
             return None
         bin_dangers = {id(wave): self._option_bin_dangers(bot, wave) for wave in waves}
-        return self._option_surfer.choose(
+        decision = self._option_surfer.choose(
             bot,
             target,
             waves,
@@ -379,7 +380,11 @@ class MovementFlattener:
             field_margin,
             preferred_distance,
             last_direction,
+            current_option=self._last_option.get(target.bot_id),
         )
+        if decision is not None:
+            self._last_option[target.bot_id] = decision.option
+        return decision
 
     def _option_surf_waves(self, bot: Bot, target_id: int) -> list[MovementWave]:
         candidates: list[tuple[float, MovementWave]] = []
@@ -409,8 +414,9 @@ class MovementFlattener:
         shadow_bins = self._shadow_bins(bot, wave) if self.config.bullet_shadow_enabled and self._shadow_bullets and wave.kind == "confirmed" else frozenset()
         expected_multiplier = self.config.goto_wave_kind_expected_multiplier if wave.kind == "expected" else 1.0
         dangers: list[float] = []
+        smoothed = self.config.option_surf_smoothed_bins
         for bin_index in range(self.config.bin_count):
-            danger = self._danger_breakdown(wave, bin_index).total_danger * expected_multiplier
+            danger = self._danger_breakdown(wave, bin_index, smoothed).total_danger * expected_multiplier
             if bin_index in shadow_bins:
                 danger *= self.config.bullet_shadow_danger_multiplier
             dangers.append(danger)
@@ -421,6 +427,8 @@ class MovementFlattener:
         self._wave_store.clear_round_state()
         self._shadow_bullets.clear()
         self._shadow_bin_cache.clear()
+        self._option_bin_cache.clear()
+        self._last_option.clear()
         self._last_switch_turn.clear()
 
     def clear_battle_state(self) -> None:
@@ -435,12 +443,14 @@ class MovementFlattener:
         self._shadow_bullets.clear()
         self._shadow_bin_cache.clear()
         self._option_bin_cache.clear()
+        self._last_option.clear()
         self._last_switch_turn.clear()
 
     def remove_target(self, target_id: int, clear_profile: bool = True) -> None:
         self._wave_store.remove_target(target_id)
         if clear_profile:
             self._profile_store.remove_target(target_id)
+        self._last_option.pop(target_id, None)
         self._last_switch_turn.pop(target_id, None)
 
     def _decision(
@@ -781,8 +791,8 @@ class MovementFlattener:
             return danger * self.config.bullet_shadow_danger_multiplier
         return danger
 
-    def _danger_breakdown(self, wave: MovementWave, bin_index: int) -> MovementDangerBreakdown:
-        return self._danger_model.breakdown(wave, bin_index)
+    def _danger_breakdown(self, wave: MovementWave, bin_index: int, smoothed: bool = True) -> MovementDangerBreakdown:
+        return self._danger_model.breakdown(wave, bin_index, smoothed)
 
     def _has_bullet_shadow(self, bot: Bot, wave: MovementWave, bin_index: int) -> bool:
         if not self.config.bullet_shadow_enabled or not self._shadow_bullets:

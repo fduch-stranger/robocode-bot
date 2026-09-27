@@ -134,9 +134,13 @@ Common pieces:
 - guess-factor movement bins
 - segmented danger buffers
 - movement flattening
+- option surfing: orbit clockwise, orbit counter-clockwise or stop, simulated
+  with engine physics until the wave passes, judged by the danger integrated
+  over the exact guess-factor span the bot covers while the bullet ring breaks
+  on it, with one wave of lookahead
 - go-to surfing
-- bullet shadows from real bullet state, applied to both direction surfing and
-  go-to surfing candidate danger
+- bullet shadows from real bullet state, applied to direction surfing, option
+  surfing and go-to surfing candidate danger
 - minimum-risk movement for melee
 
 `MovementFlattener` is the main facade. Internally it delegates wave storage,
