@@ -1,25 +1,17 @@
 # Jev Advisor Bot Plan
 
 This plan describes an experimental bot variant, `adaptive-jev`, that adds
-TypeSafe AI's Jev "System One" model as an asynchronous advisor on top of
-Adaptive Prime. Jev never aims or steers directly. It answers slow-changing,
-typed questions (what kind of opponent is this, which way should this wave be
-surfed), and Adaptive Prime's existing numeric systems act on those answers
-when they arrive.
+TypeSafe AI's Jev model as an asynchronous advisor on top of Adaptive Prime.
+Jev never aims or steers directly. It answers typed questions, and Adaptive
+Prime's existing numeric systems act on those answers when they arrive.
 
-The experiment is opt-in, network-dependent by design, and must never make the
-bot worse when Jev is slow, wrong, or unreachable.
+The experiment is opt-in and depends on the network by design. It must never
+make the bot worse when Jev is slow, wrong, or unreachable.
 
 ## Goal
 
-Measure whether a fast hosted classifier can improve Adaptive Prime against the
-BasicGFSurfer port (the fixed enemy benchmark) by improving high-level
-decisions that the per-battle learners adapt to slowly:
-
-```text
-opponent style -> gun set, firepower policy, movement profile
-enemy wave     -> preferred surf side (bias only)
-```
+Measure whether Jev can improve Adaptive Prime against the BasicGFSurfer port
+(the fixed enemy benchmark). When it cannot, stop early and record the result.
 
 Non-goals:
 
@@ -29,194 +21,270 @@ Non-goals:
 
 ## What Jev Is
 
-As published by TypeSafe AI (early access since 2026-09-15; verify against the
-current docs before implementing):
+Checked against `docs.typesafe.ai` on 2026-09-27:
 
-- Input: unstructured state (text or structured program state).
-- Output: typed, schema-constrained values defined in advance, with calibrated
-  probabilities and confidence scores. Enum-style outputs support up to 255
-  choices.
-- Latency: 70-500 ms end to end.
-- Pricing: input tokens only (about $0.042 per million tokens); output is free.
-- Access: API key from `console.typesafe.ai`; Python adapter at
-  `github.com/typesafe-ai/system-one-adapter-python`; docs at `docs.typesafe.ai`.
+- **Endpoint.** `POST https://api.typesafe.ai/v1/systemone` with
+  `Authorization: Bearer <key>`. The body holds a `state` (a string, object, or
+  array), a `model`, and a map of named `questions`.
+- **Questions.** There are three types:
+  - `choice`: up to 255 options, each with a description.
+  - `score`: 2-10 ordered levels.
+  - `noul`: returns the probability that the answer is yes.
 
-Unknowns to resolve in Milestone 0: exact request/response shape, schema
-definition format, rate limits, input size limits, whether few-shot examples or
-per-application calibration are supported.
+  Every question in a request sees the same state and is evaluated on its own,
+  so one call can ask several questions.
+- **Answers.** A `choice` answer returns the chosen option, a probability for
+  each option, and a `confidence`. A `noul` answer returns a value from 0 to 1.
+  The response names the versioned model that answered.
+- **Model.** `jev-latest` currently resolves to `jev-1.13.0`. Pin the versioned
+  ID for A/B runs, so a move of the alias cannot change results mid-experiment.
+- **Limits.** 1,200 requests per minute, 250,000 tokens per second, and 64k
+  tokens per request. The limits change without notice. A 429 or 529 response
+  means back off.
+- **Price.** $0.042 per million input tokens. Output is free.
+- **Weak spots.** The Jev 1.13 notes list numeric precision, counting and
+  arithmetic, and large states full of irrelevant detail. So keep math in code,
+  send named buckets instead of raw numbers, and send only what each question
+  needs.
+- **No per-customer tuning.** Jev is not fine-tuned for individual accounts.
+  Domain knowledge goes into the state and into each question's criteria.
+- **SDK.** The Python SDK (`typesafe-sdk`) reads `TYPESAFE_API_KEY`. It also
+  adds a dependency, a 10 s default timeout, and automatic retries, so the bot
+  calls the HTTP API with the standard library instead (see Architecture).
+
+## Expected Value
+
+Adaptive Prime's defaults were tuned against this surfer. An opponent-style
+answer of "surfer" can therefore only confirm the defaults. Phase 1 cannot raise
+the surfer benchmark on its own; its value would show only against a mixed set
+of opponents.
+
+The surfer score can move only through per-wave or per-shot decisions (Phases 2
+and 3). Those decisions compete with learned statistics that Jev never sees in
+full. The prior chance of a gain is low, so every phase runs in shadow mode
+first and is dropped when it fails its shadow gate.
 
 ## Core Constraints
 
-- Turn budget: every Tank Royale 1.3.1 game preset uses a 30 ms turn timeout.
-  A Jev call spans several turns, so every call is asynchronous.
-- Latency in turns depends on TPS. At the GUI default of 30 TPS a turn is about
-  33 ms of wall time, so 70-500 ms is about 2-15 turns. At unlimited TPS (the
-  default for CLI benchmarks) the same call can span 100+ turns. The Jev bot
-  must be benchmarked at a fixed TPS (30), and results at other TPS values are
-  not comparable.
-- Enemy bullets need roughly 20-40 turns to arrive at normal range, so a
-  per-wave answer at 30 TPS usually arrives with time to act; at high TPS it
-  usually does not and must be discarded.
-- Determinism: with Jev enabled, battles are not reproducible. A/B results need
-  repeats as usual, plus a shadow-mode control (see Validation).
+- **Turn budget.** Every Tank Royale 1.3.1 preset allows 30 ms per turn, so
+  every call is asynchronous.
+- **Latency in turns.** This depends on TPS:
+
+  | TPS | Turn rate | 70-500 ms call | 24-round battle (about 21,500 turns) |
+  | --- | --- | --- | --- |
+  | Unlimited (CLI benchmarks) | About 300 turns per second | About 20-150 turns | About 70 s |
+  | 30 | 30 turns per second | 2-15 turns | About 12 minutes |
+
+- **Per-wave answers.** Enemy bullets take roughly 20-40 turns to arrive, so
+  per-wave answers are usable in active mode only at a low fixed TPS. Shadow
+  accuracy does not depend on latency, so it can be measured at any TPS.
+- **Request rate.** The surfer fires about 1,300 waves per battle, about 18 per
+  second at unlimited TPS. That is close to the account's request limit. The
+  client caps requests at 10 per second, so shadow runs at unlimited TPS sample
+  about half the waves.
+- **Determinism.** With Jev enabled, battles cannot be reproduced exactly, so
+  A/B results need the usual repeats.
 
 ## Architecture
 
 ```text
 bots/adaptive-jev/
   adaptive-jev.py        # thin subclass of Adaptive Prime; wires the advisor
-  adaptive-jev.json/.sh  # bot metadata and launcher (copied from adaptive-prime)
-  jev_config.py          # all tuning and flags for the Jev layer
+  adaptive-jev.json/.sh  # bot metadata and launcher
+  jev_config.py          # tuning and flags for the Jev layer
   README.md
 bots/bot_core/advisors/
   __init__.py
-  client.py              # transport-agnostic async advisor client
-  jev_transport.py       # Jev HTTP/adapter calls, auth from env
-  schemas.py             # typed questions and answers
-  state_summary.py       # compact state -> advisor input
+  client.py              # AdvisorClient: worker thread, bounded queue, answer cache
+  jev_transport.py       # HTTP POST with urllib; key read from the environment
+  stub_transport.py      # offline fixed or random answers
+  schemas.py             # question builders and answer parsing
+  state_summary.py       # game state -> named buckets
 ```
 
-- `adaptive-jev` subclasses Adaptive Prime (loaded via `importlib`, since the
-  module file name has a hyphen) and overrides only the hook points below.
-  Adaptive Prime stays unchanged, so it remains the A/B baseline.
-- `AdvisorClient` owns one daemon worker thread and a bounded queue (drop the
-  oldest request when full). `submit(question)` never blocks. Answers land in a
-  per-question cache with the turn they were requested and received.
-- The bot reads answers only from the cache during its turn. An answer older
-  than its question's `max_age_turns`, or for a wave that has already passed, is
-  ignored.
-- Any exception, timeout, missing key, or disabled flag makes the advisor return
-  "no answer", which falls through to exact Adaptive Prime behavior.
-- The transport is pluggable, so a local stub (fixed or random answers) can run
-  the whole pipeline without network access for tests and shadow baselines.
+- **Subclass.** `adaptive-jev` subclasses Adaptive Prime and overrides only the
+  hook points. Adaptive Prime stays unchanged and remains the A/B baseline.
+- **Non-blocking submit.** `AdvisorClient.submit()` never blocks. The client has
+  one daemon worker thread, a bounded queue that drops the oldest request, and a
+  client-side rate limit. Answers go into a cache along with the turn each was
+  requested and the turn it arrived.
+- **Reading answers.** During its turn the bot reads answers only from the
+  cache. It ignores an answer that is older than the question's
+  `max_age_turns`, that belongs to a wave that has already passed, or whose
+  confidence is below the threshold.
+- **Fallback.** Any of these gives "no answer", which falls through to exact
+  Adaptive Prime behavior: an exception, a timeout, an HTTP error, a missing
+  key, or the disabled flag. A 429 or 529 pauses the worker briefly. Requests
+  are never retried within their age limit.
+- **Named buckets.** State summaries use buckets computed in code, never raw
+  coordinates. Examples: "lateral speed: fast", "reverses soon after our shots:
+  often".
 
 ## Decisions
 
-### Phase 1: Opponent Style (per round and every N turns)
+### Phase 1: Opponent Style (Shadow Only)
 
-Question: given a compact movement and fire summary of the enemy, classify its
-style.
+**Question.** A `choice` asked once per round and then every 200 turns:
+classify the enemy's movement and fire style from a bucketed battle summary.
+The summary covers:
 
-```text
-answer: enum {surfer, linear_mover, oscillator, random_mover, rammer, stationary, unknown}
-        + probability per class
-```
+- lateral speed and reversal rate;
+- reversal timing relative to our shots;
+- preferred distance and its trend;
+- share of time near walls, and ram attempts;
+- enemy fire power and hit rate.
 
-Input summary (state_summary.py), about 20 numbers rendered as short text:
-lateral speed mean and variance, reversal rate, distance preference, wall time
-share, our hit rate by gun mode, enemy fire power mean, enemy hit rate on us,
-damage taken per wave.
+**Options.** Wave surfer, orbiter, chaser, sweeper, oscillator, linear mover,
+random mover, stationary. The question is asked only after 120 scans, so there
+is no "unknown" option.
 
-Action, only when the top class probability passes a threshold:
+**Gate.** Jev's accuracy must beat a rule-based classifier in code that uses the
+same buckets. It is measured against four opponents: the surfer port, Chase
+Lock, Circle Strafer, and Sweep Pressure, with each label taken from that bot's
+README.
 
-- bias the gun selector toward the matching gun set (for example
-  `dynamic_cluster` and `traditional_gf` for surfers, `linear` for linear
-  movers) by adjusting selector switch margins, never by forcing a mode;
-- pick a firepower policy variant from `adaptive_config.py`;
-- pick the movement profile weighting.
+Active style routing needs per-style profiles, and those do not exist yet. So
+even if the gate passes, active routing stays out of scope for this experiment;
+a pass is recorded as groundwork for a later mixed-opponent experiment.
 
-This is the safest phase: late answers barely matter, and the existing
-selector still needs virtual-gun evidence to switch.
+### Phase 2: Wave Surf Side (Per Enemy Wave)
 
-### Phase 2: Wave Surf Side (per detected enemy wave)
+**Question.** A `choice` asked when an enemy wave is detected: should we move
+forward, reverse, or stop?
 
-Question: when an enemy wave is detected, which side should we surf?
+**Input.** The wave's bucketed features (distance, our lateral direction and
+speed, wall room ahead and behind), plus where the enemy's recent bullets passed
+us, as guess-factor buckets.
 
-```text
-answer: enum {clockwise, counter_clockwise, stop} + probabilities
-```
+**Action in active mode.** Multiply the danger of go-to candidates on the
+disfavored side by a configured factor (for example 1.15). Discard an answer
+that arrives later than `max_age_turns` or after the wave has passed.
 
-Input: the wave features already recorded for `movement.profile_visit`, plus
-the enemy's recent hit guess factors against us.
+**Gate.** Bots never see enemy bullets that miss, so the hit rate of the side
+Jev favored cannot be measured for waves we dodged. The gate is therefore an
+information test: over at least 1,000 answered waves in shadow mode against the
+surfer, waves where Jev's choice differed from where we actually went must be
+hit more often than waves where it matched (one-sided two-proportion z-test,
+z >= 1.96). If Jev's choice carries no information about the enemy's aim,
+following it cannot help. Only when the gate passes:
 
-Action: multiply go-to candidate danger on the disfavored side by a configured
-factor (for example 1.15). Discard the answer if it arrives later than
-`max_age_turns` or after the wave has passed our position.
+1. add `--tps` tooling;
+2. run the active A/B at a low fixed TPS (30, unless the latency profile allows
+   higher), against a baseline run at the same TPS.
 
-### Phase 3 (optional): Firepower Per Shot Window
+### Phase 3 (Optional): Firepower
 
-Only if Phase 1 shows value. Question: low, medium, or high power for the next
-shots given energy, distance, and recent hit rates. Same bias-only rule.
+Only if Phase 2 passes. The question is whether to fire at low, medium, or high
+power for the next shot, given bucketed energy, distance, and hit rates. It uses
+the same shadow gate, and answers only bias the existing choice.
 
 ## Environment Flags
 
+Set flags in `.env` for GUI battles. A/B runs pass them explicitly on both
+sides, because inherited values override `.env`.
+
 | Flag | Default | Purpose |
 | --- | --- | --- |
+| `TYPESAFE_API_KEY` | unset | Secret; set only in `.env`. Never committed, logged, or passed on a command line. |
+| `TYPESAFE_BASE_URL` | `https://api.typesafe.ai` | API base URL. |
 | `ROBOCODE_JEV_ENABLED` | `0` | Master switch; `0` means exact Adaptive Prime behavior. |
-| `ROBOCODE_JEV_MODE` | `shadow` | `shadow` asks and logs but never acts; `active` applies answers. |
+| `ROBOCODE_JEV_MODE` | `shadow` | `shadow` asks and logs; `active` applies answers. |
 | `ROBOCODE_JEV_PHASES` | `style` | Comma list: `style`, `surf`, `power`. |
-| `ROBOCODE_JEV_TRANSPORT` | `jev` | `jev` or `stub` (offline, deterministic answers). |
-| `TYPESAFE_API_KEY` | unset | Read from `.env` only; never committed, never logged. |
-| `ROBOCODE_JEV_TIMEOUT_MS` | `800` | Per-request timeout. |
-| `ROBOCODE_JEV_MAX_INFLIGHT` | `2` | Queue bound; oldest request is dropped. |
+| `ROBOCODE_JEV_TRANSPORT` | `jev` | `jev` or `stub`. |
+| `ROBOCODE_JEV_MODEL` | `jev-1.13.0` | Model ID; pinned for A/B runs. |
+| `ROBOCODE_JEV_TIMEOUT_MS` | `1500` | Per-request timeout. |
+| `ROBOCODE_JEV_MAX_INFLIGHT` | `2` | Queue bound; the oldest request is dropped. |
+| `ROBOCODE_JEV_MAX_RPS` | `10` | Client-side request rate limit. |
+| `ROBOCODE_JEV_WORKERS` | `2` | Worker threads (parallel requests). |
+
+The [bot README](../../bots/adaptive-jev/README.md) lists the stub flags.
+
+## Secret Handling
+
+- **How the key reaches the bot.** The bot launchers source `.env`, so a key
+  there reaches `adaptive-jev` in both GUI and CLI battles. For A/B runs from a
+  git worktree, set `ROBOCODE_ENV_FILE` to the main checkout's `.env` rather
+  than copying the file.
+- **Where it is read.** Only `jev_transport.py` reads the key.
+- **Where it never goes.** The key is kept out of:
+  - `bot.config`, telemetry, debug logs, and exception messages;
+  - A/B manifests (it is never passed through `--candidate-env`);
+  - `dist/` (`scripts/package.sh` skips `adaptive-jev`).
+- **Test.** A unit test sets a fake key and asserts that it appears in no
+  telemetry record or log line.
 
 ## Telemetry
 
 New events, added to `docs/telemetry-schema.md` when implemented:
 
-- `advisor.request`: question kind, request turn, input size.
-- `advisor.answer`: question kind, latency ms and turns, answer, probabilities,
-  and whether it was applied, stale, or discarded.
-- `advisor.error`: kind, error class (timeout, HTTP status, parse).
+- `advisor.request`: question kind, request turn, and state size in characters.
+- `advisor.answer`: question kind, latency in ms and in turns, model ID, answer,
+  probabilities, and confidence. It also records whether the answer was applied,
+  stale, below the confidence threshold, or shadow-only.
+- `advisor.error`: question kind and error class (timeout, HTTP status, or
+  parse). It never includes the response body.
+- `advisor.outcome` (Phase 2): for each answered wave, the side Jev favored,
+  where we ended up (`forward`, `reverse`, or `stop`, from the visit guess
+  factor), and whether the wave hit us.
 - `bot.config` gains the advisor flags and the transport name.
 
-## Validation
-
-1. **Offline pipeline (stub transport).** Unit tests for the client (never
-   blocks, drops stale answers, falls back on errors) and a CLI smoke battle
-   with `ROBOCODE_JEV_TRANSPORT=stub`.
-2. **Latency profile.** Shadow mode against the surfer at TPS 30; report the
-   latency distribution in ms and turns, the stale rate per phase, and the
-   error rate.
-3. **Shadow accuracy.** In shadow mode, compare Phase 1 answers against known
-   opponents (the surfer port, Chase Lock, Circle Strafer, Sweep Pressure, and
-   legacy bots) and Phase 2 answers against where the enemy wave actually hit.
-   Promote a phase to active only if its shadow accuracy beats a trivial
-   baseline (majority class, or current surfing choice).
-4. **A/B.** `adaptive-jev` in active mode against Adaptive Prime, both versus
-   the surfer port, 24 x 3 at TPS 30, telemetry off apart from advisor events,
-   one benchmark at a time (the battle lock enforces this). At TPS 30 a 24-round
-   battle takes about 12 minutes, so a full A/B takes about 70 minutes.
-5. **Control.** Repeat the A/B with the stub transport returning random
-   answers, to confirm that gains come from Jev's answers and not from the bias
-   mechanics themselves.
-
-## Tooling Needed
-
-- `run-battle.sh --tps N`, passed to the runner's `BattleSetup`, so Jev
-  benchmarks run at a fixed TPS.
-- A/B preset `adaptive-jev-1v1-basic-gf-surfer-port` comparing `adaptive-jev`
-  with `adaptive-prime` at TPS 30.
-- A summary tool (or a `gun_eval_summary` extension) for `advisor.*` events.
-
-## Risks
-
-- **Latency makes answers useless.** Mitigated by per-phase max age, shadow
-  measurement first, and Phase 1 being latency tolerant.
-- **Zero-shot answers are noisy.** Jev does not learn this opponent during the
-  battle the way KNN guns do. Promote only on shadow accuracy evidence.
-- **Network flakiness biases results.** Error and stale rates are logged, and
-  the fallback is exact Adaptive Prime behavior.
-- **Key leakage.** The key is read only from the environment and is excluded
-  from `bot.config` and all telemetry.
-- **Cost.** About 300 input tokens per request and a few thousand requests per
-  battle is well under a cent per battle at published pricing. Recheck before
-  long sweeps.
+`tools/advisor_summary.py` reports latency percentiles, stale and error rates,
+and shadow accuracy for each phase. Active A/B runs keep telemetry off; latency
+and stale rates come from the shadow runs.
 
 ## Milestones
 
-0. **API spike.** Get an early-access key, read the docs, and make one scripted
-   request with a Phase 1 schema. Record the real request/response shape and
-   latency here.
-1. **Skeleton.** `bots/adaptive-jev` subclass, advisor client, stub transport,
-   flags, unit tests, and a stub-mode smoke battle. No behavior change while
-   `ROBOCODE_JEV_ENABLED=0`.
-2. **Tooling.** Add `--tps` to `run-battle.sh` and the runner, plus the A/B
-   preset.
-3. **Phase 1 shadow.** Opponent-style questions in shadow mode; latency and
-   accuracy report.
-4. **Phase 1 active A/B.** Promote if shadow accuracy and the A/B both support
-   it.
-5. **Phase 2 shadow, then active A/B.** Same gate as Phase 1.
-6. **Decision.** Keep `adaptive-jev` as an experimental bot, or remove it
-   (following the repo practice of removing unproven experiments).
+Each milestone ends by recording its result in the Results table.
+
+0. **API probe.** `tools/jev_probe.py` sends about 30 requests shaped like the
+   Phase 1 and Phase 2 questions. It reports latency percentiles, errors, and
+   the model ID. If the key or the endpoint fails, stop the experiment.
+1. **Skeleton.** Build the following, then merge via PR:
+   - `bots/adaptive-jev`, the advisor client, both transports, the flags, the
+     telemetry events, and the summary tool;
+   - unit tests for non-blocking submit, stale drop, error fallback, rate
+     limiting, and secret redaction;
+   - the package exclusion;
+   - CLI smoke battles, one with the stub transport and one with Jev in shadow
+     mode.
+
+   With `ROBOCODE_JEV_ENABLED=0`, the advisor is never constructed and every
+   hook defers to Adaptive Prime; this is unit-tested.
+2. **Phase 1 shadow.** Run short battles against each local opponent and
+   compare accuracy with the rule-based classifier.
+3. **Phase 2 shadow.** Run 24 x 3 against the surfer port in shadow mode. Report
+   the latency profile, and compare Jev's side accuracy with our surfing choice.
+4. **Phase 2 active A/B** (only if its gate passed).
+   - Add `--tps` to `run-battle.sh` and the runner.
+   - Add a preset that runs `adaptive-jev` with `ROBOCODE_JEV_ENABLED=0` and
+     with `=1` against the surfer port at the chosen TPS.
+   - Give the candidate 6 runs, against a baseline run at the same TPS.
+   - Merge only on a win.
+5. **Decision.** Keep `adaptive-jev` as an experimental bot or remove it. Then
+   update this plan, the roadmap, and the project memories.
+
+## Results
+
+| Milestone | Result |
+| --- | --- |
+| 0. API probe | Pass. 70/70 requests OK on `jev-1.13.0`. Sequential: p50 287 ms, p90 383 ms, max 410 ms. Four in parallel: p50 252 ms, about 15 requests per second. About 616 input tokens per request. On idealized feature profiles Jev named the intended style 31 of 35 times (it read the oscillator as an orbiter); the rule-based classifier's order was fixed before any battle so that it classifies all 8 prototypes. |
+| 1. Skeleton | Done (PR #8). `bots/adaptive-jev`, `bot_core/advisors`, advisor telemetry, and `tools/advisor_summary.py`; 355 tests pass. Disabled mode runs Adaptive Prime's class itself (6-round sanity check: Adaptive Prime 5 first places, disabled Adaptive Jev 4). Live shadow smoke: 0 errors, p50 256 ms, about 145 turns at unlimited TPS. |
+| 2. Phase 1 shadow | Pending |
+| 3. Phase 2 shadow | Pending |
+| 4. Phase 2 active A/B | Pending |
+| 5. Decision | Pending |
+
+## Risks
+
+- **Latency makes answers useless.** Mitigated by a maximum age per phase,
+  shadow runs first, and a low fixed TPS for per-wave decisions.
+- **Zero-shot answers are noisy.** Jev does not learn this opponent during the
+  battle. Promote a phase only on shadow evidence.
+- **Network flakiness biases results.** Error and stale rates are logged, and
+  the fallback is exact Adaptive Prime behavior.
+- **Rate limits change without notice.** The client limits its own request rate,
+  backs off on 429 and 529, and logs throttling.
+- **Key leakage.** See Secret Handling.
+- **Cost.** About 500 input tokens per request. A 24-round battle with a
+  question on every sampled wave uses under a million tokens, which is a few
+  cents at published pricing.

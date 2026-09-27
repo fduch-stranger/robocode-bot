@@ -220,6 +220,32 @@ scripts/run-battle-series.sh --runs 5 --rounds 24 bots/adaptive-prime bots/chase
 Use this when you need quick variance checks without a baseline/candidate A/B
 layout.
 
+## Experimental Bots
+
+A bot directory that contains an `.experimental` file is left out of default
+battles (`scripts/run-battle.sh` with no bot arguments) and out of
+`scripts/package.sh`; name it explicitly to run it. `bots/adaptive-jev` is the
+current example. It calls the hosted Jev API, so it needs `TYPESAFE_API_KEY` in
+`.env`; its README lists the flags.
+
+```sh
+tools/jev_probe.py --requests 30
+tools/jev_probe.py --requests 40 --concurrency 4 --json-output battle-results/jev/probe.json
+tools/advisor_summary.py battle-results/runs/<run>/telemetry --truth wave_surfer
+```
+
+- `jev_probe.py`: sends advisor-shaped style and surf questions and reports
+  latency percentiles, errors, the model ID, and whether Jev names the intended
+  style for idealized feature profiles. It reads the key from the environment
+  or `.env` and never prints it.
+- `advisor_summary.py`: request, answer, and error counts; latency in ms and in
+  turns; style accuracy against `--truth` for Jev and for the rule-based
+  classifier; and the surf information test (the hit rate when Jev agreed with
+  our movement versus when it disagreed).
+
+For runs from a git worktree, set `ROBOCODE_ENV_FILE` to the main checkout's
+`.env` so the bot finds the key without copying the file.
+
 ## Converted Legacy Bots
 
 Converted legacy support remains for parity checks, historical comparisons, and

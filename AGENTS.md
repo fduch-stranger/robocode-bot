@@ -18,6 +18,8 @@ bot behavior or tooling.
 ## Repository Layout
 
 - `bots/adaptive-prime/`: 1v1 champion candidate.
+- `bots/adaptive-jev/`: experimental Adaptive Prime variant with an optional
+  Jev advisor (network API; runs only when named).
 - `bots/chase-lock/`: target-lock pressure bot.
 - `bots/circle-strafer/`: defensive orbital bot.
 - `bots/sweep-pressure/`: direct sweep-pressure bot.

@@ -16,6 +16,9 @@ Local config:
 - Adaptive coarse controls are `ROBOCODE_ADAPTIVE_GOTO_SURFING`, `ROBOCODE_ADAPTIVE_FLATTENER_DIRECTION_CONTROL`, and `ROBOCODE_ADAPTIVE_GUN_HEAT_WAVES`.
 - Adaptive telemetry-backed experiments should retain the startup `bot.config` event, which contains the effective configuration and deterministic fingerprint.
 - `ROBOCODE_LEGACY_BOTS_ROOT` is optional and only for unported converted opponents.
+- `TYPESAFE_API_KEY` (Jev) lives only in `.env`; never type, echo, or pass it on a command line. `ROBOCODE_JEV_*` flags control `bots/adaptive-jev`; worktree runs point `ROBOCODE_ENV_FILE` at the main checkout's `.env`.
+- Bot dirs with an `.experimental` file are skipped by default battles and `scripts/package.sh`; name them explicitly.
+- `tools/jev_probe.py` checks the Jev API (latency, errors, model); `tools/advisor_summary.py` summarizes `advisor.*` telemetry (style accuracy with `--truth`, surf information test).
 
 Common commands:
 ```sh
