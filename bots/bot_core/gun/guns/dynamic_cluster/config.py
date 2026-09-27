@@ -13,9 +13,9 @@ class DynamicClusterGunConfig:
     min_effective_samples: float = 0.0
     guess_factor_bins: int = 31
     bandwidth: float = 0.18
-    bandwidth_min: float = 0.12
+    bandwidth_min: float = 0.10
     bandwidth_max: float = 0.30
-    bandwidth_hit_width_scale: float = 1.5
+    bandwidth_hit_width_scale: float = 1.25
     second_peak_suppression_bandwidth_scale: float = 1.0
     second_peak_suppression_bin_scale: float = 1.5
     centroid_window_bandwidth_scale: float = 1.0

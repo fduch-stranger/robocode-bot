@@ -1569,16 +1569,21 @@ class GunStatsTest(unittest.TestCase):
         self.assertIn("neighbor_agreement", prediction.diagnostics)
         self.assertIn("aim_confidence", prediction.diagnostics)
 
-    def test_dynamic_cluster_effective_bandwidth_uses_radian_hit_width(self) -> None:
+    def test_dynamic_cluster_effective_bandwidth_uses_degree_hit_width(self) -> None:
         gun = DynamicClusterGun(DynamicClusterGunConfig())
-        fire_context = FireContext(positive_escape_angle=0.6, negative_escape_angle=0.6)
+        # Escape angles come from wall_limited_escape_angle, which returns degrees.
+        fire_context = FireContext(positive_escape_angle=34.85, negative_escape_angle=34.85)
 
         close_bandwidth = gun._effective_bandwidth(100.0, fire_context)
+        mid_bandwidth = gun._effective_bandwidth(300.0, fire_context)
         far_bandwidth = gun._effective_bandwidth(600.0, fire_context)
 
         self.assertAlmostEqual(gun.config.bandwidth_max, close_bandwidth)
         self.assertAlmostEqual(gun.config.bandwidth_min, far_bandwidth)
-        self.assertGreater(close_bandwidth, far_bandwidth)
+        expected_mid = math.degrees(math.atan2(18.0, 300.0)) / 34.85 * gun.config.bandwidth_hit_width_scale
+        self.assertLess(gun.config.bandwidth_min, expected_mid)
+        self.assertLess(expected_mid, gun.config.bandwidth_max)
+        self.assertAlmostEqual(expected_mid, mid_bandwidth)
 
     def test_dynamic_cluster_visit_diagnostics_use_fire_time_metadata(self) -> None:
         samples = [

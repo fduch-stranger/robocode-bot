@@ -97,6 +97,19 @@ bullet_speed = 20 - 3 * firepower
 gun_heat = 1 + firepower / 5
 ```
 
+Bearings and escape angles are in degrees; `wall_limited_escape_angle` is
+clamped to `[0.1, asin(8 / bullet_speed)]`.
+
+Dynamic Cluster density bandwidth, with constants from
+`DynamicClusterGunConfig`:
+
+```text
+hit_angle = degrees(atan2(18, distance))
+gf_hit_width = hit_angle / max(0.1, positive_escape_angle, negative_escape_angle)
+bandwidth = clamp(gf_hit_width * bandwidth_hit_width_scale, bandwidth_min, bandwidth_max)
+density(candidate_gf) = sum(weight * exp(-((sample_gf - candidate_gf) / bandwidth)^2))
+```
+
 Geometry helpers live in `bot_core.geometry`; bullet physics lives in
 `bot_core.physics`.
 

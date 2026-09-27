@@ -29,7 +29,10 @@ without hard-filtering samples.
 
 Aim extraction scores the usual guess-factor density bins, then refines the
 best bin with a local weighted centroid of nearby neighbor samples. Bandwidth
-is adjusted by target hit width, and component diagnostics report peak margin,
+is adjusted by the target's hit width in guess-factor units (bot half-width
+angle over the wider wall-limited escape angle, both in degrees; see
+[bot-core data structures](../../../../../docs/bot-core-data-structures.md#gun-wave-flow)
+for the formula), and component diagnostics report peak margin,
 neighbor agreement, aim confidence, ambiguity, and the selected guess factor.
 `DynamicClusterGunConfig` owns the density bandwidth, second-peak suppression,
 centroid window, context-weight clamp, ambiguity ratio/centering, and confidence
