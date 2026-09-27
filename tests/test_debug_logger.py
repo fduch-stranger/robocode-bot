@@ -5,12 +5,20 @@ import unittest
 from io import StringIO
 from pathlib import Path
 
+from robocode_tank_royale.bot_api.bot_exception import BotException
+
 from bot_core.async_writer import AsyncItemWriter
 from bot_core.debug import DebugLogger, FiredBulletTracker
 
 
 class _DummyBot:
     turn_number = 12
+
+
+class _PreTickBot:
+    @property
+    def turn_number(self) -> int:
+        raise BotException("tick has not occurred yet")
 
 
 class _SlowStringIO(StringIO):
@@ -54,6 +62,20 @@ class DebugLoggerTest(unittest.TestCase):
             log_file = list(Path(tmpdir).glob("test-bot-*.log"))[0]
             self.assertEqual("turn=12 event=track target=7\n", log_file.read_text(encoding="utf-8"))
             logger.close()
+
+    def test_debug_logger_logs_before_first_tick(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            os.environ["ROBOCODE_DEBUG"] = "1"
+            os.environ["ROBOCODE_DEBUG_SYNC"] = "1"
+            os.environ["ROBOCODE_LOG_DIR"] = tmpdir
+            os.environ.pop("ROBOCODE_TELEMETRY", None)
+
+            logger = DebugLogger(_PreTickBot(), "test-bot")
+            logger.log("bot.config", profile="default")
+            logger.close()
+
+            log_file = list(Path(tmpdir).glob("test-bot-*.log"))[0]
+            self.assertEqual("turn=- event=bot.config profile=default\n", log_file.read_text(encoding="utf-8"))
 
     def test_async_debug_writer_drops_when_queue_is_full(self) -> None:
         stream = _SlowStringIO()

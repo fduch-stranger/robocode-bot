@@ -15,6 +15,9 @@ from robocode_tank_royale.bot_api.bot_exception import BotException
 from bot_core.async_writer import AsyncItemWriter, SyncItemWriter
 
 
+VIEWER_LOCK_PID_GRACE_SECONDS = 10.0
+
+
 class TelemetryRecorder:
     _server_start_checked = False
 
@@ -172,14 +175,22 @@ class TelemetryRecorder:
         finally:
             os.close(lock_fd)
 
-    @staticmethod
     def _remove_stale_lock(lock_path: Path) -> None:
-        if not lock_path.exists():
+        try:
+            content = lock_path.read_text(encoding="utf-8").strip()
+            lock_age = time.time() - lock_path.stat().st_mtime
+        except OSError:
             return
         try:
-            pid = int(lock_path.read_text(encoding="utf-8").strip())
+            pid = int(content)
+        except ValueError:
+            # The owner writes its PID only after spawning the viewer; a fresh empty lock is still held.
+            if lock_age >= VIEWER_LOCK_PID_GRACE_SECONDS:
+                lock_path.unlink(missing_ok=True)
+            return
+        try:
             os.kill(pid, 0)
-        except (OSError, ValueError):
+        except OSError:
             lock_path.unlink(missing_ok=True)
 
     @classmethod

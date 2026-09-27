@@ -10,6 +10,8 @@ load_repo_env() {
     local index
     local had_nounset=0
     while IFS= read -r name; do
+      # Inherited environments may carry names bash cannot export (e.g. SENTRY-TRACE).
+      [[ "$name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
       restore_names+=("$name")
       restore_values+=("${!name}")
     done < <(compgen -e)

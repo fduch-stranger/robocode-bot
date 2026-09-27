@@ -16,7 +16,7 @@
     <dependency>
       <groupId>dev.robocode.tankroyale</groupId>
       <artifactId>robocode-tankroyale-runner</artifactId>
-      <version>1.0.2</version>
+      <version>1.3.1</version>
     </dependency>
   </dependencies>
 

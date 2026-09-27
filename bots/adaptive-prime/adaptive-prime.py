@@ -13,6 +13,7 @@ from robocode_tank_royale.bot_api.events import (
 )
 
 from bot_core.debug import DebugLogger, FiredBulletTracker
+from bot_core.physics.rules import bullet_hit_bonus_for_power
 from bot_core.energy import (
     EnemyEnergyCorrectionLedger,
     EnemyFireDetector,
@@ -909,6 +910,7 @@ class AdaptivePrime(Bot):
             self._fired_bullets.clear()
             self._last_gun_decision_log_turn.clear()
             self._target_accel.clear()
+            self._last_traditional_gf_profile_log_turn.clear()
             self._last_velocity_change_turn.clear()
             self._own_motion.reset(self.turn_number)
             self._melee_round = False
@@ -1088,6 +1090,12 @@ class AdaptivePrime(Bot):
         self._log("hit.wall", evade_direction=self._evade_direction, center_bearing=round(center_bearing, 2))
 
     def on_hit_by_bullet(self, event: HitByBulletEvent) -> None:
+        # The shooter gains 3x power; without this its next shot can hide inside the gain.
+        self._record_enemy_energy_correction(
+            event.bullet.owner_id,
+            -bullet_hit_bonus_for_power(event.bullet.power),
+            "enemy_bullet_hit_bonus",
+        )
         if not self._wall_risk(MOVEMENT_POLICY.max_speed):
             self._evade_direction *= -1
         self._evade_until_turn = self.turn_number + MOVEMENT_POLICY.evade_turns

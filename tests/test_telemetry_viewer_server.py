@@ -233,6 +233,23 @@ class TelemetryViewerServerTest(unittest.TestCase):
         self.assertEqual(second["generation"], first["generation"])
         self.assertFalse(second["truncated"])
 
+    def test_partial_trailing_line_is_read_once_complete(self) -> None:
+        with TemporaryDirectory() as tmp:
+            telemetry_dir = Path(tmp)
+            handler = self._handler(telemetry_dir)
+            path = telemetry_dir / "adaptive-prime-100.jsonl"
+            session = json.dumps(_event("adaptive-prime", "telemetry.session", 100, 1.0, {"pid": 100})) + "\n"
+            track = json.dumps(_event("adaptive-prime", "track", 100, 1.1)) + "\n"
+            path.write_text(session + track[:20], encoding="utf-8")
+            first = handler._events({})
+
+            with path.open("a", encoding="utf-8") as stream:
+                stream.write(track[20:])
+            second = handler._events({"cursor": [str(first["cursor"])], "generation": [str(first["generation"])]})
+
+        self.assertEqual(["telemetry.session"], [event["event"] for event in first["events"]])
+        self.assertEqual(["track"], [event["event"] for event in second["events"]])
+
     @staticmethod
     def _handler(telemetry_dir: Path) -> Any:
         server.TelemetryHandler.telemetry_dir = telemetry_dir

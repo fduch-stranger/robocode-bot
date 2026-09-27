@@ -24,10 +24,10 @@ class DebugLogger:
         atexit.register(self._atexit_callback)
 
     def log(self, event: str, **fields: object) -> None:
-        self._observe_turn()
+        turn = self._observe_turn()
         if self._log_writer is not None:
             payload = " ".join(f"{key}={value}" for key, value in fields.items())
-            self._log_writer.submit(f"turn={self._bot.turn_number} event={event} {payload}\n")
+            self._log_writer.submit(f"turn={self._turn_label(turn)} event={event} {payload}\n")
         if self._telemetry is not None:
             self._telemetry.write(event, fields)
 
@@ -51,13 +51,21 @@ class DebugLogger:
         self._last_observed_turn = turn
         return turn
 
+    @staticmethod
+    def _turn_label(turn: int | None) -> str:
+        # Bots log config before the first tick, when turn_number raises BotException.
+        return "-" if turn is None else str(turn)
+
     def close(self) -> None:
         if self._closed:
             return
         if self._log_writer is not None:
             dropped_count = self._log_writer.dropped_count
             if dropped_count:
-                self._log_writer.submit_blocking(f"turn={self._bot.turn_number} event=debug.dropped count={dropped_count}\n")
+                turn = self._observe_turn()
+                self._log_writer.submit_blocking(
+                    f"turn={self._turn_label(turn)} event=debug.dropped count={dropped_count}\n"
+                )
             self._log_writer.close()
         if self._telemetry is not None:
             self._telemetry.close()

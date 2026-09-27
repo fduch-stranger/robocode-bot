@@ -128,7 +128,8 @@ Common pieces:
 - segmented danger buffers
 - movement flattening
 - go-to surfing
-- bullet shadows from real bullet state
+- bullet shadows from real bullet state, applied to both direction surfing and
+  go-to surfing candidate danger
 - minimum-risk movement for melee
 
 `MovementFlattener` is the main facade. Internally it delegates wave storage,

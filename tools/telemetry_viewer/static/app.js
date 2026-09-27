@@ -58,7 +58,7 @@ async function resetTelemetry() {
     return;
   }
   try {
-    const response = await fetch("/api/reset", { method: "POST", cache: "no-store" });
+    const response = await fetch("/api/reset", { method: "POST", cache: "no-store", headers: { "X-Robocode-Telemetry": "1" } });
     const payload = await response.json();
     if (!payload.ok) {
       throw new Error((payload.errors || []).join("; ") || "reset failed");

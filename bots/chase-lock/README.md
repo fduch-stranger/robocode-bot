@@ -39,7 +39,8 @@ What makes Chase different:
 Lower target score wins:
 
 ```text
-score = distance * 0.45 + target_energy * 2.0 + age * 80 - bonuses
+duel:  score = distance * 0.7  + target_energy * 2.5 + age * 60 - bonuses
+melee: score = distance * 0.45 + target_energy * 2.0 + age * 92 - bonuses
 ```
 
 Bonuses favor the current target and recent fire threats.

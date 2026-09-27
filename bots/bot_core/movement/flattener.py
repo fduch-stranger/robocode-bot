@@ -25,6 +25,8 @@ class MovementFlattener:
         self._stats_buffers = self._profile_store.stats_buffers
         self._waves = self._wave_store.waves
         self._shadow_bullets: list[ShadowBullet] = []
+        self._shadow_bin_cache: dict[tuple[int, int, tuple[int, ...]], frozenset[int]] = {}
+        self._shadow_bin_cache_turn: int | None = None
         self._last_switch_turn: dict[int, int] = {}
 
     @property
@@ -353,6 +355,7 @@ class MovementFlattener:
     def clear_round_state(self) -> None:
         self._wave_store.clear_round_state()
         self._shadow_bullets.clear()
+        self._shadow_bin_cache.clear()
         self._last_switch_turn.clear()
 
     def clear_battle_state(self) -> None:
@@ -364,6 +367,7 @@ class MovementFlattener:
         self._stats_buffers = self._profile_store.stats_buffers
         self._waves = self._wave_store.waves
         self._shadow_bullets.clear()
+        self._shadow_bin_cache.clear()
         self._last_switch_turn.clear()
 
     def remove_target(self, target_id: int, clear_profile: bool = True) -> None:
@@ -605,6 +609,8 @@ class MovementFlattener:
         bin_index = self._bin_index(guess_factor)
         danger_breakdown = self._danger_breakdown(wave, bin_index)
         learned_danger = danger_breakdown.total_danger
+        if self._has_bullet_shadow(bot, wave, bin_index):
+            learned_danger *= self.config.bullet_shadow_danger_multiplier
         if wave.kind == "expected":
             learned_danger *= self.config.goto_wave_kind_expected_multiplier
         wall_risk = self._go_to_wall_risk(bot, hit_x, hit_y, field_margin)
@@ -716,6 +722,23 @@ class MovementFlattener:
             return False
         if wave.kind != "confirmed":
             return False
+        shadow_bins = self._shadow_bins(bot, wave)
+        radius = self.config.bullet_shadow_bin_radius
+        if radius <= 0:
+            return bin_index in shadow_bins
+        return any(abs(shadow_bin - bin_index) <= radius for shadow_bin in shadow_bins)
+
+    def _shadow_bins(self, bot: Bot, wave: MovementWave) -> frozenset[int]:
+        # Go-to surfing scores many candidates per wave each turn, so trace shadows once per wave.
+        if self._shadow_bin_cache_turn != bot.turn_number:
+            self._shadow_bin_cache.clear()
+            self._shadow_bin_cache_turn = bot.turn_number
+        cache_key = (id(wave), wave.fired_turn, tuple(id(bullet) for bullet in self._shadow_bullets))
+        cached = self._shadow_bin_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        shadow_bins: set[int] = set()
         start_turn = max(bot.turn_number, wave.fired_turn + 1)
         end_turn = min(
             bot.turn_number + self.config.bullet_shadow_max_ticks,
@@ -742,10 +765,10 @@ class MovementFlattener:
                 distance_to_wave_source = math.hypot(shadow_x - wave.source_x, shadow_y - wave.source_y)
                 if abs(distance_to_wave_source - wave_radius) > self.config.bullet_shadow_radius_margin:
                     continue
-                shadow_bin = self._bin_index(self._guess_factor(wave, shadow_x, shadow_y))
-                if abs(shadow_bin - bin_index) <= self.config.bullet_shadow_bin_radius:
-                    return True
-        return False
+                shadow_bins.add(self._bin_index(self._guess_factor(wave, shadow_x, shadow_y)))
+        result = frozenset(shadow_bins)
+        self._shadow_bin_cache[cache_key] = result
+        return result
 
     def _expire_shadow_bullets(self, bot: Bot) -> None:
         if not self._shadow_bullets:

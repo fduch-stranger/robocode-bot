@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT_DIR/scripts/lib/env.sh"
 load_repo_env "$ROOT_DIR"
 source "$ROOT_DIR/scripts/lib/bots.sh"
+source "$ROOT_DIR/scripts/lib/battle_lock.sh"
 RUNTIME_PYTHON_BIN="$(robocode_python_bin "$ROOT_DIR")"
 MVN_REPO="$ROOT_DIR/.m2/repository"
 TELEMETRY_SUPPRESSION_FILE="$ROOT_DIR/.telemetry-cli-suppressed"
@@ -33,6 +34,7 @@ legacy_inputs=()
 cd "$ROOT_DIR"
 
 cleanup() {
+  release_battle_lock
   if [[ "$created_telemetry_suppression" -eq 1 ]]; then
     rm -f "$TELEMETRY_SUPPRESSION_FILE"
   fi
@@ -392,11 +394,20 @@ else
   export ROBOCODE_TELEMETRY_AUTOSTART=0
 fi
 
+acquire_battle_lock
+
+# exec-maven-plugin re-splits exec.args on whitespace but honors quotes, so quote each
+# argument to keep paths with spaces intact.
+exec_args=""
+for runner_arg in "${runner_args[@]}"; do
+  exec_args+="\"${runner_arg//\"/\\\"}\" "
+done
+
 mvn \
   -s "$ROOT_DIR/tools/maven-central-settings.xml" \
   -Dmaven.repo.local="$MVN_REPO" \
   -q \
   -f "$ROOT_DIR/tools/battle-runner/pom.xml" \
   compile exec:java \
-  -Dexec.args="${runner_args[*]}" \
+  -Dexec.args="$exec_args" \
   2>&1 | tee "$process_log_file"

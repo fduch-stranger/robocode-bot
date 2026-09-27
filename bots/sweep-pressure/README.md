@@ -54,7 +54,7 @@ turn_rate = SWEEP_TURN_RATE
 During an evasion window:
 
 ```text
-turn_rate = -SWEEP_TURN_RATE * move_direction
+turn_rate = -SWEEP_TURN_RATE
 ```
 
 Wall projection checks the future point from current heading, speed,
