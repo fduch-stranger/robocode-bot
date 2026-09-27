@@ -41,6 +41,7 @@ Validated gun state:
 
 Ports:
 - `bots/ports/tomcat-port` is a native port of lxx.Tomcat 3.68 (2026-09-27): `tomcat-port.py` is the Tank Royale boundary (Robocode radians inside, Java event order rebuilt in the turn loop, setAhead/setMaxVelocity mapped to set_forward/max_speed, own bullets created next turn from the previous snapshots); `tomcat_port/` mirrors the Java packages. It beats Adaptive Prime and the surfer port by a wide margin, needs `gc.freeze()` per round to avoid 100 ms gen-2 pauses, and the bridge-wrapped Java Tomcat is not a valid parity reference.
+- `bots/ports/diamond-port` is a native port of voidious.Diamond 1.8.28 (2026-09-27): `diamond-port.py` holds a `RobotAdapter` (AdvancedRobot getters/setters in Robocode units) and Diamond's move/gun/radar loop; `diamond_port/` mirrors the Java packages (kd_tree, knn_view, movement_predictor, wave, enemy, gun, move, radar, perceptual_dna). Strongest local opponent: beats the Tomcat port 8-2, Adaptive Prime 24-0, and wins 4-bot melee; median turn ~2 ms, p99 ~5 ms, no skipped turns. Tank Royale scans lag our bullet damage and hit bonuses by one turn, so the port applies those energy deltas after the tick's scan is read (fire detection stays correct); the Tomcat port still stamps them at event time.
 
 Movement architecture:
 - Shared movement covers enemy-fire waves, GF danger profiles, flattening, go-to surfing, actual bullet shadows, and minimum-risk movement.
@@ -57,7 +58,7 @@ Telemetry and analysis:
 
 Opponent policy:
 - The Python BasicGFSurfer port is the supported surfer evidence target.
-- Generic converted-Java support remains for unported references such as Diamond, DrussGT, and Saguaro.
+- Generic converted-Java support remains for unported references such as DrussGT and Saguaro.
 - BasicGFSurfer-specific Java aliases and benchmark presets were removed.
 
 Environment hooks:

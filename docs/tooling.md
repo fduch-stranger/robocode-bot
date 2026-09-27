@@ -181,6 +181,7 @@ Presets:
 | `adaptive-melee-core` | Four local bots. |
 | `adaptive-1v1-basic-gf-surfer-port` | Preferred Python BasicGFSurfer port. |
 | `adaptive-1v1-tomcat-port` | Adaptive vs the native Tomcat 3.68 port (strong opponent, slower battles). |
+| `adaptive-1v1-diamond-port` | Adaptive vs the native Diamond 1.8.28 port (strongest local opponent). |
 
 Options:
 

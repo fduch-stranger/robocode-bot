@@ -1,0 +1,12 @@
+{
+  "name": "Diamond Port",
+  "version": "1.8.28",
+  "authors": ["robocode-bot"],
+  "description": "Python Tank Royale port of voidious.Diamond 1.8.28 (wave surfing, dynamic clustering guns).",
+  "homepage": "",
+  "countryCodes": ["DK"],
+  "gameTypes": ["classic", "1v1", "melee"],
+  "platform": "Python 3.13",
+  "programmingLang": "Python 3",
+  "base": "diamond-port"
+}

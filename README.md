@@ -30,6 +30,7 @@ Current local roster:
 | [Sweep Pressure](bots/sweep-pressure/README.md) | Direct-fire pressure bot with sweeping movement and projected wall avoidance. |
 | [BasicGFSurfer Port](bots/ports/basic-gf-surfer-port/README.md) | Ported legacy benchmark and surfer-style sparring partner; the fixed 1v1 benchmark for Adaptive Prime, kept unchanged. |
 | [Tomcat Port](bots/ports/tomcat-port/README.md) | Native port of lxx.Tomcat 3.68: wave surfing plus the Tomcat Claws replay gun, a much stronger sparring partner. |
+| [Diamond Port](bots/ports/diamond-port/README.md) | Native port of voidious.Diamond 1.8.28: dynamic-clustering wave surfing and virtual guns, the strongest local opponent; melee too. |
 
 ## Fastest Fight
 

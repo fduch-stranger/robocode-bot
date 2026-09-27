@@ -90,6 +90,15 @@ PRESETS: dict[str, dict[str, Any]] = {
             {"name": "adaptive-vs-tomcat-port", "bots": ["bots/adaptive-prime", "bots/ports/tomcat-port"]},
         ],
     },
+    "adaptive-1v1-diamond-port": {
+        "description": "Adaptive Prime against the native Diamond 1.8.28 port.",
+        "rounds": 24,
+        "repeats": 3,
+        "targetBot": TARGET_BOT,
+        "matchups": [
+            {"name": "adaptive-vs-diamond-port", "bots": ["bots/adaptive-prime", "bots/ports/diamond-port"]},
+        ],
+    },
     "adaptive-1v1-basic-gf-surfer-port": {
         "description": "Adaptive Prime focused Python BasicGFSurfer port benchmark.",
         "rounds": 24,
