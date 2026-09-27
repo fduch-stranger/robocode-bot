@@ -1,6 +1,6 @@
 # Jev Advisor Bot Plan
 
-**Status (2026-09-27): removed.** Neither phase passed its gate (see Results).
+**Status (2026-09-27): removed (PR #9).** Neither phase passed its gate (see Results).
 The code this page describes is in commit `e388ecf` (PR #8) if a later
 experiment needs it.
 
@@ -276,7 +276,7 @@ Each milestone ends by recording its result in the Results table.
 | 2. Phase 1 shadow | Gate passed narrowly; no active step follows. Across 8-round battles against each opponent (116 answers), Jev was right 0/30 times on the surfer (28 answers were "orbiter"), 11/32 on Circle Strafer, 5/17 on Chase Lock, and 5/37 on Sweep Pressure. That is 19% mean accuracy, against 3% for the rule-based classifier and 12.5% for chance. The logged summaries show why: the surfer's reversals are not tied to our wave passes, so both classifiers see it as an orbiter. Active style routing stays out of scope, because it needs per-style profiles and cannot raise the surfer benchmark. |
 | 3. Phase 2 shadow | Gate failed. Planned sample (24 x 3, 2,732 answered waves): stratified z = 0.67. Fresh confirmation sample (24 x 3, 2,684 waves): z = 0.36. The first, unstratified version of the test passed (z = 4.7) only because Jev never answers stop, and waves where we stayed near guess factor 0 are hit 16-17% of the time against 4-10% otherwise; the gate now compares within each outcome. Two runs made for a performance check reached z = 2.31 and all eight runs pooled reach z = 2.13, but those were not the planned test. An effect of that size (about 2 points of hit rate on the comparable waves) would change damage taken by only a few percent, below what a 6-run A/B detects. Latency: p50 255 ms, about 107 turns at unlimited TPS, and 8% of answers arrived before the wave passed. 0 errors in 7,337 answers, about 550 input tokens each. |
 | 4. Phase 2 active A/B | Skipped: Phase 2 failed its gate, so the `--tps` tooling and the 30 TPS A/B were not built or run. |
-| 5. Decision | Removed `bots/adaptive-jev`, `bot_core/advisors`, the advisor telemetry, and both tools. Neither phase showed a usable signal. Live shadow runs also scored 1480 on average (8 runs, range 1079-1878) against 1699 for Adaptive Prime and stub-transport controls (5 runs, 1588-1769). Three live runs collapsed below 1210 with no timing signature (1-3 skipped turns); that gap is unexplained and was not investigated further. |
+| 5. Decision | Removed (PR #9) `bots/adaptive-jev`, `bot_core/advisors`, the advisor telemetry, and both tools. Neither phase showed a usable signal. Live shadow runs also scored 1480 on average (8 runs, range 1079-1878) against 1699 for Adaptive Prime and stub-transport controls (5 runs, 1588-1769). Three live runs collapsed below 1210 with no timing signature (1-3 skipped turns); that gap is unexplained and was not investigated further. |
 
 ## Risks
 
