@@ -27,7 +27,7 @@ need a clear A/B win.
 | 10 | Melee radar rescans all enemies; remove dead collision command | Radar dropped; dead code removed (PR #5) | Melee A/B 12864 -> 10663 (-17%), firsts 25 -> 14: rescans starve the fresh-scan fire gate (`memory_turns` 1) |
 | - | Rejected: hit-width fire gate | Dropped | Neutral; held fire instead of hitting more |
 | - | Rejected: GC freeze at round boundaries | Not needed | No slow turn was GC-dominated |
-| - | Jev advisor bot | Dropped | [Jev advisor bot plan](jev-advisor-bot.md): no usable signal in either phase (style accuracy 19% on four opponents, 0% on the surfer; surf-side information test z = 0.36 on the confirmation sample); bot removed |
+| - | Jev advisor bot | Dropped (PR #8, PR #9) | [Jev advisor bot plan](jev-advisor-bot.md). M0 API probe passed (p50 287 ms, 0 errors); M1 skeleton merged (PR #8; disabled mode is Adaptive Prime's class); M2 style accuracy 19% on four opponents, 0% on the surfer (rule baseline 3%); M3 surf-side gate failed (stratified z = 0.67, confirmation 0.36); M4 active A/B skipped; M5 bot removed (PR #9) |
 
 ## Pooled Results
 
