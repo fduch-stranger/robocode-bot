@@ -75,11 +75,17 @@ tomcat_port/
 - **Battle-persistent state.** Java kept static maps across rounds (target
   data, enemy gun logs, targeting profiles, hit rates, gun data views). They
   are module-level stores reset on `GameStartedEvent`.
-- **Per-turn cost.** Tomcat is heavy: the median turn is about 0.25 ms, but the
-  enemy gun model's log updates, the second-wave movement search, and the gun's
-  replay reach 20-160 ms on a few turns per battle, which the engine counts as
-  skipped turns (about 8-9 per 24 rounds on this machine). The bot keeps its
-  previous commands on those turns.
+- **Per-turn cost.** Tomcat is heavy: the median turn is about 0.25 ms and the
+  99th percentile about 7 ms. The second-wave movement search and the gun's
+  replay can still take 15-55 ms on a few turns per battle, which the engine
+  counts as skipped turns (about 3 per 24 rounds on this machine); the bot
+  keeps its previous commands on those turns.
+- **Garbage collection.** The battle-long snapshot log and kd-trees made
+  Python's generation-2 collections pause for 40-140 ms, which were most of
+  the skipped turns. The port calls `gc.freeze()` at every round start and
+  raises the generation-2 threshold, so later collections only scan the
+  current round's garbage. `bot.turn_timing` carries `gc_pause_us` to verify
+  this.
 
 ## Validation
 
@@ -100,6 +106,7 @@ Evidence on 2026-09-27 (first native runs, telemetry on):
 | Adaptive Prime | 10 | 1390, 10 firsts, 658 damage | 205, 0 firsts, 205 damage | no port errors |
 | BasicGFSurfer port | 24 | 2400, 23 firsts, 835 damage | 574, 1 first, 501 damage | 8 skipped turns |
 | Adaptive Prime (motion sanity) | 24 | 2869 clean | 856 clean | 24 clean rounds, no stall |
+| BasicGFSurfer port (after GC tuning) | 24 | 2566, 23 firsts | 599, 1 first | 3 skipped turns, p99 7 ms |
 
 The bridge-wrapped Java Tomcat scored 174 to Adaptive Prime's 279 over 3
 rounds, so Java-reference parity battles are not a meaningful gate for this

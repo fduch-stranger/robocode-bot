@@ -8,6 +8,7 @@ commands. Everything else lives in ``tomcat_port/``.
 """
 from __future__ import annotations
 
+import gc
 import math
 import os
 import sys
@@ -116,6 +117,10 @@ from tomcat_port.snapshots import MySnapshot  # noqa: E402
 from tomcat_port.strategies import StrategySelector, TurnDecision  # noqa: E402
 
 MAX_LOGGED_ERRORS = 5
+# Tomcat keeps every turn snapshot and kd-tree entry of the battle alive, so
+# generation-2 collections grew to 40-140 ms pauses. Freezing the survivors at
+# each round start keeps later collections to the round's own garbage.
+GC_THRESHOLDS = (700, 10, 50)
 
 
 def tank_degrees_to_java_radians(angle: float) -> float:
@@ -273,8 +278,9 @@ class TomcatPort(Bot):
         self._last_turn_number = -1
         self._logged_errors = 0
         self._debug = DebugLogger(self, "tomcat-port")
-        self._timing_telemetry = TurnTimingTelemetry(self._debug)
+        self._timing_telemetry = TurnTimingTelemetry(self._debug, track_gc=True)
         self.phase_timer = TurnPhaseTimer()
+        gc.set_threshold(*GC_THRESHOLDS)
 
     # Lifecycle -----------------------------------------------------------
     def run(self) -> None:
@@ -324,6 +330,7 @@ class TomcatPort(Bot):
         self.max_speed = 8
         self.office = Office(self.view)
         self.strategy_selector = StrategySelector(self.view, self.office)
+        gc.freeze()
 
     def _on_status(self) -> None:
         """``BasicRobot.onStatus``: roll the snapshots and the 10-tick position window."""
