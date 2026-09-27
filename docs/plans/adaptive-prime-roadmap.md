@@ -19,9 +19,9 @@ need a clear A/B win.
 | 2 | Enemy-fire correction timing, enemy hit bonus, go-to bullet shadows | Done (PR #1) | Score 4835 -> 5045 (+4.3%), damage taken -7% |
 | 3 | Gun selector independent of candidate order | Done (PR #1) | Neutral A/B, correctness fix |
 | 4 | Machine-wide battle lock | Done (PR #1) | Unit tests |
-| 5 | Dynamic Cluster bandwidth degree fix plus retune | In progress (separate session) | Centered variant 4708 -> 4907, bullet damage 555 -> ~633 per run |
+| 5 | Dynamic Cluster bandwidth degree fix plus retune | Done (PR #3) | Pooled A/B: mean score 4773 -> 5026, bullet damage per run 591 -> 638 |
 | 6 | Enemy waves start at the bullet origin (turn E-1); wall and ram damage not read as fire | A/B running | Engine order verified in the 1.3.1 `TurnProcessor` |
-| 7 | Slow-turn diagnostics (phase timing, GC pauses) | Committed, telemetry run queued | Needed to attribute skipped turns |
+| 7 | Slow-turn diagnostics (phase timing, GC pauses) | Done (PR #2) | Telemetry run queued to attribute skipped turns |
 | 8 | Pre-aim the gun at next turn's solution | A/B queued | Bullets leave 2.2-2.5 degrees off plan today |
 | 9 | Reduce turn-time spikes | Waiting for item 7 data | Quiet-machine outlier 27.5 ms vs 30 ms budget |
 | 10 | Melee radar rescans all enemies; remove dead collision command | Melee A/B queued | Single-target lock starved minimum-risk movement |
