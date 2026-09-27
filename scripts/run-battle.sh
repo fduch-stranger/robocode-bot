@@ -392,11 +392,18 @@ else
   export ROBOCODE_TELEMETRY_AUTOSTART=0
 fi
 
+# exec-maven-plugin re-splits exec.args on whitespace but honors quotes, so quote each
+# argument to keep paths with spaces intact.
+exec_args=""
+for runner_arg in "${runner_args[@]}"; do
+  exec_args+="\"${runner_arg//\"/\\\"}\" "
+done
+
 mvn \
   -s "$ROOT_DIR/tools/maven-central-settings.xml" \
   -Dmaven.repo.local="$MVN_REPO" \
   -q \
   -f "$ROOT_DIR/tools/battle-runner/pom.xml" \
   compile exec:java \
-  -Dexec.args="${runner_args[*]}" \
+  -Dexec.args="$exec_args" \
   2>&1 | tee "$process_log_file"
