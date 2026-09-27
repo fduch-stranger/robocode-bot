@@ -93,7 +93,7 @@ about 15%. The z values compare each variant with the full pooled baseline.
 | # | Variant | Runs | Score | First places | Damage dealt | Damage taken | Decision |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | --- |
 | - | Baseline `main` (hot-gun tracking) | 57 | 1608 ± 29 | 15.4 | 605 ± 9 | 1353 ± 12 | - |
-| 1a | Scaling off | 6 | 1746 ± 52 | 15.0 | 746 ± 32 | 1227 ± 29 | Neutral, not merged: score +4% (z 1.0); damage dealt +22% (z 3.9) and damage taken -8% (z -3.0), but rounds won -8% (z -1.5). More power drains the surfer faster and loses the endgame attrition. |
+| 1a | Scaling off | 6 | 1746 ± 52 | 15.0 | 746 ± 32 | 1227 ± 29 | Neutral, not merged: score +4% (z 1.0); damage dealt +22% (z 3.9) and damage taken -8% (z -3.0), but rounds won -8% (z -1.5). More power drains the surfer faster and loses the endgame attrition. A separate 24-round telemetry battle measured the hit rate at 12.2% (Dynamic Cluster 12.7% at mean power 1.23) against 14.4% (15.8% at 0.66) with the scaling on, so the heavier bullets hit less and return less energy per shot. |
 | 1b | Far band | 6 | 1563 ± 56 | 13.7 | 666 ± 24 | 1344 ± 33 | Negative, not merged: score -7% (z -1.5), rounds won -16% (z -3.3), damage dealt +9% (z 2.0). |
 | 1c | Energy-gated scaling (40) | 6 | 1749 ± 115 | 14.7 | 769 ± 41 | 1242 ± 63 | Neutral, not merged: score +5% (z 0.6); damage dealt +26% (z 3.6), damage taken -6% (z -1.3), rounds won -10% (z -1.2). Gating the cheap shots to the endgame did not recover the lost rounds. |
 | 2 | Distance 480/380 | 6 | 1674 ± 76 | 16.5 | 606 ± 16 | 1342 ± 47 | Neutral, not merged: score +1% (z 0.3), rounds won +3%, damage dealt and taken unchanged. The 530/400 fallback was not run. |
