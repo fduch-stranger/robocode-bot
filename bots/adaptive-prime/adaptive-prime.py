@@ -1,6 +1,4 @@
 import math
-import os
-import time
 from dataclasses import replace
 
 from robocode_tank_royale.bot_api import Bot, BotInfo, Color
@@ -76,9 +74,6 @@ from adaptive_config import (
     adaptive_config_status_fields,
     traditional_gf_config_from_policy,
 )
-
-
-_OPTION_SURF_TRACE_US = int(os.environ.get("ROBOCODE_ADAPTIVE_OPTION_SURF_TRACE_US", "0") or 0)
 
 
 class AdaptivePrime(Bot):
@@ -569,7 +564,6 @@ class AdaptivePrime(Bot):
 
         if duel_active:
             if MOVEMENT_POLICY.option_surfing_active:
-                option_started = time.perf_counter_ns()
                 option_decision = self._movement.choose_option_surf(
                     self,
                     target,
@@ -578,23 +572,6 @@ class AdaptivePrime(Bot):
                     preferred_distance=DUEL_MOVEMENT_POLICY.preferred_distance,
                     last_direction=self._evade_direction,
                 )
-                option_elapsed_us = (time.perf_counter_ns() - option_started) // 1000
-                if _OPTION_SURF_TRACE_US and option_elapsed_us >= _OPTION_SURF_TRACE_US:
-                    waves = self._movement._option_surf_waves(self, target.bot_id)
-                    self._debug.log(
-                        "movement.option_surf_slow",
-                        elapsed_us=option_elapsed_us,
-                        x=round(self.x, 1),
-                        y=round(self.y, 1),
-                        direction=round(self.direction, 1),
-                        speed=self.speed,
-                        target_x=round(target.x, 1),
-                        target_y=round(target.y, 1),
-                        store_waves=self._movement.wave_count,
-                        shadows=self._movement.shadow_bullet_count,
-                        waves=[(wave.kind, wave.fired_turn, round(wave.source_x, 1), round(wave.source_y, 1), round(wave.bullet_speed, 2)) for wave in waves],
-                        option=option_decision.option_name if option_decision is not None else None,
-                    )
                 if option_decision is not None:
                     if option_decision.speed == 0.0:
                         command = MovementCommand.hold("option_surf_stop")
