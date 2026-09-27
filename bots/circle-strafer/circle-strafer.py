@@ -25,6 +25,7 @@ from circle_config import (
     build_radar_config,
 )
 from bot_core.debug import DebugLogger, FiredBulletTracker
+from bot_core.physics.rules import bullet_hit_bonus_for_power
 from bot_core.energy import (
     EnemyEnergyCorrectionLedger,
     EnemyFireDetector,
@@ -684,6 +685,12 @@ class CircleStrafer(Bot):
         return self._enemy_energy_corrections.consume(target_id, current_turn, after_turn)
 
     def on_hit_by_bullet(self, event: HitByBulletEvent) -> None:
+        # The shooter gains 3x power; without this its next shot can hide inside the gain.
+        self._record_enemy_energy_correction(
+            event.bullet.owner_id,
+            -bullet_hit_bonus_for_power(event.bullet.power),
+            "enemy_bullet_hit_bonus",
+        )
         if not self._near_wall():
             self._move_direction *= -1
         self.set_turn_left(45)

@@ -25,6 +25,7 @@ from chase_config import (
     build_radar_config,
 )
 from bot_core.debug import DebugLogger, FiredBulletTracker
+from bot_core.physics.rules import bullet_hit_bonus_for_power
 from bot_core.energy import (
     EnemyEnergyCorrectionLedger,
     EnemyFirePowerPrediction,
@@ -749,7 +750,7 @@ class ChaseLock(Bot):
         self._enemy_energy_corrections.record(target_id, self.turn_number, correction, reason)
 
     def _consume_enemy_energy_correction(self, target_id: int, current_turn: int, after_turn: int) -> float:
-        return self._enemy_energy_corrections.consume(target_id, current_turn, after_turn, include_after_turn=True)
+        return self._enemy_energy_corrections.consume(target_id, current_turn, after_turn)
 
     def _search(self) -> None:
         self._set_search_movement()
@@ -805,6 +806,12 @@ class ChaseLock(Bot):
         self._log("hit.wall", evade_direction=self._evade_direction, center_bearing=round(center_bearing, 2))
 
     def on_hit_by_bullet(self, event: HitByBulletEvent) -> None:
+        # The shooter gains 3x power; without this its next shot can hide inside the gain.
+        self._record_enemy_energy_correction(
+            event.bullet.owner_id,
+            -bullet_hit_bonus_for_power(event.bullet.power),
+            "enemy_bullet_hit_bonus",
+        )
         if not self._wall_risk(8):
             self._evade_direction *= -1
         self._evade_until_turn = self.turn_number + MOVEMENT_POLICY.evade_turns

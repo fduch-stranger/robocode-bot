@@ -45,12 +45,7 @@ class EnemyFireDetector:
         our_energy: float,
         cooling_rate: float,
     ) -> EnemyFireDetection:
-        energy_correction = self.correction_ledger.consume(
-            target_id,
-            current_turn,
-            previous_seen_turn,
-            include_after_turn=True,
-        )
+        energy_correction = self.correction_ledger.consume(target_id, current_turn, previous_seen_turn)
         signal = classify_energy_drop(
             previous_energy,
             current_energy,

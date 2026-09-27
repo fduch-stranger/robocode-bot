@@ -267,6 +267,47 @@ class MinimumRiskMovementTest(unittest.TestCase):
         self.assertLess(shadowed, unshadowed)
         self.assertAlmostEqual(unshadowed * 0.2, shadowed)
 
+    def test_bullet_shadow_reduces_go_to_surf_candidate_danger(self) -> None:
+        movement = MovementFlattener(
+            MovementFlatteningConfig(
+                bullet_shadow_enabled=True,
+                bullet_shadow_danger_multiplier=0.2,
+                bullet_shadow_radius_margin=16.0,
+            )
+        )
+        bot = _bot(
+            x=500.0,
+            y=100.0,
+            direction=0.0,
+            speed=0.0,
+            arena_width=1000.0,
+            arena_height=1000.0,
+            turn_number=1,
+        )
+        target = TargetSnapshot(1, 100.0, 100.0, 100.0, 0.0, 0.0, 1)
+        wave = MovementWave(
+            target_id=1,
+            source_x=100.0,
+            source_y=100.0,
+            direct_bearing=0.0,
+            lateral_direction=1,
+            bullet_speed=10.0,
+            max_escape_angle_positive=30.0,
+            max_escape_angle_negative=30.0,
+            fired_turn=0,
+            distance_bucket=1,
+        )
+        center_bin = movement.config.bin_count // 2
+        movement._profile[(1, 1, center_bin)] = 5.0
+
+        unshadowed = movement._score_go_to_candidate(bot, target, wave, 500.0, 100.0, 8.0, 18.0)
+        movement.record_shadow_bullet(bot, "b1", 2.0, 180.0)
+        shadowed = movement._score_go_to_candidate(bot, target, wave, 500.0, 100.0, 8.0, 18.0)
+
+        assert unshadowed is not None and shadowed is not None
+        self.assertEqual(center_bin, unshadowed.hit_bin)
+        self.assertLess(shadowed.danger, unshadowed.danger)
+
     def test_bullet_shadow_can_use_event_bullet_source(self) -> None:
         movement = MovementFlattener(
             MovementFlatteningConfig(

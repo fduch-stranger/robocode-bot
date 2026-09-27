@@ -15,27 +15,31 @@ from bot_core.physics import gun_heat_for_power
 
 
 class EnergyTest(unittest.TestCase):
-    def test_enemy_energy_correction_ledger_consumes_relevant_turns(self) -> None:
+    def test_enemy_energy_correction_ledger_applies_hits_to_next_scan(self) -> None:
+        # Scanned energy is recorded before bullet hits resolve, so a hit on turn T shows at T + 1.
         ledger = EnemyEnergyCorrectionLedger()
         ledger.record(7, turn_number=10, correction=1.2, reason="older_hit")
         ledger.record(7, turn_number=12, correction=2.0, reason="current_hit")
         ledger.record(7, turn_number=14, correction=0.8, reason="future_hit")
 
-        correction = ledger.consume(7, current_turn=12, after_turn=10)
+        self.assertAlmostEqual(0.0, ledger.consume(7, current_turn=12, after_turn=11))
+        self.assertAlmostEqual(2.0, ledger.consume(7, current_turn=13, after_turn=12))
+        self.assertAlmostEqual(0.8, ledger.consume(7, current_turn=15, after_turn=-1))
+        self.assertEqual(0.0, ledger.consume(7, current_turn=15, after_turn=-1))
 
-        self.assertAlmostEqual(2.0, correction)
-        self.assertAlmostEqual(0.8, ledger.consume(7, current_turn=14, after_turn=-1))
-        self.assertEqual(0.0, ledger.consume(7, current_turn=14, after_turn=-1))
-
-    def test_enemy_energy_correction_ledger_can_include_after_turn(self) -> None:
+    def test_enemy_energy_correction_ledger_skips_hits_already_in_previous_scan(self) -> None:
         ledger = EnemyEnergyCorrectionLedger()
-        ledger.record(7, turn_number=10, correction=1.2, reason="same_turn_hit")
-        ledger.record(7, turn_number=11, correction=2.0, reason="later_hit")
+        ledger.record(7, turn_number=9, correction=1.2, reason="seen_at_turn_10")
+        ledger.record(7, turn_number=10, correction=2.0, reason="seen_at_turn_11")
 
-        correction = ledger.consume(7, current_turn=10, after_turn=10, include_after_turn=True)
-
-        self.assertAlmostEqual(1.2, correction)
         self.assertAlmostEqual(2.0, ledger.consume(7, current_turn=11, after_turn=10))
+
+    def test_enemy_energy_correction_ledger_spans_scan_gaps(self) -> None:
+        ledger = EnemyEnergyCorrectionLedger()
+        ledger.record(7, turn_number=10, correction=1.0, reason="hit_during_gap")
+        ledger.record(7, turn_number=12, correction=2.0, reason="hit_during_gap")
+
+        self.assertAlmostEqual(3.0, ledger.consume(7, current_turn=13, after_turn=10))
 
     def test_enemy_energy_correction_ledger_trims_oldest_entries(self) -> None:
         ledger = EnemyEnergyCorrectionLedger(max_entries_per_target=2)
@@ -43,7 +47,27 @@ class EnergyTest(unittest.TestCase):
         ledger.record(3, turn_number=2, correction=2.0, reason="second")
         ledger.record(3, turn_number=3, correction=3.0, reason="third")
 
-        self.assertAlmostEqual(5.0, ledger.consume(3, current_turn=3, after_turn=0))
+        self.assertAlmostEqual(5.0, ledger.consume(3, current_turn=4, after_turn=0))
+
+    def test_enemy_fire_detector_sees_shot_hidden_by_enemy_hit_bonus(self) -> None:
+        detector = EnemyFireDetector(EnergyDropConfig())
+        # Enemy bullet (power 1.9) hits us on turn 10; the enemy fires 1.9 again on turn 11.
+        detector.record_correction(4, 10, -3.0 * 1.9, "enemy_bullet_hit_bonus")
+
+        detection = detector.evaluate_scan(
+            target_id=4,
+            previous_energy=50.0,
+            current_energy=50.0 + 3.0 * 1.9 - 1.9,
+            previous_seen_turn=10,
+            current_turn=11,
+            scan_gap=1,
+            distance=320.0,
+            our_energy=90.0,
+            cooling_rate=0.1,
+        )
+
+        self.assertTrue(detection.is_fire)
+        self.assertAlmostEqual(1.9, detection.signal.fire_power or 0.0, places=6)
 
     def test_enemy_fire_detector_updates_heat_for_ignored_drop(self) -> None:
         detector = EnemyFireDetector(EnergyDropConfig(max_scan_gap=1))
