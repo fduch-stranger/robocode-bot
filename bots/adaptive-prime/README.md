@@ -1,7 +1,7 @@
 # Adaptive Prime
 
 Adaptive Prime is the 1v1 champion candidate. It uses the full shared stack:
-virtual guns, enemy-fire detection, go-to surfing, movement learning,
+virtual guns, enemy-fire detection, option surfing, movement learning,
 minimum-risk melee movement, and telemetry.
 
 Shared references:
@@ -58,7 +58,9 @@ Adaptive is different from the other local bots in three places:
    BasicGFSurfer port scored 2021 ± 98 versus the 18-run pooled baseline of
    1740 ± 44 (+16%, z 2.6), with bullet damage dealt +26% and damage taken
    unchanged.
-2. Otherwise use shared go-to surfing when a wave can be scored.
+2. With option surfing turned off, use shared go-to surfing when a wave can be
+   scored. With it on, this step never runs, because option surfing takes
+   every surfable wave.
 3. Otherwise compute a potential-field destination from enemy repulsion,
    orbit tangent, fire-threat repulsion, wall repulsion, and center attraction.
 4. Use distance bands to panic-open, open range, orbit, or reconnect. The

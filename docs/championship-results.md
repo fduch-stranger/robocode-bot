@@ -2,6 +2,12 @@
 
 Date: 2026-07-04
 
+Historical snapshot of the four original local bots. Adaptive Prime has
+changed a lot since (see the
+[roadmap](plans/adaptive-prime-roadmap.md)), and the native ports were not part
+of it; current results against the ports are in the
+[README](../README.md#ported-legends).
+
 1v1 Champion: **Adaptive Prime 1.0**
 
 Melee Champion: **Chase Lock 1.0**

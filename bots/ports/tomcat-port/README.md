@@ -107,6 +107,8 @@ Evidence on 2026-09-27 (first native runs, telemetry on):
 | BasicGFSurfer port | 24 | 2400, 23 firsts, 835 damage | 574, 1 first, 501 damage | 8 skipped turns |
 | Adaptive Prime (motion sanity) | 24 | 2869 clean | 856 clean | 24 clean rounds, no stall |
 | BasicGFSurfer port (after GC tuning) | 24 | 2566, 23 firsts | 599, 1 first | 3 skipped turns, p99 7 ms |
+| Adaptive Prime with option surfing (2026-10-02) | 24 | 2714, 19 firsts | 936, 5 firsts | current Adaptive takes rounds off it |
+| Diamond Port (2026-10-02) | 24 | 904, 4 firsts | 2157, 20 firsts | |
 
 The bridge-wrapped Java Tomcat scored 174 to Adaptive Prime's 279 over 3
 rounds, so Java-reference parity battles are not a meaningful gate for this

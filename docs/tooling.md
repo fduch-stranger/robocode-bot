@@ -81,7 +81,7 @@ best palette, `ffmpeg`); the README battle animation was made this way:
 .venv/bin/pip install pillow
 scripts/run-battle.sh --record --rounds 2 bots/ports/diamond-port bots/ports/tomcat-port
 tools/render_battle_gif.py battle-results/runs/<run>/recordings/<game>.battle.gz \
-  --output docs/assets/battle.gif --round 2 --start 1035 --turns 150 --step 1 --fps 30
+  --output docs/assets/battle.gif --round 2 --start 485 --turns 150 --step 1 --fps 30
 ```
 
 ## Telemetry

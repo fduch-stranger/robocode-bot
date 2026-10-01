@@ -117,6 +117,8 @@ Evidence on 2026-09-27 (first native runs):
 | Adaptive Prime (motion sanity) | 24 | 3337, 24 firsts, 1581 damage | 362, 0 firsts | 24 clean rounds, no stall |
 | Chase, Circle, Sweep (melee) | 2 | 597, 2 firsts | 266 / 234 / 138 | melee mover and melee gun paths |
 | BasicGFSurfer port (telemetry) | 24 | 2514, 24 firsts, 895 damage | 423, 0 firsts | p50 3.3 ms, p99 20 ms, 6 skipped turns, no errors |
+| Adaptive Prime with option surfing (2026-10-02) | 24 | 2781, 21 firsts | 706, 3 firsts | |
+| Tomcat Port (2026-10-02) | 24 | 2157, 20 firsts | 904, 4 firsts | |
 
 The A/B preset `adaptive-1v1-diamond-port` runs Adaptive Prime against this
 port. Telemetry is observation-only: with `--telemetry` the port emits
