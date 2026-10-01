@@ -11,13 +11,8 @@ spar against, and the tooling to prove whether a change made a bot stronger.
 
 ![Diamond Port vs Tomcat Port wave surfing: ten dodges and two hits](docs/assets/battle-diamond-vs-tomcat.gif)
 
-<sub>Two ported legends wave surfing. Each circle is a bullet's wave, coloured
-by its shooter; the bold arc is the target's escape range, where that bullet
-can still hit, and it brightens as it closes in. The surfer slips through and
-the gap is shown ("dodged by 7 px"). On a hit, the lost energy flashes white
-on the bar and the damage floats up. Rendered from a real battle recording
-with `tools/render_battle_gif.py --auto-window`, which picks the stretch with
-the most dodges.</sub>
+<sub>Diamond and Tomcat, two ported legends, wave surfing in a real recorded
+battle. Each bold arc is a bullet closing in; watch the bots slip through it.</sub>
 
 ## Highlights
 
@@ -26,9 +21,9 @@ the most dodges.</sub>
   top-tier MegaBot. They are the sparring partners and the yardstick.
 - **A champion in training.** Adaptive Prime combines virtual guns, enemy-fire
   detection, bullet shadows and Diamond-style option surfing.
-- **Measured, not guessed.** Every tuning change goes through paired A/B
-  battles judged against a pooled baseline; neutral changes are rejected and
-  written down.
+- **Measured, not guessed.** Every tuning change has to win repeated A/B
+  battles before it is merged, and ideas that don't help are written down,
+  not kept.
 - **Instruments.** Telemetry JSONL, a live viewer, turn-timing and motion
   audits, and an animated renderer for recordings.
 
@@ -64,21 +59,18 @@ Some things the ports had to get right:
   would turn every hit into a phantom enemy shot. The Diamond port defers those
   energy corrections until after the scan is read.
 
-Current results between Adaptive Prime and the ports, 24 rounds per matchup:
+How they rank today, from a round-robin of 24-round matches:
 
-| Matchup | Score | Rounds won |
-| --- | ---: | ---: |
-| Diamond Port vs Tomcat Port | 2157 - 904 | 20 - 4 |
-| Diamond Port vs Adaptive Prime | 2781 - 706 | 21 - 3 |
-| Diamond Port vs BasicGFSurfer Port | 2634 - 442 | 24 - 0 |
-| Tomcat Port vs Adaptive Prime | 2714 - 936 | 19 - 5 |
-| Tomcat Port vs BasicGFSurfer Port | 2424 - 826 | 22 - 2 |
-| Adaptive Prime vs BasicGFSurfer Port | 1977 - 1845 | 15 - 9 |
+| Rank | Bot | Rounds won |
+| ---: | --- | ---: |
+| 1 | Diamond Port | 65 of 72 |
+| 2 | Tomcat Port | 45 of 72 |
+| 3 | Adaptive Prime | 23 of 72 |
+| 4 | BasicGFSurfer Port | 11 of 72 |
 
-The order matches the bots' history: Diamond first, Tomcat second. Adaptive
-Prime beats the benchmark surfer and is taking rounds off both legends, which
-is the gap the [roadmap](docs/plans/adaptive-prime-roadmap.md) is closing.
-Single 24-round battles, 2026-10-02.
+Adaptive Prime beats the benchmark surfer and is starting to take rounds off
+both legends; closing that gap is the goal of the
+[roadmap](docs/plans/adaptive-prime-roadmap.md).
 
 ## How Bots Get Better
 
@@ -86,20 +78,15 @@ Single 24-round battles, 2026-10-02.
 flowchart LR
     A["Idea"] --> B["Branch + unit tests"]
     B --> C["Smoke battle + telemetry"]
-    C --> D["A/B: 24 rounds x 6 vs pooled baseline"]
-    D -->|"score up by 2 SE"| E["Merge + record"]
-    D -->|"neutral or worse"| F["Reject + record why"]
+    C --> D["A/B battles vs current main"]
+    D -->|"clearly better"| E["Merge + record"]
+    D -->|"no real gain"| F["Reject + record why"]
 ```
 
-Recent promotions against the BasicGFSurfer benchmark:
-
-| Change | Score | Evidence |
-| --- | --- | --- |
-| Option surfing: orbit either way or stop, precise intersection danger, second-wave lookahead | +16% | z 2.6, damage dealt +26% |
-| Hot-gun tracking: full aim only when the gun is about to fire | +12% | median turn 4.7 -> 0.7 ms |
-| Firepower scaling off plus 480 px duel distance | +11% | z 3.3; each change alone was neutral |
-
-The full record, including every rejected idea, is in the
+The latest win was option surfing, borrowed from Diamond: before each enemy
+bullet arrives, Adaptive Prime simulates orbiting either way or stopping, and
+picks the safest. It raised the bot's score against the benchmark by 16%. The
+full record, including every rejected idea, is in the
 [Adaptive Prime roadmap](docs/plans/adaptive-prime-roadmap.md).
 
 ## Fastest Fight
@@ -156,15 +143,12 @@ CLI battle artifacts are written under `battle-results/runs/<timestamp>/`:
 | Generated telemetry event contract | [Telemetry Event Schema](docs/telemetry-schema.md) |
 | Porting a legacy bot to native Python | [Legacy Bot Porting Guideline](docs/legacy-bot-porting-guideline.md) |
 | Specific bot behavior | [Bot Docs](docs/README.md#bot-docs) |
-| Tuning history and pooled baselines | [Adaptive Prime Roadmap](docs/plans/adaptive-prime-roadmap.md) |
+| Tuning history and benchmark results | [Adaptive Prime Roadmap](docs/plans/adaptive-prime-roadmap.md) |
 
 ## Local Configuration
 
-Copy `.env.example` to `.env` and keep machine-specific paths there. `.env`,
-`.env.guns`, `battle-results/`, `dist/`, `.venv/`, and `legacy-bots/` are
-ignored. Common settings are `PYTHON_BIN`, `ROBOCODE_PYTHON_BIN`, the
-`ROBOCODE_TELEMETRY_*` group, `ROBOCODE_GUN_MODE`, `ROBOCODE_GUN_SET`, and
-`ROBOCODE_LEGACY_BOTS_ROOT`; see [Tooling: Setup](docs/tooling.md#setup).
+Copy `.env.example` to `.env` and keep machine-specific paths there; the
+settings are described in [Tooling: Setup](docs/tooling.md#setup).
 
 Converted legacy Java bots are optional and only for parity or porting
 reference. Prefer the native ports under `bots/ports/` for repeatable tuning.
