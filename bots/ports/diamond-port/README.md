@@ -123,3 +123,9 @@ port. Telemetry is observation-only: with `--telemetry` the port emits
 `bot.turn_timing` (with `phase_us` for movement, gun and radar) and
 `bot.skipped_turn`. `ROBOCODE_DIAMOND_PORT_VERBOSE=1` prints Diamond's
 round-end gun ratings and hit percentages to stderr.
+
+## Credits And License
+
+Diamond is by Voidious, copyright 2009-2012, released under the zlib license.
+This port is an altered version, not the original: see [LICENSE](LICENSE) for
+the original notice, which must stay with this source.
