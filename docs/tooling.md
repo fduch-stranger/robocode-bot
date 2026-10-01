@@ -115,6 +115,13 @@ scripts/telemetry-ui.sh status
 `stop-all` stops viewer processes. `disable` prevents GUI-launched bots from
 starting new viewers.
 
+The viewer's arena shows each bot with its trail, radar beam, energy bar and
+bullets in flight, and, for the selected bot, the enemy waves it detected
+(bold arc over its escape range) and its aim point. The side panel shows the
+selected bot's live state and, when the bot uses option surfing, the danger
+of each option behind its latest choice. It selects the bot with the richest
+telemetry by default; ports log only position and timing.
+
 The event contract is generated from code:
 
 ```sh

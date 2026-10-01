@@ -199,7 +199,7 @@ class TelemetryHandler(SimpleHTTPRequestHandler):
             pid = fields.get("pid")
         timestamp = _numeric(event.get("ts"))
         latest_session = _latest_session(handler._event_cache)
-        has_battle_events = any(cached.get("event") != "telemetry.session" for cached in handler._event_cache)
+        has_battle_events = any(_is_battle_event(cached) for cached in handler._event_cache)
         has_previous_bot_session = any(
             cached.get("event") == "telemetry.session"
             and cached.get("bot") == bot
@@ -224,7 +224,10 @@ class TelemetryHandler(SimpleHTTPRequestHandler):
         if self._in_current_battle_reset_group(timestamp):
             return
 
-        if any(cached.get("event") != "battle.reset" for cached in handler._event_cache):
+        # Only gameplay from an earlier battle makes this a new battle. Startup records
+        # (sessions, bot.config) carry no turn; another bot's startup must not be wiped,
+        # because bots that never write battle.reset (the ports) would vanish for good.
+        if any(_is_battle_event(cached) and cached.get("event") != "battle.reset" for cached in handler._event_cache):
             self._start_new_generation()
         handler._battle_reset_group_timestamp = timestamp
 
@@ -261,6 +264,12 @@ def _int_query(query: dict[str, list[str]], name: str, default: int, minimum: in
     except ValueError:
         value = default
     return max(minimum, min(maximum, value))
+
+
+def _is_battle_event(event: dict[str, object]) -> bool:
+    """Events recorded during play carry a turn number; startup records do not."""
+    turn = event.get("turn")
+    return isinstance(turn, (int, float)) and not isinstance(turn, bool)
 
 
 def _numeric(value: object) -> float | None:

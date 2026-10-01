@@ -6,7 +6,8 @@ const state = {
   generation: 0,
   maxEvents: 12000,
   inactiveBotSeconds: 15,
-  palette: ["#5ab0ff", "#69d391", "#f2bf62", "#ff7373", "#b68cff", "#65d6cf"],
+  palette: ["#5ab0ff", "#5fd38d", "#f2bf62", "#ff6b6b", "#b68cff", "#5ad6ff"],
+  lastNewEventsAt: 0,
 };
 
 const arena = document.getElementById("arena");
@@ -22,11 +23,11 @@ const movementTimelineCtx = movementTimeline.getContext("2d");
 
 const modePalette = [
   "#5ab0ff",
-  "#69d391",
+  "#5fd38d",
   "#f2bf62",
-  "#ff7373",
+  "#ff6b6b",
   "#b68cff",
-  "#65d6cf",
+  "#5ad6ff",
   "#e58bd8",
   "#9fb26a",
 ];
@@ -52,6 +53,7 @@ document.getElementById("resetTelemetry").addEventListener("click", resetTelemet
 
 poll();
 setInterval(poll, 1000);
+window.addEventListener("resize", () => render());
 
 async function resetTelemetry() {
   if (!window.confirm("Reset telemetry stats for this viewer? Current JSONL event files will be truncated.")) {
@@ -95,9 +97,14 @@ async function poll() {
     } else {
       state.events = events.slice(-state.maxEvents);
     }
+    if (events.length) {
+      state.lastNewEventsAt = Date.now();
+    }
     state.cursor = payload.cursor || state.cursor;
     state.generation = payload.generation || state.generation;
-    document.getElementById("source").textContent = `${payload.dir || ""} (${(payload.files || []).length} files)`;
+    const source = document.getElementById("source");
+    source.textContent = `${shortPath(payload.dir || "")} · ${(payload.files || []).length} files`;
+    source.title = payload.dir || "";
     document.getElementById("eventCount").textContent = `${state.events.length} events`;
     document.getElementById("lastUpdate").textContent = new Date().toLocaleTimeString();
     rebuildBots();
@@ -128,7 +135,12 @@ function rebuildBots() {
     }
   }
   if (!state.selected || !state.bots.has(state.selected)) {
-    state.selected = state.bots.keys().next().value || null;
+    // Default to the bot with the richest telemetry, not whichever logged first.
+    let richest = null;
+    for (const bot of state.bots.values()) {
+      if (!richest || bot.events.length > richest.events.length) richest = bot;
+    }
+    state.selected = richest?.name || null;
   }
 }
 
@@ -152,10 +164,12 @@ function isInactiveBot(bot, newestTimestamp) {
 }
 
 function render() {
+  renderStatus();
   renderTabs();
   renderArena();
   renderMetrics();
-  renderChart(energyCtx, state.selected, (event) => displayEnergy(numberAt(event, "state.energy")).value, 0, 120, "#69d391");
+  renderSurfDecision();
+  renderChart(energyCtx, state.selected, (event) => displayEnergy(numberAt(event, "state.energy")).value, 0, 100, "#5fd38d");
   renderChart(distanceCtx, state.selected, (event) => event.normalized?.distance, 0, null, "#f2bf62");
   renderPerformance();
   renderModeTimeline(gunTimelineCtx, state.selected, gunModeFromEvent);
@@ -168,8 +182,12 @@ function renderTabs() {
   tabs.replaceChildren();
   for (const bot of state.bots.values()) {
     const button = document.createElement("button");
-    button.textContent = bot.name;
+    const swatch = document.createElement("span");
+    swatch.className = "swatch";
+    swatch.style.background = bot.color;
+    button.append(swatch, document.createTextNode(bot.name));
     button.className = bot.name === state.selected ? "active" : "";
+    if (bot.name === state.selected) button.style.color = bot.color;
     button.addEventListener("click", () => {
       state.selected = bot.name;
       render();
@@ -178,83 +196,329 @@ function renderTabs() {
   }
 }
 
+function renderStatus() {
+  const live = Date.now() - state.lastNewEventsAt < 4000;
+  const chip = document.getElementById("liveChip");
+  chip.classList.toggle("live", live);
+  document.getElementById("liveLabel").textContent = live ? "live" : state.events.length ? "idle" : "waiting";
+  const latest = state.bots.get(state.selected)?.latest;
+  document.getElementById("turnChip").textContent = `turn ${latest?.turn ?? "-"}`;
+}
+
+function shortPath(path) {
+  const parts = String(path).split(/[\\/]/).filter(Boolean);
+  if (parts.length <= 3) return path;
+  return `…/${parts.slice(-3).join("/")}`;
+}
+
+function prepareCanvas(ctx) {
+  const canvas = ctx.canvas;
+  const ratio = window.devicePixelRatio || 1;
+  const width = Math.max(10, Math.round(canvas.clientWidth || canvas.width));
+  const height = Math.max(10, Math.round(canvas.clientHeight || canvas.height));
+  if (canvas.width !== Math.round(width * ratio) || canvas.height !== Math.round(height * ratio)) {
+    canvas.width = Math.round(width * ratio);
+    canvas.height = Math.round(height * ratio);
+  }
+  ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+  return { width, height };
+}
+
+function currentRoundEvents(bot) {
+  // Events since the bot's turn counter last went backwards, i.e. this round.
+  const events = bot?.events || [];
+  let start = 0;
+  for (let index = 1; index < events.length; index += 1) {
+    const previous = events[index - 1].turn;
+    const turn = events[index].turn;
+    if (typeof previous === "number" && typeof turn === "number" && turn + 5 < previous) start = index;
+  }
+  return events.slice(start);
+}
+
+function hexToRgba(hex, alpha) {
+  const value = hex.replace("#", "");
+  const r = parseInt(value.slice(0, 2), 16);
+  const g = parseInt(value.slice(2, 4), 16);
+  const b = parseInt(value.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
 function renderArena() {
-  arenaCtx.clearRect(0, 0, arena.width, arena.height);
-  arenaCtx.fillStyle = "#050607";
-  arenaCtx.fillRect(0, 0, arena.width, arena.height);
+  const { width: viewWidth, height: viewHeight } = prepareCanvas(arenaCtx);
+  const ctx = arenaCtx;
+  ctx.fillStyle = "#080b0f";
+  ctx.fillRect(0, 0, viewWidth, viewHeight);
 
   const latest = [...state.bots.values()].map((bot) => bot.latest).filter(Boolean);
   const width = maxValue(latest, "state.arena_width", 800);
   const height = maxValue(latest, "state.arena_height", 600);
-  const pad = 28;
-  const scale = Math.min((arena.width - pad * 2) / width, (arena.height - pad * 2) / height);
-  const offsetX = (arena.width - width * scale) / 2;
-  const offsetY = (arena.height - height * scale) / 2;
+  const pad = 22;
+  const scale = Math.min((viewWidth - pad * 2) / width, (viewHeight - pad * 2) / height);
+  const offsetX = (viewWidth - width * scale) / 2;
+  const offsetY = (viewHeight - height * scale) / 2;
+  const toX = (x) => offsetX + x * scale;
+  const toY = (y) => offsetY + (height - y) * scale;
 
-  arenaCtx.strokeStyle = "#36424d";
-  arenaCtx.lineWidth = 2;
-  arenaCtx.strokeRect(offsetX, offsetY, width * scale, height * scale);
+  const field = ctx.createLinearGradient(0, offsetY, 0, offsetY + height * scale);
+  field.addColorStop(0, "#141b23");
+  field.addColorStop(1, "#10161c");
+  ctx.fillStyle = field;
+  ctx.fillRect(offsetX, offsetY, width * scale, height * scale);
+  ctx.strokeStyle = "rgba(255,255,255,0.045)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let gx = 100; gx < width; gx += 100) {
+    ctx.moveTo(toX(gx), offsetY);
+    ctx.lineTo(toX(gx), offsetY + height * scale);
+  }
+  for (let gy = 100; gy < height; gy += 100) {
+    ctx.moveTo(offsetX, toY(gy));
+    ctx.lineTo(offsetX + width * scale, toY(gy));
+  }
+  ctx.stroke();
 
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(offsetX, offsetY, width * scale, height * scale);
+  ctx.clip();
+
+  const selectedBot = state.bots.get(state.selected);
+  const positions = [];
   for (const bot of state.bots.values()) {
-    const event = bot.latest;
-    if (!event) continue;
-    const x = numberAt(event, "state.x");
-    const y = numberAt(event, "state.y");
-    if (x == null || y == null) continue;
-    const px = offsetX + x * scale;
-    const py = offsetY + (height - y) * scale;
-    const selected = bot.name === state.selected;
+    const x = numberAt(bot.latest, "state.x");
+    const y = numberAt(bot.latest, "state.y");
+    if (x != null && y != null) positions.push({ bot, x, y });
+  }
 
-    drawVector(px, py, numberAt(event, "state.direction"), selected ? 46 : 34, bot.color, 4);
-    drawVector(px, py, numberAt(event, "state.gun_direction"), selected ? 62 : 48, "#f2bf62", 3);
-    drawVector(px, py, numberAt(event, "state.radar_direction"), selected ? 88 : 68, "rgba(90,176,255,0.45)", 16);
-
-    arenaCtx.beginPath();
-    arenaCtx.arc(px, py, selected ? 10 : 8, 0, Math.PI * 2);
-    arenaCtx.fillStyle = bot.color;
-    arenaCtx.fill();
-    arenaCtx.strokeStyle = selected ? "#ffffff" : "#101315";
-    arenaCtx.lineWidth = selected ? 3 : 2;
-    arenaCtx.stroke();
-
-    arenaCtx.fillStyle = "#e9eef2";
-    arenaCtx.font = "12px -apple-system, BlinkMacSystemFont, sans-serif";
-    arenaCtx.fillText(`${bot.name} ${displayEnergy(numberAt(event, "state.energy")).label}`, px + 12, py - 12);
-
-    const targetX = numberAt(event, "fields.predicted_x");
-    const targetY = numberAt(event, "fields.predicted_y");
-    if (selected && targetX != null && targetY != null) {
-      const tx = offsetX + targetX * scale;
-      const ty = offsetY + (height - targetY) * scale;
-      arenaCtx.strokeStyle = "rgba(242,191,98,0.75)";
-      arenaCtx.setLineDash([5, 4]);
-      arenaCtx.beginPath();
-      arenaCtx.moveTo(px, py);
-      arenaCtx.lineTo(tx, ty);
-      arenaCtx.stroke();
-      arenaCtx.setLineDash([]);
-      arenaCtx.fillStyle = "#f2bf62";
-      arenaCtx.fillRect(tx - 4, ty - 4, 8, 8);
+  // Enemy waves the selected bot is surfing, from its own enemy-fire detections.
+  if (selectedBot?.latest) {
+    const turn = selectedBot.latest.turn;
+    const sx = numberAt(selectedBot.latest, "state.x");
+    const sy = numberAt(selectedBot.latest, "state.y");
+    for (const event of currentRoundEvents(selectedBot)) {
+      if (event.event !== "enemy.fire_detected") continue;
+      const fields = event.fields || {};
+      const ox = fields.fire_source_x;
+      const oy = fields.fire_source_y;
+      const power = fields.power;
+      const fireTurn = fields.inferred_fire_turn;
+      if ([ox, oy, power, fireTurn, turn, sx, sy].some((value) => typeof value !== "number")) continue;
+      const speed = 20 - 3 * power;
+      const radius = speed * (turn - (fireTurn - 1));
+      const gap = Math.hypot(sx - ox, sy - oy) - radius;
+      if (radius <= 0 || gap < -30) continue;
+      const closeness = Math.max(0, Math.min(1, 1 - gap / 260));
+      ctx.strokeStyle = "rgba(90,214,255,0.16)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(toX(ox), toY(oy), radius * scale, 0, Math.PI * 2);
+      ctx.stroke();
+      const bearing = Math.atan2(sy - oy, sx - ox);
+      const spread = Math.asin(Math.min(1, 8 / speed));
+      ctx.strokeStyle = `rgba(90,214,255,${0.35 + 0.65 * closeness})`;
+      ctx.lineWidth = 2 + closeness * 2;
+      ctx.shadowColor = "rgba(90,214,255,0.6)";
+      ctx.shadowBlur = 8 * closeness;
+      ctx.beginPath();
+      ctx.arc(toX(ox), toY(oy), radius * scale, -bearing - spread, -bearing + spread);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
     }
+  }
+
+  // Trails.
+  for (const bot of state.bots.values()) {
+    // One point per turn: a bot can log several events in the same turn.
+    const byTurn = new Map();
+    for (const event of currentRoundEvents(bot)) {
+      const x = numberAt(event, "state.x");
+      const y = numberAt(event, "state.y");
+      if (x != null && y != null && typeof event.turn === "number") byTurn.set(event.turn, [x, y]);
+    }
+    const samples = [...byTurn.entries()].sort((a, b) => a[0] - b[0]).slice(-70);
+    const points = samples.map(([, point]) => point);
+    for (let index = 1; index < points.length; index += 1) {
+      // Sparse loggers (position every few dozen turns) would draw misleading straight jumps.
+      if (samples[index][0] - samples[index - 1][0] > 6) continue;
+      ctx.strokeStyle = hexToRgba(bot.color, 0.5 * index / points.length);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(toX(points[index - 1][0]), toY(points[index - 1][1]));
+      ctx.lineTo(toX(points[index][0]), toY(points[index][1]));
+      ctx.stroke();
+    }
+  }
+
+  // Bullets in flight, from each bot's own fire events.
+  for (const bot of state.bots.values()) {
+    const turn = bot.latest?.turn;
+    if (typeof turn !== "number") continue;
+    const roundEvents = currentRoundEvents(bot);
+    const finished = new Set(
+      roundEvents.filter((event) => event.event === "bullet.hit_bot").map((event) => String(event.fields?.bullet_id)),
+    );
+    for (const event of roundEvents) {
+      if (event.event !== "bullet.fired") continue;
+      const fields = event.fields || {};
+      if (finished.has(String(fields.bullet_id))) continue;
+      const x0 = numberAt(event, "state.x");
+      const y0 = numberAt(event, "state.y");
+      if (x0 == null || y0 == null || typeof fields.direction !== "number" || typeof fields.power !== "number") continue;
+      const age = turn - event.turn;
+      if (age < 0 || age > 90) continue;
+      const speed = 20 - 3 * fields.power;
+      const heading = fields.direction * Math.PI / 180;
+      const bx = x0 + Math.cos(heading) * speed * age;
+      const by = y0 + Math.sin(heading) * speed * age;
+      if (bx < 0 || by < 0 || bx > width || by > height) continue;
+      const tx = x0 + Math.cos(heading) * speed * Math.max(0, age - 2);
+      const ty = y0 + Math.sin(heading) * speed * Math.max(0, age - 2);
+      ctx.strokeStyle = "rgba(242,191,98,0.45)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(toX(tx), toY(ty));
+      ctx.lineTo(toX(bx), toY(by));
+      ctx.stroke();
+      ctx.fillStyle = "#f2bf62";
+      ctx.beginPath();
+      ctx.arc(toX(bx), toY(by), 1.5 + fields.power, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  for (const { bot, x, y } of positions) {
+    drawTank(ctx, bot, toX(x), toY(y), scale, bot.name === state.selected, [offsetX, offsetX + width * scale]);
+  }
+  ctx.restore();
+
+  ctx.strokeStyle = "#2c3744";
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(offsetX, offsetY, width * scale, height * scale);
+
+  // Aim point of the selected bot.
+  const event = selectedBot?.latest;
+  const targetX = numberAt(lastMatchingEvent(selectedBot, (item) => numberAt(item, "fields.predicted_x") != null), "fields.predicted_x");
+  const targetY = numberAt(lastMatchingEvent(selectedBot, (item) => numberAt(item, "fields.predicted_y") != null), "fields.predicted_y");
+  const px = numberAt(event, "state.x");
+  const py = numberAt(event, "state.y");
+  if (targetX != null && targetY != null && px != null && py != null) {
+    ctx.strokeStyle = "rgba(242,191,98,0.7)";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([5, 4]);
+    ctx.beginPath();
+    ctx.moveTo(toX(px), toY(py));
+    ctx.lineTo(toX(targetX), toY(targetY));
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.strokeStyle = "#f2bf62";
+    ctx.beginPath();
+    ctx.arc(toX(targetX), toY(targetY), 6, 0, Math.PI * 2);
+    ctx.moveTo(toX(targetX) - 9, toY(targetY));
+    ctx.lineTo(toX(targetX) + 9, toY(targetY));
+    ctx.moveTo(toX(targetX), toY(targetY) - 9);
+    ctx.lineTo(toX(targetX), toY(targetY) + 9);
+    ctx.stroke();
   }
 }
 
-function drawVector(x, y, degrees, length, color, width) {
-  if (degrees == null) return;
-  const radians = degrees * Math.PI / 180;
-  arenaCtx.strokeStyle = color;
-  arenaCtx.lineWidth = width;
-  arenaCtx.beginPath();
-  arenaCtx.moveTo(x, y);
-  arenaCtx.lineTo(x + Math.cos(radians) * length, y - Math.sin(radians) * length);
-  arenaCtx.stroke();
+function drawTank(ctx, bot, cx, cy, scale, selected, bounds = [0, Infinity]) {
+  const event = bot.latest;
+  const energy = displayEnergy(numberAt(event, "state.energy"));
+  const size = 36 * scale;
+  const body = (numberAt(event, "state.direction") ?? 0) * Math.PI / 180;
+  const gun = numberAt(event, "state.gun_direction");
+  const radar = numberAt(event, "state.radar_direction");
+
+  if (radar != null) {
+    const angle = -radar * Math.PI / 180;
+    const reach = 120 * scale;
+    const beam = ctx.createRadialGradient(cx, cy, 0, cx, cy, reach);
+    beam.addColorStop(0, "rgba(90,176,255,0.28)");
+    beam.addColorStop(1, "rgba(90,176,255,0)");
+    ctx.fillStyle = beam;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, reach, angle - 0.18, angle + 0.18);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  if (selected) {
+    ctx.strokeStyle = hexToRgba(bot.color, 0.35);
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, size * 0.95, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(-body);
+  ctx.shadowColor = hexToRgba(bot.color, 0.55);
+  ctx.shadowBlur = selected ? 14 : 8;
+  ctx.fillStyle = hexToRgba(bot.color, energy.dead ? 0.25 : 0.9);
+  roundRect(ctx, -size / 2, -size * 0.4, size, size * 0.8, 4);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = "rgba(0,0,0,0.28)";
+  ctx.fillRect(-size / 2, -size * 0.4, size, size * 0.14);
+  ctx.fillRect(-size / 2, size * 0.26, size, size * 0.14);
+  ctx.restore();
+
+  if (gun != null) {
+    const angle = gun * Math.PI / 180;
+    ctx.strokeStyle = "#f6f1df";
+    ctx.lineWidth = 3;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(angle) * size * 0.85, cy - Math.sin(angle) * size * 0.85);
+    ctx.stroke();
+    ctx.lineCap = "butt";
+  }
+  ctx.fillStyle = "#f6f1df";
+  ctx.beginPath();
+  ctx.arc(cx, cy, Math.max(3, size * 0.16), 0, Math.PI * 2);
+  ctx.fill();
+
+  const barWidth = Math.max(44, size * 1.6);
+  const barTop = cy - size * 0.95 - 8;
+  const value = Math.max(0, Math.min(100, energy.value ?? 0));
+  ctx.fillStyle = "rgba(0,0,0,0.5)";
+  roundRect(ctx, cx - barWidth / 2 - 1, barTop - 1, barWidth + 2, 7, 3);
+  ctx.fill();
+  ctx.fillStyle = value > 50 ? "#5fd38d" : value > 20 ? "#f2bf62" : "#ff6b6b";
+  roundRect(ctx, cx - barWidth / 2, barTop, barWidth * value / 100, 5, 2.5);
+  ctx.fill();
+
+  ctx.font = "600 12px Inter, -apple-system, BlinkMacSystemFont, sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillStyle = selected ? "#ffffff" : "#c9d4de";
+  const label = `${bot.name}  ${energy.label}`;
+  const half = ctx.measureText(label).width / 2;
+  const labelX = Math.min(Math.max(cx, bounds[0] + half + 6), bounds[1] - half - 6);
+  ctx.fillText(label, labelX, barTop - 6);
+  ctx.textAlign = "start";
+}
+
+function roundRect(ctx, x, y, width, height, radius) {
+  ctx.beginPath();
+  if (ctx.roundRect) {
+    ctx.roundRect(x, y, Math.max(0, width), height, radius);
+  } else {
+    ctx.rect(x, y, Math.max(0, width), height);
+  }
 }
 
 function renderMetrics() {
-  document.getElementById("selectedBot").textContent = state.selected || "none";
+  const selectedPill = document.getElementById("selectedBot");
+  selectedPill.textContent = state.selected || "none";
+  const bot = state.bots.get(state.selected);
+  selectedPill.style.color = bot?.color || "";
   const metrics = document.getElementById("metrics");
   metrics.replaceChildren();
-  const bot = state.bots.get(state.selected);
   const latest = bot?.latest;
   const lastFire = lastEvent(bot, "bullet.fired");
   const lastGunSwitch = lastEvent(bot, "gun.switch");
@@ -264,54 +528,120 @@ function renderMetrics() {
   const lastMovement = lastMatchingEvent(bot, (event) => event.normalized?.movementMode);
   const lastThreat = lastEvent(bot, "enemy.fire_detected");
   const botConfig = lastEvent(bot, "bot.config");
+  const energy = displayEnergy(numberAt(latest, "state.energy"));
 
   const cards = [
-    ["Turn", latest?.turn],
-    ["Energy", displayEnergy(numberAt(latest, "state.energy")).label],
-    ["Position", latest ? `${format(numberAt(latest, "state.x"))}, ${format(numberAt(latest, "state.y"))}` : "-"],
-    ["Target", lastTarget?.normalized?.target ?? "-"],
-    ["Movement", movementModeFromEvent(lastMovement) || "-"],
-    ["Evasion", latest?.normalized?.evading ?? lastThreat?.normalized?.evasion ?? "-"],
-    ["Gun", gunModeFromEvent(lastAim) || gunModeFromEvent(lastFire) || lastGunSwitch?.fields?.selected || "-"],
-    ["Live Guns", gunList(botConfig?.fields?.selectable_guns)],
-    ["Pinned Gun", botConfig?.fields?.forced_gun || "-"],
-    ["Gun Bearing Error", format(lastAim?.normalized?.gunBearing)],
-    ["Firepower", format(lastFire?.normalized?.power)],
-    ["Gun Confidence", format(lastFire?.fields?.gun_confidence)],
-    ["Distance", format(lastDistance?.normalized?.distance)],
-    ["Last Event", latest?.event || "-"],
+    { label: "Energy", value: energy.label, accent: "#5fd38d", energy: energy.value },
+    { label: "Turn", value: latest?.turn, accent: "#5ab0ff" },
+    { label: "Movement", value: movementModeFromEvent(lastMovement) || "-", accent: "#5ad6ff" },
+    { label: "Gun", value: gunModeFromEvent(lastAim) || gunModeFromEvent(lastFire) || lastGunSwitch?.fields?.selected || "-", accent: "#f2bf62" },
+    { label: "Firepower", value: format(lastFire?.normalized?.power), accent: "#f2bf62" },
+    { label: "Gun Confidence", value: format(lastFire?.fields?.gun_confidence), accent: "#f2bf62" },
+    { label: "Distance", value: format(lastDistance?.normalized?.distance), accent: "#b68cff" },
+    { label: "Target", value: lastTarget?.normalized?.target ?? "-", accent: "#b68cff" },
+    { label: "Evasion", value: latest?.normalized?.evading ?? lastThreat?.normalized?.evasion ?? "-", accent: "#ff6b6b" },
+    { label: "Gun Bearing Error", value: format(lastAim?.normalized?.gunBearing), accent: "#ff6b6b" },
+    { label: "Position", value: latest ? `${format(numberAt(latest, "state.x"))}, ${format(numberAt(latest, "state.y"))}` : "-" },
+    { label: "Last Event", value: latest?.event || "-" },
+    { label: "Live Guns", value: gunList(botConfig?.fields?.selectable_guns), wide: true },
   ];
-  for (const [label, value] of cards) {
-    const card = document.createElement("div");
-    card.className = "metric";
-    card.innerHTML = `<div class="label">${escapeHtml(label)}</div><div class="value">${escapeHtml(value ?? "-")}</div>`;
-    metrics.appendChild(card);
+  if (botConfig?.fields?.forced_gun) {
+    cards.push({ label: "Pinned Gun", value: botConfig.fields.forced_gun, wide: true });
+  }
+  for (const card of cards) {
+    const element = document.createElement("div");
+    element.className = card.wide ? "metric wide" : "metric";
+    if (card.accent) element.style.setProperty("--accent", card.accent);
+    let html = `<div class="label">${escapeHtml(card.label)}</div><div class="value">${escapeHtml(card.value ?? "-")}</div>`;
+    if (card.energy != null) {
+      const width = Math.max(0, Math.min(100, card.energy));
+      html += `<div class="energyBar"><span style="width:${width}%;background-position:${100 - width}% 0"></span></div>`;
+    }
+    element.innerHTML = html;
+    metrics.appendChild(element);
   }
 }
 
+function renderSurfDecision() {
+  const root = document.getElementById("surfCard");
+  const bot = state.bots.get(state.selected);
+  const decision = lastEvent(bot, "movement.option_surf");
+  if (!decision) {
+    root.hidden = true;
+    return;
+  }
+  root.hidden = false;
+  const fields = decision.fields || {};
+  const options = [
+    ["cw", "orbit clockwise", fields.danger_cw],
+    ["stop", "stop", fields.danger_stop],
+    ["ccw", "orbit counter-clockwise", fields.danger_ccw],
+  ];
+  const values = options.map(([, , value]) => (typeof value === "number" ? value : 0));
+  const top = Math.max(...values, 1e-9);
+  const rows = options
+    .map(([key, label, value], index) => {
+      const chosen = fields.option === key;
+      const width = Math.max(2, (values[index] / top) * 100);
+      return `<div class="surfRow${chosen ? " chosen" : ""}"><span>${chosen ? "▶ " : ""}${escapeHtml(label.replace("orbit ", ""))}</span><div class="bar"><span style="width:${width}%"></span></div><span class="num">${format(value)}</span></div>`;
+    })
+    .join("");
+  root.innerHTML = [
+    `<h3>Surf decision · turn ${escapeHtml(decision.turn ?? "-")}</h3>`,
+    `<div class="hint">Danger of each option against the next ${escapeHtml(fields.waves ?? 1)} wave(s); the bot takes the lowest.</div>`,
+    rows,
+  ].join("");
+}
+
 function renderChart(ctx, botName, getter, minValue, maxValueOrNull, color) {
-  const canvas = ctx.canvas;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = "#111518";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.strokeStyle = "#36424d";
-  ctx.strokeRect(0, 0, canvas.width, canvas.height);
+  const { width, height } = prepareCanvas(ctx);
+  ctx.fillStyle = "#0e1318";
+  ctx.fillRect(0, 0, width, height);
+  ctx.strokeStyle = "rgba(255,255,255,0.05)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let line = 1; line < 4; line += 1) {
+    const y = Math.round(height * line / 4) + 0.5;
+    ctx.moveTo(0, y);
+    ctx.lineTo(width, y);
+  }
+  ctx.stroke();
   const bot = state.bots.get(botName);
   if (!bot) return;
-  const points = bot.events.map(getter).filter((value) => value != null);
+  const points = bot.events.map(getter).filter((value) => value != null).slice(-240);
   if (points.length < 2) return;
   const maxValue = maxValueOrNull ?? Math.max(...points, 1);
+  const coords = points.map((value, index) => {
+    const x = 6 + index / Math.max(1, points.length - 1) * (width - 12);
+    const normalized = (value - minValue) / Math.max(1, maxValue - minValue);
+    const y = height - 8 - Math.max(0, Math.min(1, normalized)) * (height - 22);
+    return [x, y];
+  });
+  const fill = ctx.createLinearGradient(0, 0, 0, height);
+  fill.addColorStop(0, hexToRgba(color, 0.28));
+  fill.addColorStop(1, hexToRgba(color, 0));
+  ctx.fillStyle = fill;
+  ctx.beginPath();
+  ctx.moveTo(coords[0][0], height);
+  for (const [x, y] of coords) ctx.lineTo(x, y);
+  ctx.lineTo(coords[coords.length - 1][0], height);
+  ctx.closePath();
+  ctx.fill();
   ctx.strokeStyle = color;
   ctx.lineWidth = 2;
+  ctx.lineJoin = "round";
   ctx.beginPath();
-  points.slice(-240).forEach((value, index, visible) => {
-    const x = 8 + index / Math.max(1, visible.length - 1) * (canvas.width - 16);
-    const normalized = (value - minValue) / Math.max(1, maxValue - minValue);
-    const y = canvas.height - 8 - Math.max(0, Math.min(1, normalized)) * (canvas.height - 16);
-    if (index === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  });
+  coords.forEach(([x, y], index) => (index === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)));
   ctx.stroke();
+  const [lastX, lastY] = coords[coords.length - 1];
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(lastX, lastY, 3.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.font = "600 12px Inter, -apple-system, BlinkMacSystemFont, sans-serif";
+  ctx.textAlign = "right";
+  ctx.fillText(format(points[points.length - 1]), width - 8, 15);
+  ctx.textAlign = "start";
 }
 
 function renderPerformance() {
@@ -482,12 +812,10 @@ function rowsForGunModes(gunModes, gunModeHits, gunModeDamage) {
 }
 
 function renderModeTimeline(ctx, botName, modeGetter) {
-  const canvas = ctx.canvas;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = "#111518";
+  const { width: canvasWidth, height: canvasHeight } = prepareCanvas(ctx);
+  const canvas = { width: canvasWidth, height: canvasHeight };
+  ctx.fillStyle = "#0e1318";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.strokeStyle = "#36424d";
-  ctx.strokeRect(0, 0, canvas.width, canvas.height);
 
   const bot = state.bots.get(botName);
   if (!bot) return;
@@ -509,16 +837,18 @@ function renderModeTimeline(ctx, botName, modeGetter) {
   visible.forEach((point, index) => {
     const x = 8 + index / visible.length * width;
     const w = Math.max(2, Math.ceil(width / visible.length));
-    ctx.fillStyle = colors.get(point.mode);
+    ctx.fillStyle = hexToRgba(colors.get(point.mode), 0.85);
     ctx.fillRect(x, top, w, height);
   });
 
   let labelX = 8;
   for (const [mode, color] of colors) {
     ctx.fillStyle = color;
-    ctx.fillRect(labelX, 10, 10, 10);
-    ctx.fillStyle = "#cbd5dc";
-    ctx.font = "12px -apple-system, BlinkMacSystemFont, sans-serif";
+    ctx.beginPath();
+    ctx.arc(labelX + 5, 15, 4.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#c5d0da";
+    ctx.font = "12px Inter, -apple-system, BlinkMacSystemFont, sans-serif";
     ctx.fillText(mode, labelX + 14, 19);
     labelX += 18 + ctx.measureText(mode).width + 14;
     if (labelX > canvas.width - 90) break;
