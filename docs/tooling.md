@@ -75,9 +75,11 @@ Run artifacts live under `battle-results/runs/<timestamp>/`:
 - `debug/`, `telemetry/`, `recordings/`, `intents.jsonl`: optional outputs.
 
 Render a recording to an animated GIF (needs Pillow in the venv and, for the
-best palette, `ffmpeg`). It draws each bullet's wave, brightened as it reaches
-its target, marks near misses (within 40 px of a bot's centre without a hit)
-with the dodge gap, and shows hits and real energy. `--auto-window` picks the
+best palette, `ffmpeg`). It draws each bullet's wave with a bold arc over the
+target's escape range (`asin(8 / bullet speed)` either side of the gun line),
+brightened as it reaches the target; marks near misses (within 40 px of a
+bot's centre without a hit) with the dodge gap; and shows each hit as a white
+lost-energy chunk on the bar plus the damage. `--auto-window` picks the
 round and stretch with the most dodges, fewest hits and most energy left; the
 README battle animation was made this way:
 
