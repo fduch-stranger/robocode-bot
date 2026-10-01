@@ -12,11 +12,12 @@ spar against, and the tooling to prove whether a change made a bot stronger.
 ![Diamond Port vs Tomcat Port wave surfing: ten dodges and two hits](docs/assets/battle-diamond-vs-tomcat.gif)
 
 <sub>Two ported legends wave surfing. Each circle is a bullet's wave, coloured
-by its shooter and brightening as it reaches its target; the surfer slips
-through it and the gap is shown ("dodged by 7 px"). Red rings are hits, and
-the bars show real energy. Rendered from a real battle recording with
-`tools/render_battle_gif.py --auto-window`, which picks the stretch with the
-most dodges.</sub>
+by its shooter; the bold arc is the target's escape range, where that bullet
+can still hit, and it brightens as it closes in. The surfer slips through and
+the gap is shown ("dodged by 7 px"). On a hit, the lost energy flashes white
+on the bar and the damage floats up. Rendered from a real battle recording
+with `tools/render_battle_gif.py --auto-window`, which picks the stretch with
+the most dodges.</sub>
 
 ## Highlights
 

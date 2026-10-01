@@ -36,11 +36,14 @@ MUTED = (139, 148, 158)
 HIT = (255, 120, 80)
 SPARK = (255, 220, 120)
 DODGE = (90, 220, 255)
+LOST = (245, 245, 245)
+DAMAGE_TEXT = (255, 95, 95)
 TRAIL_LENGTH = 40
 BULLET_TAIL = 3
 # A bullet that passes this close to a bot's centre without hitting is a near
 # miss: the hit circle is 18 px, so this is within about a body width.
 MISS_DISTANCE = 40.0
+HIT_FRAMES = 18
 
 
 def hex_color(value: str | None, fallback: tuple[int, int, int]) -> tuple[int, int, int]:
@@ -191,7 +194,10 @@ class Renderer:
             if event.get("type") == "BulletHitBotEvent":
                 bullet = event["bullet"]
                 self.blasts.append([bullet["x"], bullet["y"], 0, HIT])
-                self.hit_flash[event["victimId"]] = 6
+                damage = float(event.get("damage", 0.0))
+                before = float(event.get("energy", 0.0)) + damage
+                # The lost chunk stays on the bar in red and drains over HIT_FRAMES frames.
+                self.hit_flash[event["victimId"]] = {"frames": HIT_FRAMES, "from": before, "damage": damage}
             elif event.get("type") == "BulletHitBulletEvent":
                 bullet = event["bullet"]
                 self.blasts.append([bullet["x"], bullet["y"], 0, SPARK])
@@ -213,15 +219,25 @@ class Renderer:
                     for bot in bots
                     if bot["id"] != track["owner"]
                 ]
-                gap = min(gaps) if gaps else 200.0
-                if gap < -30:
-                    alpha = 20
-                else:
-                    alpha = int(25 + 150 * max(0.0, min(1.0, 1.0 - gap / 160.0)))
+                targets = [bot for bot in bots if bot["id"] != track["owner"]]
                 radius = world_radius * self.scale
                 ox, oy = self.to_image(*track["origin"])
                 color = colors.get(track["owner"], SPARK)
-                draw.ellipse([ox - radius, oy - radius, ox + radius, oy + radius], outline=(*color, alpha), width=2 if alpha > 120 else 1)
+                box = [ox - radius, oy - radius, ox + radius, oy + radius]
+                draw.ellipse(box, outline=(*color, 45), width=1)
+                if not targets:
+                    continue
+                target = min(targets, key=lambda bot: math.hypot(bot["x"] - track["origin"][0], bot["y"] - track["origin"][1]))
+                gap = math.hypot(target["x"] - track["origin"][0], target["y"] - track["origin"][1]) - world_radius
+                if gap < -36:
+                    continue
+                # The bold arc is the target's escape range, asin(8 / bullet speed) either side of
+                # the line from the gun: where this bullet can still reach it.
+                closeness = max(0.0, min(1.0, 1.0 - gap / 260.0))
+                alpha = int(90 + 165 * closeness)
+                bearing = math.degrees(math.atan2(target["y"] - track["origin"][1], target["x"] - track["origin"][0]))
+                spread = math.degrees(math.asin(min(1.0, 8.0 / track["speed"])))
+                draw.arc(box, -bearing - spread, -bearing + spread, fill=(*color, alpha), width=3 if closeness > 0.6 else 2)
 
         for track in self.misses_by_turn.get(turn, []):
             point = track["closest"][2]
@@ -271,6 +287,7 @@ class Renderer:
 
         positions = {bot["id"]: bot for bot in bots}
         remaining = []
+        labels_per_bot: dict[int, int] = {}
         for dodge in self.dodges:
             x, y, age, victim, gap = dodge
             cx, cy = self.to_image(x, y)
@@ -284,7 +301,10 @@ class Renderer:
                 label_x = bx + 22
                 if label_x + draw.textlength(label, font=self.font) > right - 4:
                     label_x = bx - 22 - draw.textlength(label, font=self.font)
-                label_y = max(top + 4, by - 34 - age * 1.2)
+                # Below the bot, clear of its energy bar.
+                stack = labels_per_bot.get(victim, 0)
+                labels_per_bot[victim] = stack + 1
+                label_y = min(bottom - 20 - 17 * stack, by + 22 + 17 * stack)
                 draw.text((label_x, label_y), label, fill=(*DODGE, alpha), font=self.font)
             dodge[2] += 1
             if dodge[2] < 16:
@@ -331,16 +351,33 @@ class Renderer:
         radar_length = 60 * self.scale
         draw.line([cx, cy, cx + math.cos(radar) * radar_length, cy - math.sin(radar) * radar_length], fill=(*accent, 70), width=1)
         energy = max(0.0, min(100.0, bot.get("energy", 0.0)))
-        flash = self.hit_flash.get(bot["id"], 0)
-        bar_width = 64 * self.scale
-        bar_top = cy - half - 16
-        bar_color = HIT if flash > 0 else color
-        draw.rectangle([cx - bar_width / 2 - 1, bar_top - 1, cx + bar_width / 2 + 1, bar_top + 7], fill=(48, 54, 61))
-        draw.rectangle([cx - bar_width / 2, bar_top, cx - bar_width / 2 + bar_width * energy / 100.0, bar_top + 6], fill=bar_color)
+        bar_width = 90 * self.scale
+        bar_height = 8
+        bar_top = cy - half - 20
+        left_edge, top_edge = self.to_image(0, self.arena_height)
+        right_edge, _ = self.to_image(self.arena_width, 0)
+        bar_left = min(max(cx - bar_width / 2, left_edge + 3), right_edge - 3 - bar_width)
+        bar_top = max(bar_top, top_edge + 18)
+        draw.rectangle([bar_left - 1, bar_top - 1, bar_left + bar_width + 1, bar_top + bar_height + 1], fill=(48, 54, 61))
+        draw.rectangle([bar_left, bar_top, bar_left + bar_width * energy / 100.0, bar_top + bar_height], fill=color)
+        label_color = color
+        flash = self.hit_flash.get(bot["id"])
+        if flash:
+            progress = flash["frames"] / HIT_FRAMES
+            ghost = energy + (min(100.0, flash["from"]) - energy) * min(1.0, progress * 1.6)
+            draw.rectangle(
+                [bar_left + bar_width * energy / 100.0, bar_top, bar_left + bar_width * ghost / 100.0, bar_top + bar_height],
+                fill=LOST,
+            )
+            text = f"-{flash['damage']:.1f}"
+            rise = (HIT_FRAMES - flash["frames"]) * 1.2
+            draw.text((bar_left + bar_width + 6, bar_top - 6 - rise), text, fill=(*DAMAGE_TEXT, int(255 * max(0.2, progress))), font=self.font)
+            label_color = DAMAGE_TEXT
+            flash["frames"] -= 1
+            if flash["frames"] <= 0:
+                del self.hit_flash[bot["id"]]
         label = f"{energy:.0f}"
-        draw.text((cx - draw.textlength(label, font=self.small) / 2, bar_top - 15), label, fill=bar_color, font=self.small)
-        if flash > 0:
-            self.hit_flash[bot["id"]] = flash - 1
+        draw.text((bar_left + bar_width / 2 - draw.textlength(label, font=self.small) / 2, bar_top - 14), label, fill=label_color, font=self.small)
 
 
 def main() -> int:
