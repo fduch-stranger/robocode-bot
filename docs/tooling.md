@@ -75,14 +75,21 @@ Run artifacts live under `battle-results/runs/<timestamp>/`:
 - `debug/`, `telemetry/`, `recordings/`, `intents.jsonl`: optional outputs.
 
 Render a recording to an animated GIF (needs Pillow in the venv and, for the
-best palette, `ffmpeg`); the README battle animation was made this way:
+best palette, `ffmpeg`). It draws each bullet's wave, brightened as it reaches
+its target, marks near misses (within 40 px of a bot's centre without a hit)
+with the dodge gap, and shows hits and real energy. `--auto-window` picks the
+round and stretch with the most dodges, fewest hits and most energy left; the
+README battle animation was made this way:
 
 ```sh
 .venv/bin/pip install pillow
-scripts/run-battle.sh --record --rounds 2 bots/ports/diamond-port bots/ports/tomcat-port
+scripts/run-battle.sh --record --rounds 8 bots/ports/diamond-port bots/ports/tomcat-port
 tools/render_battle_gif.py battle-results/runs/<run>/recordings/<game>.battle.gz \
-  --output docs/assets/battle.gif --round 2 --start 485 --turns 150 --step 1 --fps 30
+  --output docs/assets/battle.gif --auto-window --turns 180 --step 1 --fps 30
 ```
+
+Use `--round N --start TURN` to choose the stretch yourself and `--no-waves`
+for bullets only.
 
 ## Telemetry
 
