@@ -93,6 +93,7 @@ class Renderer:
         self.trails: dict[int, deque] = {}
         self.bullet_tails: dict[int, deque] = {}
         self.blasts: list[list] = []
+        self.hit_flash: dict[int, int] = {}
         self.font = font(14)
         self.small = font(11)
 
@@ -122,6 +123,7 @@ class Renderer:
             if event.get("type") == "BulletHitBotEvent":
                 bullet = event["bullet"]
                 self.blasts.append([bullet["x"], bullet["y"], 0, HIT])
+                self.hit_flash[event["victimId"]] = 6
             elif event.get("type") == "BulletHitBulletEvent":
                 bullet = event["bullet"]
                 self.blasts.append([bullet["x"], bullet["y"], 0, SPARK])
@@ -202,10 +204,16 @@ class Renderer:
         radar_length = 60 * self.scale
         draw.line([cx, cy, cx + math.cos(radar) * radar_length, cy - math.sin(radar) * radar_length], fill=(*accent, 70), width=1)
         energy = max(0.0, min(100.0, bot.get("energy", 0.0)))
-        bar_width = 44 * self.scale
-        bar_top = cy - half - 13
-        draw.rectangle([cx - bar_width / 2, bar_top, cx + bar_width / 2, bar_top + 5], fill=(48, 54, 61))
-        draw.rectangle([cx - bar_width / 2, bar_top, cx - bar_width / 2 + bar_width * energy / 100.0, bar_top + 5], fill=color)
+        flash = self.hit_flash.get(bot["id"], 0)
+        bar_width = 64 * self.scale
+        bar_top = cy - half - 16
+        bar_color = HIT if flash > 0 else color
+        draw.rectangle([cx - bar_width / 2 - 1, bar_top - 1, cx + bar_width / 2 + 1, bar_top + 7], fill=(48, 54, 61))
+        draw.rectangle([cx - bar_width / 2, bar_top, cx - bar_width / 2 + bar_width * energy / 100.0, bar_top + 6], fill=bar_color)
+        label = f"{energy:.0f}"
+        draw.text((cx - draw.textlength(label, font=self.small) / 2, bar_top - 15), label, fill=bar_color, font=self.small)
+        if flash > 0:
+            self.hit_flash[bot["id"]] = flash - 1
 
 
 def main() -> int:

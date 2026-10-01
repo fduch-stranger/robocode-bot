@@ -9,11 +9,12 @@ A battle lab for [Robocode Tank Royale](https://github.com/robocode-dev/tank-roy
 bots in Python: our own bots, native ports of classic RoboRumble champions to
 spar against, and the tooling to prove whether a change made a bot stronger.
 
-![Diamond Port vs Tomcat Port, round 2 endgame](docs/assets/battle-diamond-vs-tomcat.gif)
+![Diamond Port vs Tomcat Port, mid-round exchange](docs/assets/battle-diamond-vs-tomcat.gif)
 
 <sub>Two ported legends, live: Diamond (yellow) and Tomcat (orange) trading
-fire at 15 energy each. Tracers are bullets, rings are hits. Rendered from a
-real battle recording with `tools/render_battle_gif.py`.</sub>
+fire with about 40 energy each. Tracers are bullets, rings are hits, and the
+bars show real energy, flashing red on a hit. Rendered from a real battle
+recording with `tools/render_battle_gif.py`.</sub>
 
 ## Highlights
 
