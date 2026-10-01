@@ -93,11 +93,12 @@ off for A/B benchmarking unless the task is specifically about telemetry.
 **Important:** Use semantic tooling when it can improve accuracy or reduce broad
 text scans.
 
-- Prefer Serena and JetBrains/IDE MCP tools for symbol lookup, references,
-  renames, moves, safe deletes, and inspections.
-- For JetBrains-backed Serena symbol tools, use concrete file paths for
-  file-oriented operations. Use directory scopes only for tools that explicitly
-  support them, such as symbol search.
+- Prefer Serena for symbol lookup, references, renames, and symbol-level
+  edits. `.serena/project.yml` pins the LSP backend with the Python language
+  server, so Serena's own symbol tools work without an IDE; JetBrains/IDE MCP
+  tools remain fine for moves, safe deletes, and inspections when available.
+- Use concrete file paths for file-oriented symbol operations. Use directory
+  scopes only for tools that explicitly support them, such as symbol search.
 - Before behavior, tooling, or architecture changes, list Serena memories and
   read the project memories that match the task.
 - Update Serena project memories when durable architecture, tooling, workflow,
