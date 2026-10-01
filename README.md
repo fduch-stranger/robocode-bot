@@ -37,7 +37,7 @@ the most dodges.</sub>
 | Bot | Kind | What it does |
 | --- | --- | --- |
 | [Adaptive Prime](bots/adaptive-prime/README.md) | Ours | Champion candidate: option surfing over learned danger, virtual guns, adaptive firepower, minimum-risk melee. |
-| [Chase Lock](bots/chase-lock/README.md) | Ours | Pressure fighter that keeps targets pinned by range and lock discipline; local melee champion. |
+| [Chase Lock](bots/chase-lock/README.md) | Ours | Pressure fighter that keeps targets pinned by range and lock discipline. |
 | [Circle Strafer](bots/circle-strafer/README.md) | Ours | Defensive orbit bot built around survival, spacing, and wall recovery. |
 | [Sweep Pressure](bots/sweep-pressure/README.md) | Ours | Direct-fire pressure bot with sweeping movement and projected wall avoidance. |
 | [BasicGFSurfer Port](bots/ports/basic-gf-surfer-port/README.md) | Port | The classic guess-factor wave surfer; the fixed 1v1 benchmark, never tuned. |
@@ -157,7 +157,6 @@ CLI battle artifacts are written under `battle-results/runs/<timestamp>/`:
 | Porting a legacy bot to native Python | [Legacy Bot Porting Guideline](docs/legacy-bot-porting-guideline.md) |
 | Specific bot behavior | [Bot Docs](docs/README.md#bot-docs) |
 | Tuning history and pooled baselines | [Adaptive Prime Roadmap](docs/plans/adaptive-prime-roadmap.md) |
-| Local championship snapshot | [Championship Results](docs/championship-results.md) |
 
 ## Local Configuration
 
