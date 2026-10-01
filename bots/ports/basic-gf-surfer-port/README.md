@@ -34,3 +34,9 @@ investigations can compare it with the shared-stack local bots.
 
 Porting lessons from this bot are captured in the
 [legacy bot porting guideline](../../../docs/legacy-bot-porting-guideline.md).
+
+## Credits
+
+Ported from `wiki.BasicGFSurfer 1.02`, the RoboWiki wave-surfing tutorial bot.
+Its jar names no author and carries no license notice; its helpers credit
+RaikoMicro by Jamougha.

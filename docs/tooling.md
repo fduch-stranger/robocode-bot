@@ -58,14 +58,14 @@ Common options:
 | `--intent-diagnostics` | Capture intent diagnostics. |
 | `--tick-sample N` | Sample runner ticks. |
 | `--legacy NAME|all` | Add converted legacy bots for porting/reference checks. |
+| `--legacy-root DIR` | Override converted legacy root. |
+| `--list-legacy` | Print known converted legacy aliases. |
 
 Battles take a machine-wide lock (`/tmp/robocode-battle-<uid>.lock`, shared by
 every checkout and worktree), so a second battle, series, or A/B run waits
 instead of competing for CPU. Concurrent battles skew bot turn timing and
 silently invalidate benchmark results. Set `ROBOCODE_BATTLE_LOCK=0` to opt out
 or `ROBOCODE_BATTLE_LOCK_PATH` to move the lock.
-| `--legacy-root DIR` | Override converted legacy root. |
-| `--list-legacy` | Print known converted legacy aliases. |
 
 Run artifacts live under `battle-results/runs/<timestamp>/`:
 
@@ -73,6 +73,16 @@ Run artifacts live under `battle-results/runs/<timestamp>/`:
 - `runner.log`: runner lifecycle and sampled tick data.
 - `process.log`: raw Robocode runner/server/booter output.
 - `debug/`, `telemetry/`, `recordings/`, `intents.jsonl`: optional outputs.
+
+Render a recording to an animated GIF (needs Pillow in the venv and, for the
+best palette, `ffmpeg`); the README battle animation was made this way:
+
+```sh
+.venv/bin/pip install pillow
+scripts/run-battle.sh --record --rounds 2 bots/ports/diamond-port bots/ports/tomcat-port
+tools/render_battle_gif.py battle-results/runs/<run>/recordings/<game>.battle.gz \
+  --output docs/assets/battle.gif --round 2 --start 1035 --turns 150 --step 1 --fps 30
+```
 
 ## Telemetry
 

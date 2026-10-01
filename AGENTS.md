@@ -30,7 +30,8 @@ bot behavior or tooling.
   any port.
 - `bots/bot_core/`: shared bot logic used by all bots.
 - `scripts/`: user-facing setup, packaging, battle, telemetry, and A/B commands.
-- `tools/`: battle runner, telemetry viewer, A/B runner, and audit utilities.
+- `tools/`: battle runner, telemetry viewer, A/B runner, audit utilities, and
+  the recording-to-GIF renderer.
 - `tests/`: unit tests for shared logic and tooling.
 
 ## Local Environment

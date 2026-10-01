@@ -116,3 +116,10 @@ tests instead.
 Telemetry is observation-only: with `--telemetry` the port emits
 `bot.turn_timing` (with `phase_us` for status, listeners, movement, gun, and
 commands) and `bot.skipped_turn`.
+
+## Credits And License
+
+Tomcat is by Alexey "jdev" Zhidkov. Its Java source carries the notice
+"Copyright (c) 2011 Alexey Zhidkov (Jdev). All Rights Reserved." and no license
+grant. This port is an altered Python version, not the original, and the
+original author retains all rights to Tomcat's design and code.
