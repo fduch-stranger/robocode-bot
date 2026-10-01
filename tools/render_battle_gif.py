@@ -35,8 +35,12 @@ TEXT = (230, 237, 243)
 MUTED = (139, 148, 158)
 HIT = (255, 120, 80)
 SPARK = (255, 220, 120)
+DODGE = (90, 220, 255)
 TRAIL_LENGTH = 40
 BULLET_TAIL = 3
+# A bullet that passes this close to a bot's centre without hitting is a near
+# miss: the hit circle is 18 px, so this is within about a body width.
+MISS_DISTANCE = 40.0
 
 
 def hex_color(value: str | None, fallback: tuple[int, int, int]) -> tuple[int, int, int]:
@@ -56,18 +60,74 @@ def readable(color: tuple[int, int, int], minimum: int = 90) -> tuple[int, int, 
     return tuple(min(255, int(c * scale)) for c in color)
 
 
-def load_frames(path: Path, round_number: int) -> tuple[dict, list[dict]]:
+def load_rounds(path: Path) -> tuple[dict, dict[int, list[dict]]]:
     setup: dict = {}
-    ticks: list[dict] = []
+    rounds: dict[int, list[dict]] = {}
     with gzip.open(path, "rt", encoding="utf-8") as handle:
         for line in handle:
             record = json.loads(line)
             kind = record.get("type")
             if kind == "GameStartedEventForObserver":
                 setup = record
-            elif kind == "TickEventForObserver" and record.get("roundNumber") == round_number:
-                ticks.append(record)
-    return setup, ticks
+            elif kind == "TickEventForObserver":
+                rounds.setdefault(record.get("roundNumber"), []).append(record)
+    return setup, rounds
+
+
+def bullet_tracks(ticks: list[dict]) -> dict[int, dict]:
+    """Per bullet: wave origin, speed, first turn, whether it hit, and its closest pass."""
+    tracks: dict[int, dict] = {}
+    for tick in ticks:
+        turn = tick["turnNumber"]
+        bots = tick.get("botStates", [])
+        for event in tick.get("events", []):
+            if event.get("type") in ("BulletHitBotEvent", "BulletHitBulletEvent"):
+                bullet_id = event["bullet"]["bulletId"]
+                tracks.setdefault(bullet_id, {"seed": event["bullet"], "turn": turn})["hit"] = True
+        for bullet in tick.get("bulletStates", []):
+            track = tracks.get(bullet["bulletId"])
+            if track is None or "origin" not in track:
+                speed = 20.0 - 3.0 * bullet.get("power", 1.0)
+                heading = math.radians(bullet["direction"])
+                # A bullet is first seen one step out from its gun.
+                track = tracks.setdefault(bullet["bulletId"], {})
+                track.update(
+                    origin=(bullet["x"] - math.cos(heading) * speed, bullet["y"] - math.sin(heading) * speed),
+                    speed=speed,
+                    first_turn=turn,
+                    owner=bullet["ownerId"],
+                    closest=(math.inf, turn, None, None),
+                )
+            for bot in bots:
+                if bot["id"] == bullet["ownerId"]:
+                    continue
+                distance = math.hypot(bullet["x"] - bot["x"], bullet["y"] - bot["y"])
+                if distance < track["closest"][0]:
+                    track["closest"] = (distance, turn, (bullet["x"], bullet["y"]), bot["id"])
+    for track in tracks.values():
+        closest = track.get("closest", (math.inf, 0, None, None))
+        track["near_miss"] = not track.get("hit") and closest[0] < MISS_DISTANCE
+    return tracks
+
+
+def best_dodge_window(rounds: dict[int, list[dict]], turns: int) -> tuple[int, int, int, int]:
+    """Round and start turn with the most near misses, fewest hits and most energy left."""
+    best = None
+    for round_number, ticks in rounds.items():
+        tracks = bullet_tracks(ticks)
+        misses = [t["closest"][1] for t in tracks.values() if t["near_miss"]]
+        hits = [tick["turnNumber"] for tick in ticks for e in tick.get("events", []) if e.get("type") == "BulletHitBotEvent"]
+        energy = {tick["turnNumber"]: min(b["energy"] for b in tick["botStates"]) for tick in ticks if tick.get("botStates")}
+        last = ticks[-1]["turnNumber"]
+        for start in range(30, max(31, last - turns), 10):
+            window_misses = sum(1 for turn in misses if start <= turn < start + turns)
+            window_hits = sum(1 for turn in hits if start <= turn < start + turns)
+            low_energy = energy.get(start + turns // 2, 0.0)
+            score = window_misses - 1.0 * window_hits + low_energy / 25.0
+            if best is None or score > best[0]:
+                best = (score, round_number, start, window_misses, window_hits)
+    assert best is not None
+    return best[1], best[2], best[3], best[4]
 
 
 def font(size: int):
@@ -80,7 +140,7 @@ def font(size: int):
 
 
 class Renderer:
-    def __init__(self, setup: dict, scale: float) -> None:
+    def __init__(self, setup: dict, scale: float, tracks: dict[int, dict] | None = None, waves: bool = True) -> None:
         game = setup.get("gameSetup", {})
         self.arena_width = float(game.get("arenaWidth", 800))
         self.arena_height = float(game.get("arenaHeight", 600))
@@ -94,6 +154,14 @@ class Renderer:
         self.bullet_tails: dict[int, deque] = {}
         self.blasts: list[list] = []
         self.hit_flash: dict[int, int] = {}
+        self.tracks = tracks or {}
+        self.waves = waves
+        self.misses_by_turn: dict[int, list[dict]] = {}
+        for track in self.tracks.values():
+            if track.get("near_miss"):
+                self.misses_by_turn.setdefault(track["closest"][1], []).append(track)
+        self.dodges: list[list] = []
+        self.dodge_count = 0
         self.font = font(14)
         self.small = font(11)
 
@@ -131,6 +199,34 @@ class Renderer:
                 victim = next((b for b in bots if b["id"] == event["victimId"]), None)
                 if victim is not None:
                     self.blasts.append([victim["x"], victim["y"], -6, HIT])
+
+        turn = tick.get("turnNumber", 0)
+        if self.waves:
+            for bullet in tick.get("bulletStates", []):
+                track = self.tracks.get(bullet["bulletId"])
+                if not track or "origin" not in track:
+                    continue
+                world_radius = track["speed"] * (turn - track["first_turn"] + 1)
+                # Brighten the wave as it closes on the nearest opponent: that is the one being dodged.
+                gaps = [
+                    math.hypot(bot["x"] - track["origin"][0], bot["y"] - track["origin"][1]) - world_radius
+                    for bot in bots
+                    if bot["id"] != track["owner"]
+                ]
+                gap = min(gaps) if gaps else 200.0
+                if gap < -30:
+                    alpha = 20
+                else:
+                    alpha = int(25 + 150 * max(0.0, min(1.0, 1.0 - gap / 160.0)))
+                radius = world_radius * self.scale
+                ox, oy = self.to_image(*track["origin"])
+                color = colors.get(track["owner"], SPARK)
+                draw.ellipse([ox - radius, oy - radius, ox + radius, oy + radius], outline=(*color, alpha), width=2 if alpha > 120 else 1)
+
+        for track in self.misses_by_turn.get(turn, []):
+            point = track["closest"][2]
+            self.dodges.append([point[0], point[1], 0, track["closest"][3], max(0.0, track["closest"][0] - 18.0)])
+            self.dodge_count += 1
 
         for bot in bots:
             trail = self.trails.setdefault(bot["id"], deque(maxlen=TRAIL_LENGTH))
@@ -173,9 +269,40 @@ class Renderer:
                 remaining.append(blast)
         self.blasts = remaining
 
+        positions = {bot["id"]: bot for bot in bots}
+        remaining = []
+        for dodge in self.dodges:
+            x, y, age, victim, gap = dodge
+            cx, cy = self.to_image(x, y)
+            alpha = max(0, 255 - age * 16)
+            radius = 3 + age * 0.8
+            draw.ellipse([cx - radius, cy - radius, cx + radius, cy + radius], outline=(*DODGE, alpha), width=2)
+            bot = positions.get(victim)
+            if bot is not None:
+                bx, by = self.to_image(bot["x"], bot["y"])
+                label = f"dodged by {gap:.0f} px"
+                label_x = bx + 22
+                if label_x + draw.textlength(label, font=self.font) > right - 4:
+                    label_x = bx - 22 - draw.textlength(label, font=self.font)
+                label_y = max(top + 4, by - 34 - age * 1.2)
+                draw.text((label_x, label_y), label, fill=(*DODGE, alpha), font=self.font)
+            dodge[2] += 1
+            if dodge[2] < 16:
+                remaining.append(dodge)
+        self.dodges = remaining
+
+        # Waves may extend past the arena; repaint the frame around it.
+        draw.rectangle([0, 0, self.width, top - 1], fill=BACKGROUND)
+        draw.rectangle([0, bottom + 1, self.width, self.height], fill=BACKGROUND)
+        draw.rectangle([0, top, left - 1, bottom], fill=BACKGROUND)
+        draw.rectangle([right + 1, top, self.width, bottom], fill=BACKGROUND)
+        draw.rectangle([left, top, right, bottom], outline=BORDER, width=2)
+
         title, _, status = caption.partition("|")
         draw.text((self.margin, 10), title.strip(), fill=TEXT, font=self.font)
         status = status.strip()
+        if self.dodge_count:
+            status = f"dodges {self.dodge_count}   {status}"
         draw.text((self.width - self.margin - draw.textlength(status, font=self.small), 12), status, fill=MUTED, font=self.small)
         x = float(self.margin)
         for bot in sorted(bots, key=lambda b: b["id"]):
@@ -227,13 +354,19 @@ def main() -> int:
     parser.add_argument("--fps", type=int, default=25)
     parser.add_argument("--scale", type=float, default=0.8)
     parser.add_argument("--title", default=None, help="Caption prefix; defaults to the participant names.")
+    parser.add_argument("--auto-window", action="store_true", help="Pick the round and start with the most near misses (overrides --round and --start).")
+    parser.add_argument("--no-waves", action="store_true", help="Do not draw bullet waves.")
     args = parser.parse_args()
 
-    setup, ticks = load_frames(args.recording, args.round)
+    setup, rounds = load_rounds(args.recording)
+    if args.auto_window:
+        args.round, args.start, misses, hits = best_dodge_window(rounds, args.turns)
+        print(f"Auto window: round {args.round}, turns {args.start}-{args.start + args.turns - 1}, {misses} near misses, {hits} hits")
+    ticks = rounds.get(args.round, [])
     if not ticks:
         print(f"No ticks found for round {args.round}", file=sys.stderr)
         return 1
-    renderer = Renderer(setup, args.scale)
+    renderer = Renderer(setup, args.scale, bullet_tracks(ticks), waves=not args.no_waves)
     title = args.title or " vs ".join(p["name"] for p in setup.get("participants", []))
     selected = [t for t in ticks if args.start <= t["turnNumber"] < args.start + args.turns]
     frames: list[Image.Image] = []
