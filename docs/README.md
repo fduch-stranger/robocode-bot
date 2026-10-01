@@ -13,7 +13,6 @@ Navigation hub for the Robocode bot workspace.
 | Port converted legacy bots to native Python | [Legacy Bot Porting Guideline](legacy-bot-porting-guideline.md) |
 | Review concrete gun packages | [Gun Component Docs](#gun-component-docs) |
 | Tune or inspect a specific bot | [Bot Docs](#bot-docs) |
-| Review local championship snapshot | [Championship Results](championship-results.md) |
 | Review research plans | [Plans](plans/README.md) |
 
 ## Bot Docs
