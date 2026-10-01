@@ -1,5 +1,11 @@
 # Markov Tactician Bot Implementation Plan
 
+> **Status: proposed, not started (written July 2026).** Since then Adaptive
+> Prime's duel movement became option surfing (go-to surfing is now only a
+> fallback behind `ROBOCODE_ADAPTIVE_OPTION_SURFING=0`), and the Tomcat and
+> Diamond ports exist as stronger test opponents. Re-check the shared systems
+> this plan names before starting.
+
 This plan describes a new bot variant built around a battle-persistent
 MDL-bounded predictive Markov tactical automaton.
 

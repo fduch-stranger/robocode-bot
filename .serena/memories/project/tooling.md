@@ -13,7 +13,7 @@ Local config:
 - `ROBOCODE_TELEMETRY_*` controls telemetry defaults.
 - Gun pins/sets use global `ROBOCODE_GUN_MODE` / `ROBOCODE_GUN_SET` plus per-bot variants.
 - Dynamic Cluster tuning hooks use per-bot `ROBOCODE_<BOT>_DYNAMIC_*`.
-- Adaptive coarse controls are `ROBOCODE_ADAPTIVE_GOTO_SURFING`, `ROBOCODE_ADAPTIVE_FLATTENER_DIRECTION_CONTROL`, and `ROBOCODE_ADAPTIVE_GUN_HEAT_WAVES`.
+- Adaptive coarse controls are `ROBOCODE_ADAPTIVE_OPTION_SURFING`, `ROBOCODE_ADAPTIVE_GOTO_SURFING`, `ROBOCODE_ADAPTIVE_FLATTENER_DIRECTION_CONTROL`, and `ROBOCODE_ADAPTIVE_GUN_HEAT_WAVES`.
 - Adaptive telemetry-backed experiments should retain the startup `bot.config` event, which contains the effective configuration and deterministic fingerprint.
 - `ROBOCODE_LEGACY_BOTS_ROOT` is optional and only for unported converted opponents.
 

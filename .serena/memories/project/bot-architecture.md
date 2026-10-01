@@ -10,7 +10,7 @@ Canonical docs:
 - Bot READMEs: bot-specific strategy, policy, and tuning context.
 
 Current bots:
-- Adaptive Prime: 1v1 champion candidate using go-to surfing, potential-field fallback, and minimum-risk melee.
+- Adaptive Prime: 1v1 champion candidate using option surfing, potential-field fallback, and minimum-risk melee.
 - Chase Lock: target-lock pressure bot.
 - Circle Strafer: defensive orbital bot.
 - Sweep Pressure: direct sweep-pressure bot.
@@ -29,7 +29,7 @@ Gun architecture:
 - Selector gates every candidate against the current mode, independent of registry order.
 - Adaptive requires a `0.18` adjusted-score margin for fallback-over-primary switches.
 - Adaptive-specific tuning is centralized in `bots/adaptive-prime/adaptive_config.py`, including named firepower, target, radar, movement, movement-flattening, and minimum-risk policies/configs. Behavior methods should not carry independent tuning literals.
-- Adaptive `bot.config` telemetry includes the complete effective configuration, profile name, and deterministic fingerprint. Coarse environment controls cover go-to surfing, flattener direction application, and gun-heat waves.
+- Adaptive `bot.config` telemetry includes the complete effective configuration, profile name, and deterministic fingerprint. Coarse environment controls cover option surfing, go-to surfing, flattener direction application, and gun-heat waves.
 
 Validated gun state:
 - Traditional GF uses one global profile plus `(flight time, absolute lateral speed, wall margin)` segments, `8/36` blending, max-bin selection, smoothing `1.25`, decay `0.985`, and 31 bins. Firing is bounded to `|GF| <= 0.87`; training retains the full range.
@@ -41,7 +41,7 @@ Validated gun state:
 
 Ports:
 - `bots/ports/tomcat-port` is a native port of lxx.Tomcat 3.68 (2026-09-27): `tomcat-port.py` is the Tank Royale boundary (Robocode radians inside, Java event order rebuilt in the turn loop, setAhead/setMaxVelocity mapped to set_forward/max_speed, own bullets created next turn from the previous snapshots); `tomcat_port/` mirrors the Java packages. It beats Adaptive Prime and the surfer port by a wide margin, needs `gc.freeze()` per round to avoid 100 ms gen-2 pauses, and the bridge-wrapped Java Tomcat is not a valid parity reference.
-- `bots/ports/diamond-port` is a native port of voidious.Diamond 1.8.28 (2026-09-27): `diamond-port.py` holds a `RobotAdapter` (AdvancedRobot getters/setters in Robocode units) and Diamond's move/gun/radar loop; `diamond_port/` mirrors the Java packages (kd_tree, knn_view, movement_predictor, wave, enemy, gun, move, radar, perceptual_dna). Strongest local opponent: beats the Tomcat port 8-2, Adaptive Prime 24-0, and wins 4-bot melee; median turn ~2 ms, p99 ~5 ms, no skipped turns. Tank Royale scans lag our bullet damage and hit bonuses by one turn, so the port applies those energy deltas after the tick's scan is read (fire detection stays correct); the Tomcat port still stamps them at event time.
+- `bots/ports/diamond-port` is a native port of voidious.Diamond 1.8.28 (2026-09-27): `diamond-port.py` holds a `RobotAdapter` (AdvancedRobot getters/setters in Robocode units) and Diamond's move/gun/radar loop; `diamond_port/` mirrors the Java packages (kd_tree, knn_view, movement_predictor, wave, enemy, gun, move, radar, perceptual_dna). Strongest local opponent: 2026-10-02 round-robin (24 rounds) beat the Tomcat port 20-4 and Adaptive Prime with option surfing 21-3, and it wins 4-bot melee; median turn ~2 ms, p99 ~5 ms, no skipped turns. Tank Royale scans lag our bullet damage and hit bonuses by one turn, so the port applies those energy deltas after the tick's scan is read (fire detection stays correct); the Tomcat port still stamps them at event time.
 
 Movement architecture:
 - Shared movement covers enemy-fire waves, GF danger profiles, flattening, option surfing, go-to surfing, actual bullet shadows, and minimum-risk movement.
@@ -53,7 +53,7 @@ Movement architecture:
 - Rejected experiments (do not retry without new evidence): hit-width fire gate (neutral, holds fire), pre-aim toward the next-turn bearing (lower aim error but no A/B gain), melee priority radar for Adaptive (-17% melee: rescans starve the fresh-scan fire gate), GC freeze (no slow turn was GC-dominated). Added 2026-09-27: firepower raises alone (scaling off, energy-gated scaling, far-band power: more damage, fewer rounds), duel distance 480/380 alone (neutral), and the anti_surfer recency KNN (real hit rate unchanged); only scaling off plus distance 480/380 together won.
 
 Telemetry and analysis:
-- Key events include `bot.config`, `track`, `gun.switch`, `gun.switch_decision`, `gun.wave_visit`, `gun.eval_wave_visit`, `gun.fire_drift`, `enemy.fire_detected`, `enemy.gun_heat_wave`, `movement.profile_visit`, `movement.flatten`, `movement.goto_surf`, `movement.minimum_risk`, `bullet.fired`, `bullet.hit_bot`, and `hit.bullet`.
+- Key events include `bot.config`, `track`, `gun.switch`, `gun.switch_decision`, `gun.wave_visit`, `gun.eval_wave_visit`, `gun.fire_drift`, `enemy.fire_detected`, `enemy.gun_heat_wave`, `movement.profile_visit`, `movement.flatten`, `movement.option_surf`, `movement.goto_surf`, `movement.minimum_risk`, `bullet.fired`, `bullet.hit_bot`, and `hit.bullet`.
 - Use `tools/telemetry_audit.py` for schema and attribution checks, `tools/combat_economics_summary.py` for score/firepower/damage summaries, `tools/gun_eval_summary.py` for gun/selector diagnostics.
 - The combat-economics movement and fire candidates were rejected. Their ledgers, calibrator, shadow scoring, telemetry, tools, tests, and plans were removed. Production movement, fire gate, and power policy remain unchanged.
 
