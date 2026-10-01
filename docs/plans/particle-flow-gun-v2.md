@@ -1,5 +1,12 @@
 # Dedicated Particle-Flow Gun V2 Plan
 
+> **Status: proposed, not started (written July 2026).** Relevant later
+> evidence: every generic gun tops out near 15-16% hit rate against the
+> BasicGFSurfer port, and a recency-weighted anti-surfer variant did not raise
+> the real hit rate (see
+> [Adaptive Prime surfer economics](adaptive-surfer-economics.md)). The
+> surfer-modeling stage of this plan is the part that evidence points to.
+
 This plan defines the second version of the proposed `particle_flow` gun. It is
 a probabilistic, regime-aware gun controller that predicts a distribution of
 physically reachable enemy futures instead of selecting one historical guess

@@ -2,7 +2,8 @@
 
 This guideline describes how to port converted legacy Robocode bots into native
 Python Tank Royale bots under `bots/ports/`. It is based on the
-`basic-gf-surfer` porting work, where a source-level rewrite looked similar to
+`basic-gf-surfer` porting work, with lessons from the later Tomcat and Diamond
+ports collected near the end, where a source-level rewrite looked similar to
 the Java bot but behaved differently because the Java reference ran through an
 old compatibility bridge.
 
@@ -258,6 +259,37 @@ Success criteria:
   flagged as suspect and excluded from clean parity claims.
 - Full unit suite passes.
 
+## Lessons From The Tomcat And Diamond Ports
+
+The surfer port was validated against its bridge-wrapped Java original. The
+two later ports, Tomcat 3.68 and Diamond 1.8.28, showed that this is not always
+possible and added rules of their own:
+
+- **The bridge reference may be unusable.** Both bridge-wrapped bots failed
+  (class transformation errors, skipped snapshots, unsupported events) and lost
+  to bots they should beat. Then port from the source in the jar, validate with
+  unit tests, battles against the local bots and other ports, and motion sanity,
+  and say in the README that Java parity battles were not possible.
+- **Rebuild the Java event order.** Tank Royale dispatches events inside
+  `go()`. Build the status snapshot, replay last turn's fire event and fan the
+  tick out in the original listener order before deciding.
+- **Scan energy lags bullet hits by one turn.** A port that adjusts its tracked
+  enemy energy at hit time, as Diamond does, must apply those corrections after
+  the tick's scan is read, or every hit masks or fakes an enemy shot.
+- **Physics differs.** Tank Royale moves before it turns and brakes from full
+  speed to zero in one turn. Keep the original's own predictor when its tuning
+  depends on it, and document the difference.
+- **Fired bullets arrive a turn later.** `set_fire` only returns acceptance; the
+  bullet appears in `BulletFiredEvent` next turn, so create waves and bullet
+  records then, from the previous turn's snapshots.
+- **Per-turn cost.** Battle-long kd-trees and snapshot logs make Python's
+  generation-2 collections pause for 40-140 ms. Call `gc.freeze()` at every
+  round start and raise the generation-2 threshold, then check
+  `tools/turn_timing_summary.py` for skipped turns.
+- **Licenses.** Ports are altered versions of other authors' work. Keep the
+  original notice (Diamond's zlib license lives in its port's `LICENSE`),
+  credit the author in the README, and flag sources that grant no license.
+
 ## Tooling Rules
 
 - Prefer `scripts/run-battle-series.sh` for repeat validation against one
@@ -280,4 +312,6 @@ Every port README should state:
 - known bridge/API mismatches,
 - validation commands and latest clean evidence,
 - whether legacy Java runs need motion sanity or other filters,
-- which project tooling preset should use the port.
+- which project tooling preset should use the port,
+- the original author, the original notice or license, and that the port is
+  an altered version.
