@@ -3,20 +3,27 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Robocode Bot Telemetry</title>
+  <title>Robocode Telemetry</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23101828'/%3E%3Cpath d='M7 19h18v5H7zM10 11h9v5h-9zM19 13h6v2h-6z' fill='%235ed4ff'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
   <header class="topbar">
-    <div>
-      <h1>Robocode Bot Telemetry</h1>
-      <p id="source">Waiting for telemetry...</p>
+    <div class="brand">
+      <div class="brandMark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#06121f" stroke-width="2.2" stroke-linecap="round"><rect x="4" y="11" width="16" height="8" rx="2"/><path d="M9 11V8h6v3M15 9.5h5"/></svg>
+      </div>
+      <div>
+        <h1>Robocode Telemetry</h1>
+        <p id="source">Waiting for telemetry...</p>
+      </div>
     </div>
     <div class="status">
-      <button id="resetTelemetry" class="dangerButton" type="button">Reset Stats</button>
-      <span id="eventCount">0 events</span>
-      <span id="lastUpdate">never</span>
+      <span id="liveChip" class="chip liveChip"><span class="dot"></span><span id="liveLabel">waiting</span></span>
+      <span id="turnChip" class="chip">turn -</span>
+      <span id="eventCount" class="chip">0 events</span>
+      <span id="lastUpdate" class="chip">never</span>
+      <button id="resetTelemetry" class="dangerButton" type="button">Reset</button>
     </div>
   </header>
 
@@ -28,6 +35,12 @@
         <label class="tabToggle"><input id="showInactiveBots" type="checkbox"> inactive</label>
       </div>
       <canvas id="arena" width="920" height="620"></canvas>
+      <div class="legend">
+        <span><i style="background:#5ad6ff"></i>enemy wave on the selected bot</span>
+        <span><i style="background:#f2bf62"></i>bullet</span>
+        <span><i style="background:rgba(242,191,98,0.7)"></i>aim point</span>
+        <span><i style="background:rgba(90,176,255,0.45)"></i>radar</span>
+      </div>
     </section>
 
     <section class="sidePanel">
@@ -36,6 +49,7 @@
         <span id="selectedBot" class="pill">none</span>
       </div>
       <div id="metrics" class="metrics"></div>
+      <div id="surfCard" class="surfCard" hidden></div>
       <div class="chartBlock">
         <h3>Energy</h3>
         <canvas id="energyChart" width="520" height="120"></canvas>

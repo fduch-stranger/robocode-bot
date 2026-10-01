@@ -206,6 +206,29 @@ class TelemetryViewerServerTest(unittest.TestCase):
             [f"{event['bot']}:{event['event']}" for event in second["events"]],
         )
 
+    def test_battle_reset_at_startup_keeps_bots_without_battle_reset(self) -> None:
+        # A port starts first and never writes battle.reset; Adaptive Prime then starts and
+        # writes its session, bot.config and battle.reset before any turn is played.
+        with TemporaryDirectory() as tmp:
+            telemetry_dir = Path(tmp)
+            handler = self._handler(telemetry_dir)
+            config = _event("adaptive-prime", "bot.config", 100, 1.051)
+            config["turn"] = None
+            reset = _event("adaptive-prime", "battle.reset", 100, 1.07)
+            reset["turn"] = None
+            _write_jsonl(
+                telemetry_dir / "diamond-port-200.jsonl",
+                [_event("diamond-port", "telemetry.session", 200, 1.0, {"pid": 200}), _event("diamond-port", "bot.turn_timing", 200, 1.2)],
+            )
+            _write_jsonl(
+                telemetry_dir / "adaptive-prime-100.jsonl",
+                [_event("adaptive-prime", "telemetry.session", 100, 1.05, {"pid": 100}), config, reset, _event("adaptive-prime", "track", 100, 1.1)],
+            )
+            result = handler._events({})
+
+        self.assertEqual(["adaptive-prime", "diamond-port"], sorted({event["bot"] for event in result["events"]}))
+        self.assertIn("bot.turn_timing", [event["event"] for event in result["events"]])
+
     def test_normal_round_reset_keeps_viewer_generation(self) -> None:
         with TemporaryDirectory() as tmp:
             telemetry_dir = Path(tmp)

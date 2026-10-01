@@ -106,7 +106,7 @@ Watch the instruments:
 scripts/run-battle.sh --telemetry --telemetry-open --rounds 1 bots/adaptive-prime bots/chase-lock
 ```
 
-![Telemetry viewer during a four-bot melee](docs/assets/telemetry-viewer.png)
+![Telemetry viewer: Adaptive Prime surfing an enemy wave from Diamond, with its surf decision and live stats](docs/assets/telemetry-viewer.png)
 
 Benchmark a change:
 
