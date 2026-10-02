@@ -61,12 +61,18 @@ def _read_events(telemetry_dir: Path) -> list[dict[str, Any]]:
                 yield event
 
 
+# Recorder-level records that are not bot events.
+UNSCHEMATIZED_EVENTS = frozenset({"telemetry.decode_error", "telemetry.dropped", "debug.dropped"})
+
+
 def _audit(events: list[dict[str, Any]], required_bots: list[str]) -> list[str]:
     issues: list[str] = []
     bots = {str(event.get("bot")) for event in events if event.get("bot")}
     shots_by_bot: dict[str, dict[str, str]] = defaultdict(dict)
     pending_hits_by_bot: dict[str, dict[str, list[tuple[str, str]]]] = defaultdict(lambda: defaultdict(list))
     pending_unattributed_by_bot: dict[str, dict[str, list[str]]] = defaultdict(lambda: defaultdict(list))
+
+    unknown_events: dict[tuple[str, str], int] = {}
 
     for bot_name in required_bots:
         if bot_name not in bots:
@@ -87,6 +93,8 @@ def _audit(events: list[dict[str, Any]], required_bots: list[str]) -> list[str]:
             issues.append(f"{location} {bot} {name} missing {field}")
 
         if name and event_spec(name) is None:
+            if name not in UNSCHEMATIZED_EVENTS:
+                unknown_events[(bot, name)] = unknown_events.get((bot, name), 0) + 1
             continue
 
         if name == "round.reset":
@@ -132,6 +140,8 @@ def _audit(events: list[dict[str, Any]], required_bots: list[str]) -> list[str]:
     for bot, pending_hits in pending_unattributed_by_bot.items():
         _flush_unattributed_hits(issues, bot, pending_hits)
 
+    for (bot, name), count in sorted(unknown_events.items()):
+        issues.append(f"{bot} unknown event {name} ({count}x): add it to bot_core.telemetry.schema")
     return issues
 
 

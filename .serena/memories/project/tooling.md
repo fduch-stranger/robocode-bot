@@ -49,7 +49,7 @@ Tool roles:
 - `radar_efficiency_summary.py`: radar/target freshness and reacquisition diagnostics.
 - `intent_gap_summary.py`: missing or duplicate intent turns.
 - `bot_motion_sanity.py`: sampled movement and stationary-span diagnostics.
-- `DebugLogger.sample` throttles independently per event name and resets sampling windows each round.
+- `DebugLogger.sample` throttles independently per event name (default 25 turns; `track` and `movement.option_surf` every 5) and resets sampling windows each round; a full `log` restarts the window. `tools/telemetry_audit.py` flags event names missing from the schema.
 
 Surfer policy:
 - Use `bots/ports/basic-gf-surfer-port` and A/B preset `adaptive-1v1-basic-gf-surfer-port`.

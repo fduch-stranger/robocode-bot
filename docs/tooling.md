@@ -120,7 +120,11 @@ bullets in flight, and, for the selected bot, the enemy waves it detected
 (bold arc over its escape range) and its aim point. The side panel shows the
 selected bot's live state and, when the bot uses option surfing, the danger
 of each option behind its latest choice. It selects the bot with the richest
-telemetry by default; ports log only position and timing.
+telemetry by default. Ports log their own position only every 25 turns, so the
+viewer moves them with the fresher positions other bots scan; an opponent with
+no telemetry at all (a Java legacy bot) appears as a dashed "scanned" tank.
+`tools/telemetry_audit.py` also reports event names that are missing from the
+schema.
 
 The event contract is generated from code:
 

@@ -183,3 +183,9 @@ viewer, audit, and experiment-analysis commands.
 Sampled events are throttled independently by event name and restart their
 sampling window when the engine resets the turn number for a new round. One
 high-frequency event therefore cannot suppress another event such as `track`.
+The default window is 25 turns; `track` and `movement.option_surf`, which the
+viewer animates, use 5. A full log of an event also restarts its window, and
+option surfing logs every change of option at once. Every record's `state`
+includes the bot's own `id`, and `track` carries the target's scanned position,
+heading, speed and energy, so the viewer can draw opponents that log rarely or
+not at all.

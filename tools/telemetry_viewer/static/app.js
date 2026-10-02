@@ -4,7 +4,7 @@ const state = {
   selected: null,
   cursor: 0,
   generation: 0,
-  maxEvents: 12000,
+  maxEvents: 40000,
   inactiveBotSeconds: 15,
   palette: ["#5ab0ff", "#5fd38d", "#f2bf62", "#ff6b6b", "#b68cff", "#5ad6ff"],
   lastNewEventsAt: 0,
@@ -20,6 +20,21 @@ const gunTimeline = document.getElementById("gunTimeline");
 const gunTimelineCtx = gunTimeline.getContext("2d");
 const movementTimeline = document.getElementById("movementTimeline");
 const movementTimelineCtx = movementTimeline.getContext("2d");
+
+// Events written through DebugLogger.sample (plus turn timing): periodic snapshots, not decisions.
+const SAMPLED_EVENTS = new Set([
+  "track",
+  "search",
+  "target.reacquire",
+  "wall.avoid",
+  "search.wall_avoid",
+  "separate",
+  "movement.duel_potential",
+  "movement.goto_surf",
+  "movement.option_surf",
+  "movement.minimum_risk",
+  "bot.turn_timing",
+]);
 
 const modePalette = [
   "#5ab0ff",
@@ -119,7 +134,7 @@ function rebuildBots() {
   const showInactive = document.getElementById("showInactiveBots").checked;
   const newestTimestamp = newestEventTimestamp(state.events);
   for (const event of state.events) {
-    event.normalized = normalizeEvent(event);
+    if (!event.normalized) event.normalized = normalizeEvent(event);
     const bot = event.bot || "unknown";
     if (!allBots.has(bot)) {
       allBots.set(bot, { name: bot, events: [], latest: null, color: state.palette[allBots.size % state.palette.length] });
@@ -285,12 +300,7 @@ function renderArena() {
   ctx.clip();
 
   const selectedBot = state.bots.get(state.selected);
-  const positions = [];
-  for (const bot of state.bots.values()) {
-    const x = numberAt(bot.latest, "state.x");
-    const y = numberAt(bot.latest, "state.y");
-    if (x != null && y != null) positions.push({ bot, x, y });
-  }
+  const positions = tankViews();
 
   // Enemy waves the selected bot is surfing, from its own enemy-fire detections.
   if (selectedBot?.latest) {
@@ -388,8 +398,8 @@ function renderArena() {
     }
   }
 
-  for (const { bot, x, y } of positions) {
-    drawTank(ctx, bot, toX(x), toY(y), scale, bot.name === state.selected, [offsetX, offsetX + width * scale]);
+  for (const view of positions) {
+    drawTank(ctx, view, toX(view.x), toY(view.y), scale, view.name === state.selected, [offsetX, offsetX + width * scale]);
   }
   ctx.restore();
 
@@ -423,13 +433,72 @@ function renderArena() {
   }
 }
 
-function drawTank(ctx, bot, cx, cy, scale, selected, bounds = [0, Infinity]) {
-  const event = bot.latest;
-  const energy = displayEnergy(numberAt(event, "state.energy"));
+function tankViews() {
+  // Each bot's own latest state, refreshed by fresher scans from other bots' track
+  // events: ports log their position only every few dozen turns, and bots without
+  // telemetry (Java legacy bots) are only known through the bots that scan them.
+  const idToBot = new Map();
+  for (const bot of state.bots.values()) {
+    const id = numberAt(bot.latest, "state.id");
+    if (id != null) idToBot.set(id, bot);
+  }
+  const scans = new Map();
+  for (const scanner of state.bots.values()) {
+    for (const event of currentRoundEvents(scanner)) {
+      if (event.event !== "track") continue;
+      const fields = event.fields || {};
+      if (typeof fields.target !== "number" || typeof fields.target_x !== "number" || typeof fields.target_y !== "number") continue;
+      const previous = scans.get(fields.target);
+      if (!previous || event.turn >= previous.turn) {
+        scans.set(fields.target, { turn: event.turn, fields, scanner: scanner.name });
+      }
+    }
+  }
+
+  const views = [];
+  for (const bot of state.bots.values()) {
+    const event = bot.latest;
+    const view = {
+      name: bot.name,
+      color: bot.color,
+      x: numberAt(event, "state.x"),
+      y: numberAt(event, "state.y"),
+      direction: numberAt(event, "state.direction"),
+      gunDirection: numberAt(event, "state.gun_direction"),
+      radarDirection: numberAt(event, "state.radar_direction"),
+      energy: numberAt(event, "state.energy"),
+      scanned: false,
+    };
+    const id = numberAt(event, "state.id");
+    const scan = id != null ? scans.get(id) : null;
+    if (scan && typeof event?.turn === "number" && scan.turn > event.turn) {
+      Object.assign(view, scanView(scan));
+    }
+    if (view.x != null && view.y != null) views.push(view);
+  }
+  for (const [id, scan] of scans) {
+    if (idToBot.has(id)) continue;
+    views.push({ name: `bot ${id}`, color: "#8b98a5", gunDirection: null, radarDirection: null, ...scanView(scan), scanned: true });
+  }
+  return views;
+}
+
+function scanView(scan) {
+  const fields = scan.fields;
+  return {
+    x: fields.target_x,
+    y: fields.target_y,
+    direction: typeof fields.target_direction === "number" ? fields.target_direction : null,
+    energy: typeof fields.target_energy === "number" ? fields.target_energy : null,
+  };
+}
+
+function drawTank(ctx, view, cx, cy, scale, selected, bounds = [0, Infinity]) {
+  const energy = displayEnergy(view.energy);
   const size = 36 * scale;
-  const body = (numberAt(event, "state.direction") ?? 0) * Math.PI / 180;
-  const gun = numberAt(event, "state.gun_direction");
-  const radar = numberAt(event, "state.radar_direction");
+  const body = (view.direction ?? 0) * Math.PI / 180;
+  const gun = view.gunDirection;
+  const radar = view.radarDirection;
 
   if (radar != null) {
     const angle = -radar * Math.PI / 180;
@@ -446,7 +515,7 @@ function drawTank(ctx, bot, cx, cy, scale, selected, bounds = [0, Infinity]) {
   }
 
   if (selected) {
-    ctx.strokeStyle = hexToRgba(bot.color, 0.35);
+    ctx.strokeStyle = hexToRgba(view.color, 0.35);
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.arc(cx, cy, size * 0.95, 0, Math.PI * 2);
@@ -456,12 +525,20 @@ function drawTank(ctx, bot, cx, cy, scale, selected, bounds = [0, Infinity]) {
   ctx.save();
   ctx.translate(cx, cy);
   ctx.rotate(-body);
-  ctx.shadowColor = hexToRgba(bot.color, 0.55);
+  ctx.shadowColor = hexToRgba(view.color, 0.55);
   ctx.shadowBlur = selected ? 14 : 8;
-  ctx.fillStyle = hexToRgba(bot.color, energy.dead ? 0.25 : 0.9);
+  ctx.fillStyle = hexToRgba(view.color, energy.dead ? 0.25 : view.scanned ? 0.6 : 0.9);
   roundRect(ctx, -size / 2, -size * 0.4, size, size * 0.8, 4);
   ctx.fill();
   ctx.shadowBlur = 0;
+  if (view.scanned) {
+    ctx.setLineDash([3, 3]);
+    ctx.strokeStyle = "rgba(230,237,243,0.7)";
+    ctx.lineWidth = 1;
+    roundRect(ctx, -size / 2, -size * 0.4, size, size * 0.8, 4);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
   ctx.fillStyle = "rgba(0,0,0,0.28)";
   ctx.fillRect(-size / 2, -size * 0.4, size, size * 0.14);
   ctx.fillRect(-size / 2, size * 0.26, size, size * 0.14);
@@ -496,7 +573,7 @@ function drawTank(ctx, bot, cx, cy, scale, selected, bounds = [0, Infinity]) {
   ctx.font = "600 12px Inter, -apple-system, BlinkMacSystemFont, sans-serif";
   ctx.textAlign = "center";
   ctx.fillStyle = selected ? "#ffffff" : "#c9d4de";
-  const label = `${bot.name}  ${energy.label}`;
+  const label = `${view.name}${view.scanned ? " (scanned)" : ""}  ${energy.label}`;
   const half = ctx.measureText(label).width / 2;
   const labelX = Math.min(Math.max(cx, bounds[0] + half + 6), bounds[1] - half - 6);
   ctx.fillText(label, labelX, barTop - 6);
@@ -523,6 +600,9 @@ function renderMetrics() {
   const lastFire = lastEvent(bot, "bullet.fired");
   const lastGunSwitch = lastEvent(bot, "gun.switch");
   const lastAim = lastMatchingEvent(bot, (event) => event.normalized?.gunBearing != null || gunModeFromEvent(event));
+  // Only track events carry the gun bearing; the latest gun event usually does not.
+  const lastBearing = lastMatchingEvent(bot, (event) => event.normalized?.gunBearing != null);
+  const lastTrack = lastEvent(bot, "track");
   const lastTarget = lastMatchingEvent(bot, (event) => event.normalized?.target != null);
   const lastDistance = lastMatchingEvent(bot, (event) => event.normalized?.distance != null);
   const lastMovement = lastMatchingEvent(bot, (event) => event.normalized?.movementMode);
@@ -536,11 +616,11 @@ function renderMetrics() {
     { label: "Movement", value: movementModeFromEvent(lastMovement) || "-", accent: "#5ad6ff" },
     { label: "Gun", value: gunModeFromEvent(lastAim) || gunModeFromEvent(lastFire) || lastGunSwitch?.fields?.selected || "-", accent: "#f2bf62" },
     { label: "Firepower", value: format(lastFire?.normalized?.power), accent: "#f2bf62" },
-    { label: "Gun Confidence", value: format(lastFire?.fields?.gun_confidence), accent: "#f2bf62" },
+    { label: "Gun Confidence", value: formatPrecise(lastFire?.fields?.gun_confidence, 3), accent: "#f2bf62" },
     { label: "Distance", value: format(lastDistance?.normalized?.distance), accent: "#b68cff" },
     { label: "Target", value: lastTarget?.normalized?.target ?? "-", accent: "#b68cff" },
-    { label: "Evasion", value: latest?.normalized?.evading ?? lastThreat?.normalized?.evasion ?? "-", accent: "#ff6b6b" },
-    { label: "Gun Bearing Error", value: format(lastAim?.normalized?.gunBearing), accent: "#ff6b6b" },
+    { label: "Evasion", value: evasionLabel(lastTrack, lastThreat), accent: "#ff6b6b" },
+    { label: "Gun Bearing Error", value: lastBearing ? `${format(lastBearing.normalized.gunBearing)}°` : "-", accent: "#ff6b6b" },
     { label: "Position", value: latest ? `${format(numberAt(latest, "state.x"))}, ${format(numberAt(latest, "state.y"))}` : "-" },
     { label: "Last Event", value: latest?.event || "-" },
     { label: "Live Guns", value: gunList(botConfig?.fields?.selectable_guns), wide: true },
@@ -560,6 +640,18 @@ function renderMetrics() {
     element.innerHTML = html;
     metrics.appendChild(element);
   }
+}
+
+function formatPrecise(value, digits) {
+  return typeof value === "number" && Number.isFinite(value) ? value.toFixed(digits) : "-";
+}
+
+function evasionLabel(lastTrack, lastThreat) {
+  // The current state comes from the latest track sample; a fire detection alone goes stale.
+  const evading = lastTrack?.fields?.evading;
+  if (evading === true) return lastThreat?.normalized?.evasion || "evading";
+  if (evading === false) return "none";
+  return "-";
 }
 
 function renderSurfDecision() {
@@ -608,7 +700,7 @@ function renderChart(ctx, botName, getter, minValue, maxValueOrNull, color) {
   ctx.stroke();
   const bot = state.bots.get(botName);
   if (!bot) return;
-  const points = bot.events.map(getter).filter((value) => value != null).slice(-240);
+  const points = perTurnValues(bot.events, getter).slice(-240);
   if (points.length < 2) return;
   const maxValue = maxValueOrNull ?? Math.max(...points, 1);
   const coords = points.map((value, index) => {
@@ -642,6 +734,24 @@ function renderChart(ctx, botName, getter, minValue, maxValueOrNull, color) {
   ctx.textAlign = "right";
   ctx.fillText(format(points[points.length - 1]), width - 8, 15);
   ctx.textAlign = "start";
+}
+
+function perTurnValues(events, getter) {
+  // Last value per turn, in order; a new round restarts the turn counter.
+  const values = [];
+  let lastTurn = null;
+  for (const event of events) {
+    const value = getter(event);
+    if (value == null) continue;
+    const turn = event.turn;
+    if (typeof turn === "number" && turn === lastTurn && values.length) {
+      values[values.length - 1] = value;
+    } else {
+      values.push(value);
+    }
+    lastTurn = typeof turn === "number" ? turn : lastTurn;
+  }
+  return values;
 }
 
 function renderPerformance() {
@@ -877,7 +987,7 @@ function renderEvents() {
     events = events.filter((event) => event.bot === state.selected);
   }
   if (!showSamples) {
-    events = events.filter((event) => !["track", "search", "movement.duel_potential"].includes(event.event));
+    events = events.filter((event) => !SAMPLED_EVENTS.has(event.event));
   }
   for (const event of events.slice(0, 220)) {
     const row = document.createElement("div");

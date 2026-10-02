@@ -11,12 +11,22 @@ from bot_core.telemetry import TelemetryRecorder
 
 
 class DebugLogger:
-    def __init__(self, bot: Bot, log_name: str, sample_interval: int = 25) -> None:
+    # Events the telemetry viewer animates are sampled more often than the default.
+    DEFAULT_SAMPLE_INTERVALS: dict[str, int] = {"track": 5, "movement.option_surf": 5}
+
+    def __init__(
+        self,
+        bot: Bot,
+        log_name: str,
+        sample_interval: int = 25,
+        sample_intervals: dict[str, int] | None = None,
+    ) -> None:
         self._bot = bot
         self._stream = self._open_log(log_name)
         self._log_writer = self._build_log_writer(self._stream)
         self._telemetry = TelemetryRecorder.open(bot, log_name)
         self._sample_interval = sample_interval
+        self._sample_intervals = dict(self.DEFAULT_SAMPLE_INTERVALS if sample_intervals is None else sample_intervals)
         self._last_sample_turns: dict[str, int] = {}
         self._last_observed_turn: int | None = None
         self._closed = False
@@ -25,6 +35,9 @@ class DebugLogger:
 
     def log(self, event: str, **fields: object) -> None:
         turn = self._observe_turn()
+        if turn is not None:
+            # A full log counts as a sample, so the sampler does not repeat it next turn.
+            self._last_sample_turns[event] = turn
         if self._log_writer is not None:
             payload = " ".join(f"{key}={value}" for key, value in fields.items())
             self._log_writer.submit(f"turn={self._turn_label(turn)} event={event} {payload}\n")
@@ -36,10 +49,10 @@ class DebugLogger:
         if turn is None:
             return
         last_turn = self._last_sample_turns.get(event)
-        if last_turn is not None and turn - last_turn < self._sample_interval:
+        interval = self._sample_intervals.get(event, self._sample_interval)
+        if last_turn is not None and turn - last_turn < interval:
             return
         self.log(event, **fields)
-        self._last_sample_turns[event] = turn
 
     def _observe_turn(self) -> int | None:
         try:
