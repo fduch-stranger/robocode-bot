@@ -42,6 +42,16 @@ def _env_int(name: str, default: int, *, minimum: int = 1) -> int:
         return default
 
 
+def _env_float(name: str, default: float, *, minimum: float = 0.0, maximum: float = 1.0) -> float:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return min(maximum, max(minimum, float(raw)))
+    except ValueError:
+        return default
+
+
 def _selectable_gun_modes() -> frozenset[str]:
     return gun_modes_from_env("ROBOCODE_ADAPTIVE", ADAPTIVE_SELECTABLE_GUN_MODES, ADAPTIVE_FORCE_GUN_MODES)
 
@@ -376,6 +386,7 @@ MOVEMENT_FLATTENING_CONFIG = MovementFlatteningConfig(
     bullet_shadow_enabled=True,
     goto_use_expected_waves=True,
     goto_expected_wave_min_confidence=0.62,
+    option_surf_hysteresis=_env_float("ROBOCODE_ADAPTIVE_OPTION_SURF_HYSTERESIS", 0.05, maximum=0.9),
 )
 MINIMUM_RISK_CONFIG = MinimumRiskConfig(
     candidate_distances=(220.0, 320.0, 430.0, 560.0),

@@ -54,7 +54,10 @@ Adaptive is different from the other local bots in three places:
    continuation against the next wave, and drive the safest option. Stops are
    real stops: the engine brakes to zero in one turn. The orbit leans toward
    the duel policy's preferred distance. `ROBOCODE_ADAPTIVE_OPTION_SURFING=0`
-   restores the older go-to surfing. Promoted in PR #19: 6 runs against the
+   restores the older go-to surfing. The bot keeps its current option unless
+   another is 5% safer; `ROBOCODE_ADAPTIVE_OPTION_SURF_HYSTERESIS` tunes that
+   margin, and stronger margins were tested and rejected (roadmap item 18): the
+   frequent option changes are mostly real dodges. Promoted in PR #19: 6 runs against the
    BasicGFSurfer port scored 2021 ± 98 versus the 18-run pooled baseline of
    1740 ± 44 (+16%, z 2.6), with bullet damage dealt +26% and damage taken
    unchanged.
