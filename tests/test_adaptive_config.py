@@ -76,6 +76,12 @@ class AdaptiveConfigTest(unittest.TestCase):
         self.assertFalse(config.MOVEMENT_POLICY.goto_surfing_active)
         self.assertFalse(config.MOVEMENT_POLICY.flattener_direction_control_active)
 
+    def test_option_surf_hysteresis_is_an_env_override_clamped_to_range(self) -> None:
+        self.assertEqual(0.05, _load_adaptive_config().MOVEMENT_FLATTENING_CONFIG.option_surf_hysteresis)
+        for raw, expected in (("0.15", 0.15), ("-1", 0.0), ("5", 0.9), ("junk", 0.05)):
+            with patch.dict("os.environ", {"ROBOCODE_ADAPTIVE_OPTION_SURF_HYSTERESIS": raw}, clear=False):
+                self.assertEqual(expected, _load_adaptive_config().MOVEMENT_FLATTENING_CONFIG.option_surf_hysteresis)
+
     def test_policy_invariants_reject_invalid_experiment_values(self) -> None:
         config = _load_adaptive_config()
 

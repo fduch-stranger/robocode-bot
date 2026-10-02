@@ -36,6 +36,7 @@ a clear win against the pooled baseline.
 | 15 | Anti-surfer gun: recency-weighted Dynamic Cluster variant | Rejected (neutral) | Gate passed on virtual wave score (+28%) but real hit rate unchanged (15.5% pinned); 12 runs: score +3% (z 0.6). Branch `claude/anti-surfer-gun`, not merged |
 | 16 | Shot-quality scaling off by default plus duel distance 480/380 | Done (PR #13) | Each alone neutral; together 12 runs vs 57-run pooled baseline: score 1608 -> 1791 (+11%, z 3.3), bullet damage +24%, damage taken -17%, rounds won unchanged. [Surfer economics](adaptive-surfer-economics.md) |
 | 17 | Option surfing: orbit either way or stop, precise ring-intersection danger, one wave of lookahead | Done (PR #19) | 6 runs vs 18-run pooled baseline: score 1740 -> 2021 (+16%, z 2.6), bullet damage dealt +26% (z 4.5), damage taken -1% (neutral), rounds won +5%. Median turn 2.7 ms, one skipped turn per 12 rounds. Diamond's structure over Adaptive's bins; the engine stops in one turn, so the stop option is instant |
+| 18 | Option-surf flip-flopping: stronger hysteresis | Rejected (neutral or worse) | The chosen option changes every 1-4 turns about 740 times in 12 rounds, mostly near-ties (median 9% danger margin) and mostly stop/move toggles. Against the 24-run pooled baseline (1968 ± 47): 15% for every switch +5% (z 1.1), 30% -4% with damage taken +16% (z 4.3) and rounds won -15%, 15% for stop switches only -7% with damage taken +7% (z 2.0). Suppressing flips costs defence in every variant, so they are mostly genuine dodges (a Tank Royale stop is instant). Kept at 5%; `ROBOCODE_ADAPTIVE_OPTION_SURF_HYSTERESIS` tunes it for future A/Bs |
 | - | Rejected: hit-width fire gate | Dropped | Neutral; held fire instead of hitting more |
 | - | Rejected: GC freeze at round boundaries | Not needed | No slow turn was GC-dominated |
 
@@ -60,7 +61,10 @@ every A/B side that ran the same bot code:
 | main + anti_surfer gun | 12 | 1689 ± 82 | 68% | 617 ± 13 | 1331 ± 52 |
 | main + gun + scaling off + distance 480/380 | 6 | 1867 ± 118 | 66% | 816 ± 24 | 1161 ± 62 |
 | + scaling off, distance 480/380 (`main` after PR #13) | 18 | 1740 ± 44 | 62% | 750 ± 17 | 1169 ± 32 |
-| + option surfing (current `main`, PR #19) | 6 | 2021 ± 98 | 65% | 947 ± 40 | 1155 ± 45 |
+| + option surfing (current `main`, PR #19) | 24 | 1968 ± 47 | 65% | 910 ± 14 | 1142 ± 19 |
+| main + surf hysteresis 15% (env) | 6 | 2069 ± 76 | 66% | 977 ± 28 | 1185 ± 26 |
+| main + surf hysteresis 30% (env) | 6 | 1899 ± 95 | 55% | 992 ± 30 | 1320 ± 37 |
+| main + stop-switch hysteresis 15% | 6 | 1833 ± 87 | 59% | 872 ± 30 | 1220 ± 33 |
 
 One run's score varies by about ±150, so a 3-run A/B detects only changes of
 roughly 15% or more. Compare candidates against the pooled baseline and give
