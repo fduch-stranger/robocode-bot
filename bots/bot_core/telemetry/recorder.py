@@ -100,6 +100,7 @@ class TelemetryRecorder:
 
     def _state(self) -> dict[str, object]:
         return {
+            "id": self._safe_number("my_id"),
             "x": self._safe_number("x"),
             "y": self._safe_number("y"),
             "energy": self._safe_number("energy"),

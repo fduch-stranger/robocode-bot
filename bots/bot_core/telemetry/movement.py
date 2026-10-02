@@ -12,6 +12,7 @@ from bot_core.telemetry.sink import TelemetrySink
 class MovementTelemetry:
     def __init__(self, sink: TelemetrySink) -> None:
         self._sink = sink
+        self._last_option: dict[int, int] = {}
 
     def sample_wall_avoid(self, x: float, y: float, center_bearing: float, move_direction: int) -> None:
         self._sink.sample("wall.avoid", **_wall_avoid_fields(x, y, center_bearing, move_direction))
@@ -117,7 +118,13 @@ class MovementTelemetry:
         self._sink.sample("movement.goto_surf", **_goto_surf_fields(target_id, decision, command, evade_direction))
 
     def sample_option_surf(self, target_id: int, decision: OptionSurfDecision, command: MovementCommand) -> None:
-        self._sink.sample("movement.option_surf", **_option_surf_fields(target_id, decision, command))
+        fields = _option_surf_fields(target_id, decision, command)
+        # A change of option is the decision worth seeing; log it at once, sample the rest.
+        if self._last_option.get(target_id) != decision.option:
+            self._last_option[target_id] = decision.option
+            self._sink.log("movement.option_surf", **fields)
+        else:
+            self._sink.sample("movement.option_surf", **fields)
 
     def sample_duel_potential(
         self,

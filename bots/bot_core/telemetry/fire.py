@@ -200,6 +200,11 @@ def _track_base_fields(
 ) -> dict[str, object]:
     fields: dict[str, object] = {
         "target": target.bot_id,
+        "target_x": round(target.x, 1),
+        "target_y": round(target.y, 1),
+        "target_direction": round(target.direction, 1),
+        "target_speed": round(target.speed, 2),
+        "target_energy": round(target.energy, 1),
         "age": age,
         "distance": round(distance, 1),
         "gun_bearing": round(aim.gun_bearing, 2),

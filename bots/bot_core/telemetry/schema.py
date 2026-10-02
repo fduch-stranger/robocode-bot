@@ -131,6 +131,11 @@ EVENT_SPECS: dict[str, TelemetryEventSpec] = {
         "fire",
         required_fields=("target", "distance", "gun_bearing", "aim_mode"),
         optional_fields=(
+            "target_x",
+            "target_y",
+            "target_direction",
+            "target_speed",
+            "target_energy",
             "age",
             "radar_bearing",
             "radar_turn",

@@ -96,6 +96,42 @@ class DebugLoggerTest(unittest.TestCase):
 
         self.assertEqual(8192, DebugLogger._int_env("ROBOCODE_DEBUG_QUEUE_SIZE", 8192))
 
+    def test_viewer_animated_events_sample_every_five_turns_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            os.environ["ROBOCODE_DEBUG"] = "1"
+            os.environ["ROBOCODE_DEBUG_SYNC"] = "1"
+            os.environ["ROBOCODE_LOG_DIR"] = tmpdir
+            os.environ.pop("ROBOCODE_TELEMETRY", None)
+            bot = _DummyBot()
+            logger = DebugLogger(bot, "test-bot")
+            for turn in (0, 4, 5, 10):
+                bot.turn_number = turn
+                logger.sample("track", target=7)
+                logger.sample("search", known_targets=1)
+            logger.close()
+
+            lines = list(Path(tmpdir).glob("test-bot-*.log"))[0].read_text(encoding="utf-8").splitlines()
+        self.assertEqual(["turn=0", "turn=5", "turn=10"], [line.split()[0] for line in lines if "event=track" in line])
+        self.assertEqual(["turn=0"], [line.split()[0] for line in lines if "event=search" in line])
+
+    def test_full_log_restarts_the_sample_clock(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            os.environ["ROBOCODE_DEBUG"] = "1"
+            os.environ["ROBOCODE_DEBUG_SYNC"] = "1"
+            os.environ["ROBOCODE_LOG_DIR"] = tmpdir
+            os.environ.pop("ROBOCODE_TELEMETRY", None)
+            bot = _DummyBot()
+            logger = DebugLogger(bot, "test-bot")
+            bot.turn_number = 10
+            logger.log("movement.option_surf", option="cw")
+            for turn in (11, 14, 15):
+                bot.turn_number = turn
+                logger.sample("movement.option_surf", option="cw")
+            logger.close()
+
+            lines = list(Path(tmpdir).glob("test-bot-*.log"))[0].read_text(encoding="utf-8").splitlines()
+        self.assertEqual(["turn=10", "turn=15"], [line.split()[0] for line in lines])
+
     def test_sampling_throttles_each_event_independently_at_interval_boundary(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             os.environ["ROBOCODE_DEBUG"] = "1"
@@ -103,7 +139,7 @@ class DebugLoggerTest(unittest.TestCase):
             os.environ["ROBOCODE_LOG_DIR"] = tmpdir
             os.environ.pop("ROBOCODE_TELEMETRY", None)
             bot = _DummyBot()
-            logger = DebugLogger(bot, "test-bot", sample_interval=25)
+            logger = DebugLogger(bot, "test-bot", sample_interval=25, sample_intervals={})
 
             bot.turn_number = 0
             logger.sample("movement.goto_surf", target=7)

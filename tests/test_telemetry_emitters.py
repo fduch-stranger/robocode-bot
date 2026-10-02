@@ -107,6 +107,11 @@ class TelemetryEmitterTest(unittest.TestCase):
         self.assertEqual(
             {
                 "target",
+                "target_x",
+                "target_y",
+                "target_direction",
+                "target_speed",
+                "target_energy",
                 "age",
                 "distance",
                 "gun_bearing",
@@ -244,6 +249,11 @@ class TelemetryEmitterTest(unittest.TestCase):
         self.assertEqual(
             {
                 "target",
+                "target_x",
+                "target_y",
+                "target_direction",
+                "target_speed",
+                "target_energy",
                 "age",
                 "distance",
                 "gun_bearing",
@@ -732,6 +742,27 @@ class TelemetryEmitterTest(unittest.TestCase):
         self.assertEqual("lower_danger", sink.records[2][2]["reason"])
         self.assertNotIn("reason", sink.records[3][2])
         self.assertEqual(-0.457, sink.records[4][2]["force_y"])
+
+    def test_option_surf_logs_option_changes_at_once_and_samples_repeats(self) -> None:
+        from bot_core.movement import OptionSurfDecision
+
+        def decision(option: int) -> OptionSurfDecision:
+            return OptionSurfDecision(
+                option=option, move_bearing=90.0, speed=8.0, danger=1.0, danger_ccw=2.0, danger_stop=3.0, danger_cw=1.0,
+                waves=2, wave_kind="confirmed", hit_turn=12, gf_low=-0.2, gf_high=0.1, time_to_impact=11.0, direction=option or 1,
+            )
+
+        sink = RecordingSink()
+        telemetry = MovementTelemetry(sink)
+        command = MovementCommand(mode="option_surf", turn=0.0, speed=8.0)
+        for option in (1, 1, 0, 0, -1):
+            telemetry.sample_option_surf(7, decision(option), command)
+
+        self.assertEqual(
+            ["log", "sample", "log", "sample", "log"],
+            [kind for kind, event, _ in sink.records if event == "movement.option_surf"],
+        )
+        self.assertEqual(["cw", "cw", "stop", "stop", "ccw"], [fields["option"] for _, _, fields in sink.records])
 
     def test_targeting_telemetry_records_targeting_events(self) -> None:
         sink = RecordingSink()

@@ -16,7 +16,7 @@ class TelemetryAuditTest(unittest.TestCase):
             telemetry_dir.mkdir()
             output_path = Path(temp_dir) / "audit.json"
             (telemetry_dir / "adaptive-prime.jsonl").write_text(
-                json.dumps({"bot": "adaptive-prime", "event": "custom.event", "fields": {}}) + "\n",
+                json.dumps({"bot": "adaptive-prime", "event": "telemetry.session", "fields": {}}) + "\n",
                 encoding="utf-8",
             )
 
@@ -39,8 +39,23 @@ class TelemetryAuditTest(unittest.TestCase):
         self.assertEqual(0, exit_code)
         self.assertEqual(1, summary["events"])
         self.assertEqual({"adaptive-prime": 1}, summary["bots"])
-        self.assertEqual({"custom.event": 1}, summary["eventCounts"])
+        self.assertEqual({"telemetry.session": 1}, summary["eventCounts"])
         self.assertEqual([], summary["issues"])
+
+    def test_reports_event_names_missing_from_schema_once_per_bot(self) -> None:
+        issues = _audit(
+            [
+                {"bot": "adaptive-prime", "event": "movement.option_surf_slow", "fields": {}},
+                {"bot": "adaptive-prime", "event": "movement.option_surf_slow", "fields": {}},
+                {"bot": "adaptive-prime", "event": "telemetry.session", "fields": {}},
+            ],
+            [],
+        )
+
+        self.assertEqual(
+            ["adaptive-prime unknown event movement.option_surf_slow (2x): add it to bot_core.telemetry.schema"],
+            issues,
+        )
 
     def test_reports_missing_required_fields_from_schema(self) -> None:
         issues = _audit(
